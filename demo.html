@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PORTGUARD -- Trade Compliance Screening</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #07101f;
+      --surface:   #0c1a2e;
+      --card:      #101f33;
+      --card-hi:   #132540;
+      --border:    #1a2d45;
+      --border-hi: #254060;
+      --blue:      #3b82f6;
+      --blue-dim:  #1d4ed8;
+      --text:      #dde6f0;
+      --muted:     #7a93ab;
+      --faint:     #3a5068;
+      --green:     #22c55e;
+      --amber:     #f59e0b;
+      --orange:    #f97316;
+      --red:       #ef4444;
+      --purple:    #a855f7;
+      --radius:    10px;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ---- Header ---- */
+    header {
+      position: sticky; top: 0; z-index: 100;
+      background: rgba(7,16,31,.92);
+      backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex; align-items: center; justify-content: space-between;
+      height: 60px;
+    }
+    .logo {
+      display: flex; align-items: center; gap: .7rem;
+      text-decoration: none; color: inherit;
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px; font-weight: 800; color: #fff;
+      box-shadow: 0 0 16px rgba(59,130,246,.4);
+      flex-shrink: 0;
+    }
+    .logo-text { font-size: 1.1rem; font-weight: 800; letter-spacing: .06em; color: #e8f0f8; }
+    .logo-sub  { font-size: .7rem; font-weight: 500; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+    .header-api {
+      display: flex; align-items: center; gap: .5rem;
+      font-size: .75rem; color: var(--muted);
+    }
+    .api-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green);
+      box-shadow: 0 0 6px var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    #api-url-input {
+      background: transparent; border: none; outline: none;
+      color: var(--muted); font-family: 'JetBrains Mono', monospace;
+      font-size: .75rem; width: 22ch;
+    }
+    #api-url-input:focus { color: var(--text); }
+
+    /* ---- Hero ---- */
+    .hero {
+      padding: 4rem 2rem 3rem;
+      max-width: 900px; margin: 0 auto;
+      text-align: center;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: .4rem;
+      background: rgba(59,130,246,.12); border: 1px solid rgba(59,130,246,.3);
+      color: #93c5fd; font-size: .72rem; font-weight: 600;
+      padding: .3rem .85rem; border-radius: 999px; letter-spacing: .06em;
+      text-transform: uppercase; margin-bottom: 1.5rem;
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      font-weight: 800; line-height: 1.15;
+      background: linear-gradient(135deg, #e8f0f8 30%, #60a5fa 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 1rem;
+    }
+    .hero p {
+      font-size: 1.05rem; color: var(--muted); max-width: 580px; margin: 0 auto 2rem;
+    }
+    .hero-stats {
+      display: flex; justify-content: center; gap: 1rem; flex-wrap: wrap;
+    }
+    .stat-pill {
+      background: var(--card); border: 1px solid var(--border);
+      padding: .4rem 1rem; border-radius: 999px;
+      font-size: .78rem; color: var(--muted);
+    }
+    .stat-pill strong { color: #93c5fd; }
+
+    /* ---- Main layout ---- */
+    .container {
+      max-width: 900px; margin: 0 auto;
+      padding: 0 1.5rem 4rem;
+    }
+
+    /* ---- Section label ---- */
+    .section-label {
+      font-size: .7rem; font-weight: 700; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--faint); margin-bottom: .8rem;
+    }
+
+    /* ---- Quick load ---- */
+    .quick-load {
+      display: flex; gap: .6rem; flex-wrap: wrap; margin-bottom: 1.4rem;
+    }
+    .quick-btn {
+      background: var(--card); border: 1px solid var(--border);
+      color: var(--muted); font-size: .8rem; font-weight: 600;
+      padding: .5rem 1rem; border-radius: var(--radius);
+      cursor: pointer; transition: all .2s;
+      display: flex; align-items: center; gap: .45rem;
+    }
+    .quick-btn:hover { border-color: var(--blue); color: #93c5fd; background: var(--card-hi); }
+    .quick-btn .dot {
+      width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0;
+    }
+    .dot-green  { background: var(--green); }
+    .dot-red    { background: var(--red); }
+    .dot-amber  { background: var(--amber); }
+
+    /* ---- Document tabs ---- */
+    .tabs-bar {
+      display: flex; align-items: center; gap: .35rem;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0; overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .tabs-bar::-webkit-scrollbar { display: none; }
+    .tab-btn {
+      background: none; border: none;
+      font-family: 'Inter', sans-serif; font-size: .8rem; font-weight: 500;
+      color: var(--muted); padding: .55rem 1rem;
+      cursor: pointer; white-space: nowrap;
+      border-bottom: 2px solid transparent;
+      transition: all .18s;
+      display: flex; align-items: center; gap: .4rem;
+      margin-bottom: -1px;
+    }
+    .tab-btn:hover { color: var(--text); }
+    .tab-btn.active {
+      color: #93c5fd;
+      border-bottom-color: var(--blue);
+    }
+    .tab-close {
+      width: 16px; height: 16px;
+      background: none; border: none; cursor: pointer;
+      color: var(--faint); font-size: 14px; line-height: 1;
+      border-radius: 3px; transition: all .15s;
+      display: flex; align-items: center; justify-content: center;
+      padding: 0;
+    }
+    .tab-close:hover { background: rgba(239,68,68,.2); color: var(--red); }
+    .tab-add {
+      background: none; border: 1px dashed var(--border);
+      color: var(--faint); font-size: 1rem; line-height: 1;
+      width: 26px; height: 26px; border-radius: 6px;
+      cursor: pointer; transition: all .18s;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-left: .2rem;
+    }
+    .tab-add:hover { border-color: var(--blue); color: var(--blue); }
+
+    /* ---- Document pane ---- */
+    .doc-pane {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 var(--radius) var(--radius);
+      padding: 1rem;
+    }
+    .filename-row {
+      display: flex; align-items: center; gap: .5rem; margin-bottom: .6rem;
+    }
+    .filename-label {
+      font-size: .7rem; color: var(--faint); font-weight: 600;
+      letter-spacing: .06em; text-transform: uppercase; flex-shrink: 0;
+    }
+    .filename-input {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--muted);
+      font-family: 'JetBrains Mono', monospace; font-size: .78rem;
+      padding: .28rem .6rem; width: 22ch;
+      outline: none; transition: border-color .18s;
+    }
+    .filename-input:focus { border-color: var(--blue); color: var(--text); }
+    textarea.doc-text {
+      width: 100%; height: 220px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); color: var(--text);
+      font-family: 'JetBrains Mono', monospace; font-size: .78rem;
+      line-height: 1.7; padding: .9rem 1rem;
+      resize: vertical; outline: none; transition: border-color .18s;
+    }
+    textarea.doc-text:focus { border-color: var(--blue); }
+    textarea.doc-text::placeholder { color: var(--faint); }
+
+    /* ---- Analyze button ---- */
+    .analyze-wrap {
+      margin-top: 1.2rem; display: flex; align-items: center; gap: 1rem;
+    }
+    #analyze-btn {
+      flex: 1; padding: .9rem 2rem;
+      background: linear-gradient(135deg, #1d4ed8 0%, #3b82f6 100%);
+      border: none; border-radius: var(--radius);
+      color: #fff; font-family: 'Inter', sans-serif;
+      font-size: 1rem; font-weight: 700; letter-spacing: .04em;
+      cursor: pointer; transition: all .2s;
+      display: flex; align-items: center; justify-content: center; gap: .6rem;
+      box-shadow: 0 4px 20px rgba(59,130,246,.35);
+    }
+    #analyze-btn:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 28px rgba(59,130,246,.5);
+    }
+    #analyze-btn:active:not(:disabled) { transform: translateY(0); }
+    #analyze-btn:disabled {
+      opacity: .6; cursor: not-allowed; transform: none;
+    }
+    .spinner {
+      width: 18px; height: 18px; border: 2px solid rgba(255,255,255,.3);
+      border-top-color: #fff; border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .btn-icon { font-size: 1.1rem; }
+
+    /* ---- Error banner ---- */
+    #error-banner {
+      display: none; margin-top: 1rem;
+      background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3);
+      border-radius: var(--radius); padding: .85rem 1.1rem;
+      color: #fca5a5; font-size: .85rem;
+      display: none; align-items: flex-start; gap: .6rem;
+    }
+    #error-banner.visible { display: flex; }
+
+    /* ---- Results ---- */
+    #results {
+      margin-top: 2.5rem;
+      opacity: 0; transform: translateY(16px);
+      transition: opacity .5s ease, transform .5s ease;
+      pointer-events: none;
+    }
+    #results.visible {
+      opacity: 1; transform: translateY(0); pointer-events: all;
+    }
+
+    /* Decision banner */
+    .decision-banner {
+      border-radius: var(--radius); padding: 1.5rem 1.8rem;
+      margin-bottom: 1rem; border: 1px solid;
+      display: flex; align-items: center; justify-content: space-between;
+      flex-wrap: wrap; gap: 1rem;
+    }
+    .decision-banner.APPROVE               { background: rgba(22,101,52,.25);  border-color: rgba(34,197,94,.35); }
+    .decision-banner.REVIEW_RECOMMENDED    { background: rgba(88,28,135,.25);  border-color: rgba(168,85,247,.35); }
+    .decision-banner.FLAG_FOR_INSPECTION   { background: rgba(124,45,18,.25);  border-color: rgba(249,115,22,.45); }
+    .decision-banner.REQUEST_MORE_INFORMATION { background: rgba(120,53,15,.25); border-color: rgba(245,158,11,.4); }
+    .decision-banner.REJECT                { background: rgba(127,29,29,.3);   border-color: rgba(239,68,68,.45); }
+
+    .decision-left { display: flex; align-items: center; gap: 1rem; }
+    .decision-icon { font-size: 2rem; }
+    .decision-name {
+      font-size: 1.5rem; font-weight: 800; letter-spacing: .02em;
+    }
+    .APPROVE .decision-name               { color: #4ade80; }
+    .REVIEW_RECOMMENDED .decision-name    { color: #c084fc; }
+    .FLAG_FOR_INSPECTION .decision-name   { color: #fb923c; }
+    .REQUEST_MORE_INFORMATION .decision-name { color: #fbbf24; }
+    .REJECT .decision-name                { color: #f87171; }
+    .decision-sub { font-size: .8rem; color: var(--muted); margin-top: .15rem; }
+
+    .decision-meta {
+      display: flex; gap: 1.4rem; flex-wrap: wrap;
+    }
+    .meta-item { text-align: center; }
+    .meta-value { font-size: 1.3rem; font-weight: 700; color: var(--text); }
+    .meta-label { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+
+    /* Cards row */
+    .cards-row {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+      margin-bottom: 1rem;
+    }
+    @media(max-width: 600px) { .cards-row { grid-template-columns: 1fr; } }
+
+    .card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.25rem 1.4rem;
+    }
+    .card-title {
+      font-size: .7rem; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--faint); margin-bottom: 1rem;
+    }
+
+    /* Gauge */
+    .gauge-wrap { display: flex; flex-direction: column; align-items: center; gap: .5rem; }
+    svg.gauge { width: 100%; max-width: 220px; overflow: visible; }
+    .gauge-track { fill: none; stroke: #1a2d45; stroke-width: 13; stroke-linecap: round; }
+    .gauge-fill  { fill: none; stroke-width: 13; stroke-linecap: round;
+                   stroke-dasharray: 0 253;
+                   transition: stroke-dasharray 1.1s cubic-bezier(.4,0,.2,1),
+                               stroke .6s ease; }
+    .gauge-bg    { fill: none; stroke: #0c1a2e; stroke-width: 17; stroke-linecap: round; }
+    .gauge-score { font-family: 'JetBrains Mono', monospace; font-weight: 700;
+                   text-anchor: middle; fill: #dde6f0; }
+    .gauge-risk  { font-family: 'Inter', sans-serif; font-weight: 700;
+                   text-anchor: middle; letter-spacing: .1em; font-size: 10px; }
+    .gauge-corner { font-family: 'JetBrains Mono', monospace; fill: #3a5068; font-size: 9px; }
+
+    /* Confidence / stats card */
+    .conf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem 1.2rem; }
+    .conf-item {}
+    .conf-value { font-size: 1.5rem; font-weight: 800; color: var(--text); }
+    .conf-label { font-size: .68rem; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
+    .badge {
+      display: inline-block; padding: .2rem .65rem;
+      border-radius: 999px; font-size: .75rem; font-weight: 700; letter-spacing: .04em;
+    }
+    .badge-HIGH     { background: rgba(34,197,94,.15);  color: #4ade80; }
+    .badge-MEDIUM   { background: rgba(245,158,11,.15); color: #fbbf24; }
+    .badge-LOW      { background: rgba(148,163,184,.1); color: #94a3b8; }
+
+    /* Explanations + next steps */
+    .findings-list, .steps-list {
+      list-style: none; display: flex; flex-direction: column; gap: .55rem;
+    }
+    .finding-item {
+      display: flex; align-items: flex-start; gap: .7rem;
+      font-size: .85rem; color: var(--text); line-height: 1.55;
+      padding: .55rem .75rem;
+      background: var(--surface); border-radius: 7px;
+      border-left: 3px solid var(--border-hi);
+    }
+    .finding-bullet { color: var(--orange); font-size: .7rem; margin-top: .28rem; flex-shrink: 0; }
+    .step-item {
+      display: flex; align-items: flex-start; gap: .7rem;
+      font-size: .85rem; color: var(--text); line-height: 1.55;
+    }
+    .step-num {
+      width: 22px; height: 22px; border-radius: 50%; flex-shrink: 0;
+      background: rgba(59,130,246,.2); border: 1px solid rgba(59,130,246,.35);
+      color: #93c5fd; font-size: .72rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      margin-top: .16rem;
+    }
+
+    /* Shipment data */
+    .shipment-toggle {
+      background: none; border: none; cursor: pointer;
+      font-family: 'Inter', sans-serif; font-size: .7rem; font-weight: 700;
+      letter-spacing: .1em; text-transform: uppercase; color: var(--faint);
+      display: flex; align-items: center; gap: .4rem; transition: color .15s;
+    }
+    .shipment-toggle:hover { color: var(--muted); }
+    .toggle-arrow { transition: transform .25s; }
+    .toggle-arrow.open { transform: rotate(90deg); }
+    #shipment-data-grid {
+      display: none; grid-template-columns: 1fr 1fr;
+      gap: .5rem 1.5rem; margin-top: .9rem;
+    }
+    #shipment-data-grid.open { display: grid; }
+    @media(max-width:500px){ #shipment-data-grid { grid-template-columns: 1fr; } }
+    .data-field { }
+    .data-key  { font-size: .68rem; color: var(--faint); text-transform: uppercase; letter-spacing: .07em; margin-bottom: .15rem; }
+    .data-val  { font-size: .82rem; color: var(--text); font-family: 'JetBrains Mono', monospace; word-break: break-all; }
+    .data-val.empty { color: var(--faint); font-style: italic; }
+  </style>
+</head>
+<body>
+
+<!-- ===================== HEADER ===================== -->
+<header>
+  <a class="logo" href="#">
+    <div class="logo-icon">PG</div>
+    <div>
+      <div class="logo-text">PORTGUARD</div>
+      <div class="logo-sub">Trade Compliance Screening</div>
+    </div>
+  </a>
+  <div class="header-api">
+    <div class="api-dot" id="api-dot"></div>
+    <span>API:</span>
+    <input id="api-url-input" type="text" value="http://localhost:8000" spellcheck="false">
+  </div>
+</header>
+
+<!-- ===================== HERO ===================== -->
+<div class="hero">
+  <div class="hero-badge">&#9650; Powered by Claude claude-opus-4-6</div>
+  <h1>AI-Powered Import<br>Compliance Screening</h1>
+  <p>Paste your shipping documents and get an instant compliance decision, risk score, and actionable findings.</p>
+  <div class="hero-stats">
+    <div class="stat-pill"><strong>333</strong> Section 301 HTS prefixes</div>
+    <div class="stat-pill"><strong>14</strong> active AD/CVD orders</div>
+    <div class="stat-pill"><strong>10</strong> OFAC sanctions programs</div>
+    <div class="stat-pill"><strong>72</strong> HTS chapters mapped to PGA</div>
+  </div>
+</div>
+
+<!-- ===================== MAIN ===================== -->
+<div class="container">
+
+  <!-- Quick load -->
+  <div class="section-label">Quick Load Demo Scenarios</div>
+  <div class="quick-load">
+    <button class="quick-btn" onclick="loadScenario('clean')">
+      <span class="dot dot-green"></span> Clean Shipment
+    </button>
+    <button class="quick-btn" onclick="loadScenario('suspicious')">
+      <span class="dot dot-red"></span> Suspicious Shipment
+    </button>
+    <button class="quick-btn" onclick="loadScenario('incomplete')">
+      <span class="dot dot-amber"></span> Incomplete Shipment
+    </button>
+  </div>
+
+  <!-- Document tabs -->
+  <div class="section-label">Shipping Documents</div>
+
+  <div class="tabs-bar" id="tabs-bar">
+    <!-- tabs injected by JS -->
+    <button class="tab-add" id="tab-add-btn" title="Add document" onclick="addTab()">+</button>
+  </div>
+
+  <div class="doc-pane" id="doc-pane">
+    <!-- active tab content injected by JS -->
+  </div>
+
+  <!-- Analyze -->
+  <div class="analyze-wrap">
+    <button id="analyze-btn" onclick="analyze()">
+      <span class="btn-icon" id="btn-icon">&#9658;</span>
+      <span id="btn-text">Analyze Shipment</span>
+    </button>
+  </div>
+
+  <!-- Error -->
+  <div id="error-banner">
+    <span>&#9888;</span>
+    <span id="error-msg"></span>
+  </div>
+
+  <!-- ===================== RESULTS ===================== -->
+  <div id="results">
+
+    <!-- Decision banner -->
+    <div id="decision-banner" class="decision-banner">
+      <div class="decision-left">
+        <div class="decision-icon" id="decision-icon"></div>
+        <div>
+          <div class="decision-name" id="decision-name"></div>
+          <div class="decision-sub" id="decision-sub"></div>
+        </div>
+      </div>
+      <div class="decision-meta">
+        <div class="meta-item">
+          <div class="meta-value" id="meta-docs"></div>
+          <div class="meta-label">Docs analyzed</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-value" id="meta-issues"></div>
+          <div class="meta-label">Inconsistencies</div>
+        </div>
+        <div class="meta-item">
+          <div class="meta-value" id="meta-time"></div>
+          <div class="meta-label">Seconds</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gauge + stats row -->
+    <div class="cards-row">
+
+      <!-- Risk gauge -->
+      <div class="card">
+        <div class="card-title">Risk Score</div>
+        <div class="gauge-wrap">
+          <svg class="gauge" viewBox="0 0 200 116">
+            <!-- background stroke for depth -->
+            <path class="gauge-bg"  d="M 20,100 A 80,80 0 0,1 180,100"/>
+            <!-- track -->
+            <path class="gauge-track" d="M 20,100 A 80,80 0 0,1 180,100"/>
+            <!-- fill (dynamic) -->
+            <path class="gauge-fill" id="gauge-fill" d="M 20,100 A 80,80 0 0,1 180,100"/>
+            <!-- score text -->
+            <text class="gauge-score" id="gauge-score" x="100" y="88" font-size="28">0.00</text>
+            <!-- risk level -->
+            <text class="gauge-risk" id="gauge-risk" x="100" y="108" fill="#3a5068">--</text>
+            <!-- corner labels -->
+            <text class="gauge-corner" x="14" y="114">0</text>
+            <text class="gauge-corner" x="172" y="114">1.0</text>
+          </svg>
+        </div>
+      </div>
+
+      <!-- Stats card -->
+      <div class="card">
+        <div class="card-title">Assessment Details</div>
+        <div class="conf-grid">
+          <div class="conf-item">
+            <div class="conf-label">Confidence</div>
+            <div class="conf-value" id="stat-confidence">--</div>
+          </div>
+          <div class="conf-item">
+            <div class="conf-label">Risk Level</div>
+            <div class="conf-value" id="stat-risk-level">--</div>
+          </div>
+          <div class="conf-item" id="origin-item" style="display:none">
+            <div class="conf-label">Origin</div>
+            <div class="conf-value" id="stat-origin" style="font-size:1rem">--</div>
+          </div>
+          <div class="conf-item" id="commodity-item" style="display:none">
+            <div class="conf-label">Commodity</div>
+            <div class="conf-value" id="stat-commodity" style="font-size:.85rem;line-height:1.3">--</div>
+          </div>
+          <div class="conf-item" id="value-item" style="display:none">
+            <div class="conf-label">Declared Value</div>
+            <div class="conf-value" id="stat-value" style="font-size:1rem">--</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Findings -->
+    <div class="card" style="margin-bottom:1rem" id="findings-card">
+      <div class="card-title">Findings &amp; Inconsistencies</div>
+      <ul class="findings-list" id="findings-list"></ul>
+    </div>
+
+    <!-- Next steps -->
+    <div class="card" style="margin-bottom:1rem" id="steps-card">
+      <div class="card-title">Recommended Next Steps</div>
+      <ul class="steps-list" id="steps-list"></ul>
+    </div>
+
+    <!-- Shipment data (collapsible) -->
+    <div class="card">
+      <button class="shipment-toggle" onclick="toggleShipmentData()">
+        <span class="toggle-arrow" id="toggle-arrow">&#9658;</span>
+        Extracted Shipment Data
+      </button>
+      <div id="shipment-data-grid"></div>
+    </div>
+
+  </div><!-- /results -->
+</div><!-- /container -->
+
+<script>
+'use strict';
+
+// ---------------------------------------------------------------------------
+// Config
+// ---------------------------------------------------------------------------
+const apiUrl = () => document.getElementById('api-url-input').value.replace(/\/$/, '');
+
+// ---------------------------------------------------------------------------
+// Tab state
+// ---------------------------------------------------------------------------
+let tabs = [{ id: 1, filename: '', text: '' }];
+let activeTab = 1;
+let nextId = 2;
+
+function renderTabs() {
+  const bar = document.getElementById('tabs-bar');
+  // Remove existing tab buttons (keep the + button)
+  bar.querySelectorAll('.tab-btn').forEach(el => el.remove());
+  const addBtn = document.getElementById('tab-add-btn');
+
+  tabs.forEach(tab => {
+    const btn = document.createElement('button');
+    btn.className = 'tab-btn' + (tab.id === activeTab ? ' active' : '');
+    btn.dataset.id = tab.id;
+
+    const label = document.createElement('span');
+    label.textContent = tab.filename || 'Document ' + tab.id;
+    btn.appendChild(label);
+
+    if (tabs.length > 1) {
+      const x = document.createElement('button');
+      x.className = 'tab-close';
+      x.textContent = 'x';
+      x.title = 'Remove document';
+      x.addEventListener('click', e => { e.stopPropagation(); removeTab(tab.id); });
+      btn.appendChild(x);
+    }
+
+    btn.addEventListener('click', () => switchTab(tab.id));
+    bar.insertBefore(btn, addBtn);
+  });
+
+  renderPane();
+}
+
+function renderPane() {
+  const tab = tabs.find(t => t.id === activeTab);
+  if (!tab) return;
+
+  const pane = document.getElementById('doc-pane');
+  pane.innerHTML = `
+    <div class="filename-row">
+      <span class="filename-label">Filename</span>
+      <input class="filename-input" type="text" placeholder="e.g. bill_of_lading.txt"
+             value="${escHtml(tab.filename)}" id="fname-${tab.id}">
+    </div>
+    <textarea class="doc-text" placeholder="Paste raw document text here..."
+              id="text-${tab.id}">${escHtml(tab.text)}</textarea>
+  `;
+
+  document.getElementById('fname-' + tab.id).addEventListener('input', e => {
+    tab.filename = e.target.value;
+    renderTabs();
+  });
+  document.getElementById('text-' + tab.id).addEventListener('input', e => {
+    tab.text = e.target.value;
+  });
+}
+
+function switchTab(id) {
+  // Save current textarea content
+  const cur = tabs.find(t => t.id === activeTab);
+  if (cur) {
+    const ta = document.getElementById('text-' + cur.id);
+    if (ta) cur.text = ta.value;
+    const fi = document.getElementById('fname-' + cur.id);
+    if (fi) cur.filename = fi.value;
+  }
+  activeTab = id;
+  renderTabs();
+}
+
+function addTab() {
+  const id = nextId++;
+  tabs.push({ id, filename: '', text: '' });
+  switchTab(id);
+}
+
+function removeTab(id) {
+  tabs = tabs.filter(t => t.id !== id);
+  if (activeTab === id) activeTab = tabs[tabs.length - 1].id;
+  renderTabs();
+}
+
+function escHtml(s) {
+  return (s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ---------------------------------------------------------------------------
+// Scenario data
+// ---------------------------------------------------------------------------
+const SCENARIOS = {
+  clean: {
+    documents: [
+      {
+        filename: 'bill_of_lading.txt',
+        text: `OCEAN BILL OF LADING - ORIGINAL
+
+B/L Number: MSCU7249301-24
+Date of Issue: 2024-10-08
+
+SHIPPER / EXPORTER
+Viet Star Electronics Manufacturing Co., Ltd.
+18 Thang Long Industrial Park, Dong Anh District
+Hanoi, Vietnam
+Tel: +84-24-3886-0900
+
+CONSIGNEE
+Horizon Technology Group, Inc.
+1200 Brickell Avenue, Suite 850
+Miami, FL 33131, USA
+
+NOTIFY PARTY
+Horizon Technology Group, Inc. (same as consignee)
+Attn: Import Operations -- imports@horizontechgroup.com
+
+VESSEL / VOYAGE: MSC AURORA / 0124E
+PORT OF LOADING: Cat Lai, Ho Chi Minh City, Vietnam
+PORT OF DISCHARGE: Port of Los Angeles (USLAX), California, USA
+FINAL DESTINATION: Miami, FL, USA (via inland)
+
+PLACE OF RECEIPT: Hanoi, Vietnam (shipper's warehouse)
+ON BOARD DATE: 2024-10-08   ETA: 2024-10-26
+
+DESCRIPTION OF GOODS
+Commodity:    Laptop Computers (Notebook PCs)
+HTS Code:     8471.30.0100
+Country of Origin: Vietnam
+No. of Packages: 100 cartons (40 units per carton)
+Total Units:  4,000 units
+Gross Weight: 8,200 KG
+Measurement:  32.4 CBM
+Marks & Numbers: HZT-VN-2024-OCT / 1-100
+
+FREIGHT: PREPAID
+CARRIER: Mediterranean Shipping Company (MSC)
+Signed for the Carrier: MSC Vietnam Ltd. as Agent
+Date: 2024-10-08`
+      },
+      {
+        filename: 'commercial_invoice.txt',
+        text: `COMMERCIAL INVOICE
+
+Invoice Number: VSE-2024-10-0047
+Invoice Date: 2024-10-05
+
+SELLER
+Viet Star Electronics Manufacturing Co., Ltd.
+18 Thang Long Industrial Park, Dong Anh District
+Hanoi, Vietnam
+
+BUYER
+Horizon Technology Group, Inc.
+1200 Brickell Avenue, Suite 850
+Miami, FL 33131, USA
+
+COUNTRY OF ORIGIN: Vietnam
+PORT OF LOADING: Cat Lai, HCMC, Vietnam
+PORT OF DISCHARGE: Los Angeles, CA, USA
+DELIVERY TERMS: FOB Cat Lai, Vietnam (Incoterms 2020)
+PAYMENT TERMS: Letter of Credit, Irrevocable sight
+
+LINE ITEM DETAIL
+Line  Description                    HTS Code      Qty     Unit Price  Total
+  1   Laptop Computer, 15.6" FHD     8471.30.0100  4,000   USD 52.00   208,000.00
+      Intel Core i5, 16GB RAM, 512GB SSD, Win 11 Pro
+      Model: VS-PRO-15-2024
+      Country of Origin: Vietnam
+      Manufacturer: Viet Star Electronics Mfg Co Ltd
+
+TOTAL INVOICE VALUE:  USD 208,000.00
+
+DECLARATION: We hereby certify that the merchandise described herein is of
+Vietnamese origin and all information in this invoice is true and correct.
+Authorized Signature: [signed] Nguyen Thi Lan, Export Manager
+Date: 2024-10-05`
+      },
+      {
+        filename: 'certificate_of_origin.txt',
+        text: `CERTIFICATE OF ORIGIN (Non-Preferential)
+
+Issued by: Vietnam Chamber of Commerce and Industry (VCCI)
+Certificate No.: VCCI-HN-2024-CO-038821
+Date of Issue: 2024-10-06
+
+EXPORTER / PRODUCER
+Viet Star Electronics Manufacturing Co., Ltd.
+18 Thang Long Industrial Park, Dong Anh District, Hanoi, Vietnam
+
+CONSIGNEE
+Horizon Technology Group, Inc., Miami, FL 33131, USA
+
+MEANS OF TRANSPORT: Ocean - Vessel MSC AURORA
+DEPARTURE DATE: 2024-10-08
+COUNTRY OF DESTINATION: United States of America
+
+GOODS DESCRIPTION
+HS Code    Description                      Qty         Origin
+8471.30    Laptop computers, portable        4,000 pcs   Vietnam
+           (ADP machines, weight < 10kg)
+
+DECLARATION BY EXPORTER: The undersigned hereby declares that the above
+details are correct and that all goods were produced entirely in Vietnam.
+Place and Date: Hanoi, 2024-10-06
+Signature & Stamp: [VCCI Official Seal]`
+      }
+    ]
+  },
+
+  suspicious: {
+    documents: [
+      {
+        filename: 'bill_of_lading.txt',
+        text: `BILL OF LADING
+
+B/L No.: APXT-YTN-2024-0892
+Date: 2024-09-14
+
+SHIPPER
+Guangzhou Apex Trading Ltd.
+Room 1108, Fortune Plaza
+182 Tianhe North Road, Tianhe District
+Guangzhou, Guangdong, P.R. China 510620
+
+CONSIGNEE: TO ORDER
+
+NOTIFY PARTY
+Global Freight Solutions LLC
+3300 NW 79th Ave, Suite 200
+Miami, FL 33122, USA
+
+VESSEL / VOYAGE: COSCO SHIPPING UNIVERSE / 082E
+PORT OF LOADING: Yantian International Container Terminal, Shenzhen, China
+PORT OF DISCHARGE: Port of Miami, Florida, USA
+
+ON BOARD DATE: 2024-09-14
+ETA MIAMI: 2024-10-03
+
+DESCRIPTION OF CARGO
+General Merchandise
+200 Cartons
+Gross Weight: 420 KG
+Measurement: 1.8 CBM
+Freight: Collect
+
+Marks & Numbers: SGL/MIA/2024/09
+ORIGINAL B/L: 3/3 originals issued
+Signed: Apex Freight Agency, Shenzhen (as agent for carrier)
+Date: 2024-09-14`
+      },
+      {
+        filename: 'commercial_invoice.txt',
+        text: `COMMERCIAL INVOICE
+
+Invoice No.: SGE-INV-2024-0091
+Date: 2024-09-10
+
+SELLER
+Sunrise Global Exports Pte. Ltd.
+10 Anson Road, #28-01 International Plaza
+Singapore 079903
+
+BUYER
+NexGen Components Inc.
+8750 NW 36th Street, Suite 400
+Doral, FL 33166, USA
+
+COUNTRY OF ORIGIN: Malaysia
+COUNTRY OF DESTINATION: USA
+PORT OF SHIPMENT: [not specified]
+
+DELIVERY TERMS: CIF Miami
+PAYMENT TERMS: 100% TT in advance - paid to OCBC Bank, Singapore, Acct: 501-XXXXX-001
+
+LINE ITEMS
+Qty       Description                   HTS           Unit $    Total
+8,000 pcs Monolithic Integrated Circuit 8542.31.0000  $0.85     $6,800.00
+          Boards, memory type
+          Country of Origin: Malaysia
+          Manufacturer: [not specified]
+
+TOTAL: USD 6,800.00
+
+Note: Goods packed in 200 cartons, 40 pcs per carton.
+Declared for customs purposes.
+Signature: [illegible]`
+      },
+      {
+        filename: 'packing_list.txt',
+        text: `PACKING LIST
+
+Ref: SGE-PL-2024-0091
+Date: 2024-09-10
+
+Shipper: Sunrise Global Exports Pte. Ltd., Singapore
+Consignee: NexGen Components Inc., Doral, FL, USA
+
+Cartons: 200
+Contents: Electronic components - circuit boards
+Qty per carton: 40 pcs
+Total: 8,000 pcs
+Gross weight per carton: 2.1 KG
+Total gross weight: 420 KG
+Net weight: 380 KG
+Measurement: 1.8 CBM
+
+Country of origin: Malaysia
+
+No individual unit markings.
+Packed in plain brown cartons, no retail packaging.
+
+[No authorized signature present on document]`
+      }
+    ]
+  },
+
+  incomplete: {
+    documents: [
+      {
+        filename: 'bill_of_lading_partial.txt',
+        text: `BILL OF LADING (COPY - NOT NEGOTIABLE)
+
+B/L No.: [ILLEGIBLE - water damaged]
+Date: 2024-11-[illegible]
+
+SHIPPER
+Indian Ocean Seafood Processors
+[address: illegible]
+Dhaka [or Chittagong?]
+
+CONSIGNEE
+American Seafood Distributors
+[full address not provided on this copy]
+
+NOTIFY PARTY: Same as consignee
+
+VESSEL: [vessel name smudged]
+VOYAGE: [illegible]
+PORT OF LOADING: Chittagong Port, Bangladesh
+PORT OF DISCHARGE: Port of New York / Newark
+ON BOARD DATE: 2024-11-04
+
+DESCRIPTION
+Frozen Shrimp (processed)
+HS Code: 0306.17 [6-digit only]
+
+Packages: 500 master cartons
+Gross Weight: 10,500 KG (approx.)
+Net Weight: [not stated]
+Measurement: [not stated]
+Temperature: -18C (frozen)
+
+FREIGHT: [prepaid or collect - not specified]
+Note: 1 original, 2 copies
+Carrier signature: [present but illegible]`
+      },
+      {
+        filename: 'commercial_invoice.txt',
+        text: `INVOICE
+
+Invoice No.: ASD-NOV2024
+Date: 2024-11-01
+
+From: Indian Ocean Seafood Processors, Bangladesh
+To: American Seafood Distributors, USA
+
+Goods: Frozen Shrimp, shell-on, headless, IQF
+       Species: Penaeus vannamei (White leg shrimp)
+
+Quantity: 500 cartons x 20 kg = 10,000 kg net
+Unit Price: $3.20 per kg
+Total: $32,000
+
+[Currency not specified - assumed USD]
+[Country of origin: NOT STATED]
+[HTS code: NOT STATED]
+[Manufacturer/Processing plant: NOT STATED]
+[No FDA establishment registration number]
+[No HACCP plan reference]
+[No export health certificate reference]
+[No USDA/NMFS documentation attached]
+
+Payment: Wire transfer
+Bank: [not specified]
+
+Signature: A. Rahman, Manager
+[No company stamp, no date on signature line]`
+      }
+    ]
+  }
+};
+
+function loadScenario(key) {
+  const scenario = SCENARIOS[key];
+  // Save current textarea state
+  const cur = tabs.find(t => t.id === activeTab);
+  if (cur) {
+    const ta = document.getElementById('text-' + cur.id);
+    if (ta) cur.text = ta.value;
+  }
+
+  // Replace tabs with scenario documents
+  tabs = scenario.documents.map((doc, i) => ({
+    id: i + 1,
+    filename: doc.filename,
+    text: doc.text
+  }));
+  nextId = tabs.length + 1;
+  activeTab = 1;
+  renderTabs();
+
+  // Scroll to input
+  document.querySelector('.tabs-bar').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+  // Hide previous results
+  document.getElementById('results').classList.remove('visible');
+  hideError();
+}
+
+// ---------------------------------------------------------------------------
+// Gauge
+// ---------------------------------------------------------------------------
+const ARC_LEN = Math.PI * 80; // semicircle circumference for r=80 = ~251.33
+
+function updateGauge(score) {
+  const fill = Math.max(0, Math.min(1, score)) * ARC_LEN;
+  const gaugeFill = document.getElementById('gauge-fill');
+  const gaugeScore = document.getElementById('gauge-score');
+  const gaugeRisk = document.getElementById('gauge-risk');
+
+  gaugeFill.style.strokeDasharray = `${fill} ${ARC_LEN + 20}`;
+  gaugeScore.textContent = score.toFixed(2);
+
+  let color, level;
+  if (score <= 0.25)      { color = '#22c55e'; level = 'LOW'; }
+  else if (score <= 0.50) { color = '#f59e0b'; level = 'MEDIUM'; }
+  else if (score <= 0.75) { color = '#f97316'; level = 'HIGH'; }
+  else                    { color = '#ef4444'; level = 'CRITICAL'; }
+
+  gaugeFill.style.stroke = color;
+  gaugeRisk.textContent  = level;
+  gaugeRisk.style.fill   = color;
+}
+
+// ---------------------------------------------------------------------------
+// Decision config
+// ---------------------------------------------------------------------------
+const DECISION_CONFIG = {
+  APPROVE:                  { icon: 'checkmark', label: 'APPROVE',                   sub: 'Shipment cleared -- no material compliance issues identified.' },
+  REVIEW_RECOMMENDED:       { icon: 'review',    label: 'REVIEW RECOMMENDED',        sub: 'Minor issues detected. Proceed with compliance review.' },
+  FLAG_FOR_INSPECTION:      { icon: 'flag',      label: 'FLAG FOR INSPECTION',       sub: 'Significant red flags found. Physical or documentary inspection required.' },
+  REQUEST_MORE_INFORMATION: { icon: 'info',      label: 'REQUEST MORE INFORMATION',  sub: 'Critical documentation gaps. Cannot process until resolved.' },
+  REJECT:                   { icon: 'reject',    label: 'REJECT',                    sub: 'Prohibited transaction. Comprehensive OFAC sanctions or embargo applies.' },
+};
+
+const DECISION_ICONS = {
+  checkmark: `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="17" stroke="#22c55e" stroke-width="2"/><path d="M10 18l6 6 10-12" stroke="#22c55e" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  review:    `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="17" stroke="#a855f7" stroke-width="2"/><path d="M18 11v7l4 4" stroke="#a855f7" stroke-width="2.5" stroke-linecap="round"/></svg>`,
+  flag:      `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="17" stroke="#f97316" stroke-width="2"/><path d="M12 10v16M12 10h12l-3 5 3 5H12" stroke="#f97316" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`,
+  info:      `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="17" stroke="#f59e0b" stroke-width="2"/><path d="M18 16v9M18 12v1" stroke="#f59e0b" stroke-width="2.5" stroke-linecap="round"/></svg>`,
+  reject:    `<svg width="36" height="36" viewBox="0 0 36 36" fill="none"><circle cx="18" cy="18" r="17" stroke="#ef4444" stroke-width="2"/><path d="M12 12l12 12M24 12L12 24" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round"/></svg>`,
+};
+
+// ---------------------------------------------------------------------------
+// Analyze
+// ---------------------------------------------------------------------------
+async function analyze() {
+  // Collect documents
+  const cur = tabs.find(t => t.id === activeTab);
+  if (cur) {
+    const ta = document.getElementById('text-' + cur.id);
+    const fi = document.getElementById('fname-' + cur.id);
+    if (ta) cur.text = ta.value;
+    if (fi) cur.filename = fi.value;
+  }
+
+  const documents = tabs
+    .filter(t => t.text && t.text.trim())
+    .map(t => ({ filename: t.filename || 'document.txt', raw_text: t.text.trim() }));
+
+  if (documents.length === 0) {
+    showError('Please enter at least one document before analyzing.');
+    return;
+  }
+
+  setLoading(true);
+  hideError();
+  document.getElementById('results').classList.remove('visible');
+
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ documents })
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    renderResults(data);
+
+  } catch (e) {
+    if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
+      showError('Cannot reach the API. Make sure the server is running:\n\nuvicorn api.app:app --reload --port 8000');
+    } else {
+      showError(e.message);
+    }
+  } finally {
+    setLoading(false);
+  }
+}
+
+function setLoading(on) {
+  const btn = document.getElementById('analyze-btn');
+  const icon = document.getElementById('btn-icon');
+  const text = document.getElementById('btn-text');
+  btn.disabled = on;
+  if (on) {
+    icon.outerHTML = '<div class="spinner" id="btn-icon"></div>';
+    text.textContent = 'Analyzing...';
+  } else {
+    document.getElementById('btn-icon').outerHTML = '<span class="btn-icon" id="btn-icon">&#9658;</span>';
+    text.textContent = 'Analyze Shipment';
+  }
+}
+
+function showError(msg) {
+  const el = document.getElementById('error-banner');
+  document.getElementById('error-msg').textContent = msg;
+  el.classList.add('visible');
+}
+function hideError() {
+  document.getElementById('error-banner').classList.remove('visible');
+}
+
+// ---------------------------------------------------------------------------
+// Render results
+// ---------------------------------------------------------------------------
+function renderResults(data) {
+  const decision = data.decision || 'REVIEW_RECOMMENDED';
+  const cfg = DECISION_CONFIG[decision] || DECISION_CONFIG['REVIEW_RECOMMENDED'];
+
+  // Decision banner
+  const banner = document.getElementById('decision-banner');
+  banner.className = 'decision-banner ' + decision;
+  document.getElementById('decision-icon').innerHTML = DECISION_ICONS[cfg.icon] || '';
+  document.getElementById('decision-name').textContent = cfg.label;
+  document.getElementById('decision-sub').textContent = cfg.sub;
+  document.getElementById('meta-docs').textContent = data.documents_analyzed ?? '--';
+  document.getElementById('meta-issues').textContent = data.inconsistencies_found ?? '--';
+  document.getElementById('meta-time').textContent = data.processing_time_seconds != null
+    ? data.processing_time_seconds.toFixed(2) : '--';
+
+  // Gauge (reset to 0 first, then animate)
+  const gaugeFill = document.getElementById('gauge-fill');
+  gaugeFill.style.transition = 'none';
+  gaugeFill.style.strokeDasharray = `0 ${ARC_LEN + 20}`;
+  document.getElementById('gauge-score').textContent = '0.00';
+  document.getElementById('gauge-risk').textContent = '--';
+  document.getElementById('gauge-risk').style.fill = '#3a5068';
+
+  setTimeout(() => {
+    gaugeFill.style.transition = 'stroke-dasharray 1.1s cubic-bezier(.4,0,.2,1), stroke .6s ease';
+    updateGauge(data.risk_score ?? 0);
+  }, 80);
+
+  // Stats card
+  const confVal = data.confidence || '--';
+  document.getElementById('stat-confidence').innerHTML =
+    `<span class="badge badge-${confVal}">${confVal}</span>`;
+  document.getElementById('stat-risk-level').textContent = data.risk_level || '--';
+
+  const sd = data.shipment_data || {};
+  const origin = sd.origin_country || sd.origin_country_iso2;
+  if (origin) {
+    document.getElementById('stat-origin').textContent = origin;
+    document.getElementById('origin-item').style.display = 'block';
+  }
+  if (sd.commodity_description) {
+    document.getElementById('stat-commodity').textContent =
+      sd.commodity_description.length > 45
+        ? sd.commodity_description.slice(0, 45) + '...'
+        : sd.commodity_description;
+    document.getElementById('commodity-item').style.display = 'block';
+  }
+  if (sd.declared_value) {
+    const cur = sd.declared_currency || 'USD';
+    document.getElementById('stat-value').textContent = `${cur} ${sd.declared_value}`;
+    document.getElementById('value-item').style.display = 'block';
+  }
+
+  // Findings
+  const findingsList = document.getElementById('findings-list');
+  findingsList.innerHTML = '';
+  const explanations = data.explanations || [];
+  if (explanations.length === 0) {
+    findingsList.innerHTML = '<li class="finding-item"><span class="finding-bullet">-</span>No significant findings.</li>';
+  } else {
+    explanations.forEach(ex => {
+      const li = document.createElement('li');
+      li.className = 'finding-item';
+      li.innerHTML = `<span class="finding-bullet">&#9658;</span><span>${escHtml(ex)}</span>`;
+      findingsList.appendChild(li);
+    });
+  }
+
+  // Next steps
+  const stepsList = document.getElementById('steps-list');
+  stepsList.innerHTML = '';
+  const steps = data.recommended_next_steps || [];
+  if (steps.length === 0) {
+    stepsList.innerHTML = '<li class="step-item"><span>No immediate action required.</span></li>';
+  } else {
+    steps.forEach((step, i) => {
+      const li = document.createElement('li');
+      li.className = 'step-item';
+      li.innerHTML = `<span class="step-num">${i + 1}</span><span>${escHtml(step)}</span>`;
+      stepsList.appendChild(li);
+    });
+  }
+
+  // Shipment data grid
+  const grid = document.getElementById('shipment-data-grid');
+  grid.innerHTML = '';
+  grid.className = '';  // reset (closed)
+  document.getElementById('toggle-arrow').className = 'toggle-arrow';
+
+  const fields = [
+    ['Importer',      sd.importer],
+    ['Exporter',      sd.exporter],
+    ['Consignee',     sd.consignee],
+    ['Origin',        sd.origin_country ? `${sd.origin_country} (${sd.origin_country_iso2 || '?'})` : sd.origin_country_iso2],
+    ['Port of Loading',   sd.port_of_loading],
+    ['Port of Discharge', sd.port_of_discharge],
+    ['Shipment Date', sd.shipment_date],
+    ['Incoterms',     sd.incoterms],
+    ['Vessel / Flight',   sd.vessel_or_flight],
+    ['B/L Number',    sd.bill_of_lading_number],
+    ['HTS Codes',     sd.hts_codes_declared && sd.hts_codes_declared.length ? sd.hts_codes_declared.join(', ') : null],
+    ['Declared Value',    sd.declared_value ? `${sd.declared_currency || 'USD'} ${sd.declared_value}` : null],
+    ['Gross Weight',  sd.gross_weight],
+    ['Quantity',      sd.quantity],
+  ];
+
+  fields.forEach(([key, val]) => {
+    const div = document.createElement('div');
+    div.className = 'data-field';
+    div.innerHTML = `<div class="data-key">${key}</div>
+      <div class="data-val ${val ? '' : 'empty'}">${val ? escHtml(String(val)) : 'not found'}</div>`;
+    grid.appendChild(div);
+  });
+
+  // Show results
+  const resultsEl = document.getElementById('results');
+  resultsEl.classList.add('visible');
+  setTimeout(() => {
+    resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 100);
+}
+
+function toggleShipmentData() {
+  const grid = document.getElementById('shipment-data-grid');
+  const arrow = document.getElementById('toggle-arrow');
+  const open = grid.classList.toggle('open');
+  arrow.classList.toggle('open', open);
+}
+
+// ---------------------------------------------------------------------------
+// Init
+// ---------------------------------------------------------------------------
+renderTabs();
+</script>
+</body>
+</html>

@@ -10,6 +10,8 @@ from pathlib import Path
 import anthropic
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 load_dotenv()
@@ -286,6 +288,19 @@ app = FastAPI(
     description="Stateless trade compliance screening for shipping documents",
     version="0.1.0",
 )
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["POST", "GET", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+
+@app.get("/demo", include_in_schema=False)
+def serve_demo():
+    demo_path = Path(__file__).parent.parent / "demo.html"
+    return FileResponse(demo_path, media_type="text/html")
 
 
 @app.get("/api/v1/health")
