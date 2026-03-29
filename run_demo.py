@@ -1,5 +1,5 @@
 """
-PORTGUARD — start the API server and open the demo in a browser.
+PORTGUARD - start the API server and open the demo in a browser.
 Usage: python run_demo.py
 """
 
@@ -30,7 +30,11 @@ def wait_for_server() -> bool:
 
 
 def main() -> int:
-    print("Starting PORTGUARD server …")
+    print("Starting PORTGUARD server...")
+
+    import tempfile, os
+    log_fd, log_path = tempfile.mkstemp(prefix="portguard_", suffix=".log")
+    log_file = os.fdopen(log_fd, "w")
 
     proc = subprocess.Popen(
         [
@@ -40,13 +44,23 @@ def main() -> int:
             "--port", str(PORT),
             "--reload",
         ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_file,
+        stderr=log_file,
     )
 
     try:
         if not wait_for_server():
+            log_file.flush()
             print(f"[ERROR] Server did not start within {TIMEOUT}s.")
+            try:
+                with open(log_path) as f:
+                    tail = f.read()[-2000:]
+                if tail.strip():
+                    print("\n--- Server log (last 2000 chars) ---")
+                    print(tail)
+                    print("--- end ---")
+            except OSError:
+                pass
             proc.terminate()
             return 1
 
@@ -58,12 +72,18 @@ def main() -> int:
         proc.wait()
 
     except KeyboardInterrupt:
-        print("\nShutting down …")
+        print("\nShutting down...")
         proc.terminate()
         try:
             proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             proc.kill()
+    finally:
+        log_file.close()
+        try:
+            os.unlink(log_path)
+        except OSError:
+            pass
 
     return 0
 
