@@ -1046,6 +1046,7 @@ app.add_middleware(
 )
 
 
+@app.get("/", include_in_schema=False)
 @app.get("/demo", include_in_schema=False)
 def serve_demo():
     demo_path = Path(__file__).parent.parent / "demo.html"
