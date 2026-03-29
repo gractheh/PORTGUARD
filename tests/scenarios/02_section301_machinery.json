@@ -1,0 +1,28 @@
+{
+  "importer_name": "Midwest Manufacturing LLC",
+  "importer_country": "US",
+  "exporter_name": "Shenzhen Machine Works Co Ltd",
+  "exporter_country": "China",
+  "shipment_date": "2025-02-20",
+  "port_of_entry": "Chicago, IL (O'Hare)",
+  "incoterms": "CIF",
+  "line_items": [
+    {
+      "description": "CNC machining center, 5-axis vertical, 800mm x 500mm work envelope, Fanuc 0i-MF control, with tool changer (24-position), coolant system, and chip conveyor. Model SWM-V5-800.",
+      "quantity": 1,
+      "unit": "units",
+      "unit_value": 52000.00,
+      "currency": "USD",
+      "country_of_origin": "China",
+      "manufacturer": "Shenzhen Machine Works Co Ltd",
+      "hts_declared": "8457.10.0000"
+    }
+  ],
+  "documents_present": [
+    "commercial invoice",
+    "packing list",
+    "air waybill",
+    "packing declaration"
+  ],
+  "additional_context": "Capital equipment purchase for automotive parts manufacturing facility in Ohio. Machinery will be used in production of stamped metal components."
+}

@@ -1,0 +1,47 @@
+{
+  "importer_name": "Meridian Trading Group LLC",
+  "importer_country": "US",
+  "exporter_name": "Guangdong Multi-Product Export Co Ltd",
+  "exporter_country": "China",
+  "shipment_date": "2025-03-10",
+  "port_of_entry": "Los Angeles, CA",
+  "incoterms": "FOB",
+  "line_items": [
+    {
+      "description": "Smartphones, model MTG-P30 Pro, 5G capable, 6.7-inch OLED display, 256GB storage, 12GB RAM, triple rear camera system, Android OS, with USB-C charging cable and protective case. FCC ID pending.",
+      "quantity": 500,
+      "unit": "units",
+      "unit_value": 360.00,
+      "currency": "USD",
+      "country_of_origin": "China",
+      "manufacturer": "Guangdong Electronics Manufacturing Corp",
+      "hts_declared": "8517.12.0050"
+    },
+    {
+      "description": "Cold-rolled steel flat products in coils, full hard, thickness 0.7mm, width 1000mm, uncoated, ASTM A1008 specification, suitable for automotive stamping applications.",
+      "quantity": 50000,
+      "unit": "kg",
+      "unit_value": 0.90,
+      "currency": "USD",
+      "country_of_origin": "China",
+      "manufacturer": "Wuhan Iron and Steel Group",
+      "hts_declared": "7209.16.0030"
+    },
+    {
+      "description": "Network surveillance cameras, IP-based, 4K resolution, 8MP sensor, H.265+ compression, IR night vision 50m range, outdoor weatherproof IP67, PoE powered, with analytics software license. Model MTG-CAM-4K-8MP.",
+      "quantity": 200,
+      "unit": "units",
+      "unit_value": 140.00,
+      "currency": "USD",
+      "country_of_origin": "China",
+      "manufacturer": "Guangdong Security Technology Ltd",
+      "hts_declared": "8525.80.3040"
+    }
+  ],
+  "documents_present": [
+    "commercial invoice",
+    "packing list",
+    "bill of lading"
+  ],
+  "additional_context": "Complex mixed shipment. Note: consignee information is missing from the bill of lading — ISF may be incomplete. Surveillance cameras from Chinese manufacturer may be subject to NDAA Section 889 restrictions for US government use. Smartphones are subject to Section 301 List 4A (7.5%). Steel is subject to Section 301 List 3 (25%) plus active AD/CVD orders. Total declared value: $253,000 USD."
+}

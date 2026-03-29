@@ -1,0 +1,26 @@
+{
+  "importer_name": "Eastern Art Imports",
+  "importer_country": "US",
+  "exporter_name": "Tehran Carpet House",
+  "exporter_country": "Iran",
+  "shipment_date": "2025-01-30",
+  "port_of_entry": "New York, NY (JFK)",
+  "incoterms": "DDP",
+  "line_items": [
+    {
+      "description": "Hand-knotted wool pile carpets, Persian design, wool face pile on cotton warp and weft, individually woven in traditional patterns (Tabriz, Isfahan, Kashan designs), various sizes from 4x6 to 9x12 feet",
+      "quantity": 12,
+      "unit": "units",
+      "unit_value": 708.33,
+      "currency": "USD",
+      "country_of_origin": "Iran",
+      "manufacturer": "Tehran Carpet House",
+      "hts_declared": "5702.39.2000"
+    }
+  ],
+  "documents_present": [
+    "commercial invoice",
+    "packing list"
+  ],
+  "additional_context": "Antique and decorative carpet purchase from Iranian dealer. Seller claims carpets are over 20 years old. OFAC general license may be required for certain antique goods."
+}

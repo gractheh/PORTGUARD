@@ -1,0 +1,29 @@
+{
+  "importer_name": "Atlas Steel Distributors LLC",
+  "importer_country": "US",
+  "exporter_name": "Baosteel International Trade Co Ltd",
+  "exporter_country": "China",
+  "shipment_date": "2025-03-01",
+  "port_of_entry": "Baltimore, MD",
+  "incoterms": "CFR",
+  "line_items": [
+    {
+      "description": "Cold-rolled steel flat products, in coils, not clad/plated/coated, width 1,200mm, thickness 1.5mm, low-carbon steel, ASTM A1008 CS Grade B specification. Mill test reports included.",
+      "quantity": 50000,
+      "unit": "kg",
+      "unit_value": 0.95,
+      "currency": "USD",
+      "country_of_origin": "China",
+      "manufacturer": "Baosteel Group Corporation",
+      "hts_declared": "7209.16.0030"
+    }
+  ],
+  "documents_present": [
+    "commercial invoice",
+    "packing list",
+    "bill of lading",
+    "mill test certificate",
+    "steel import license"
+  ],
+  "additional_context": "Regular steel coil import for distribution to US manufacturers. Baosteel is a major Chinese state-owned steel enterprise. Steel import license obtained from US Commerce. Previous AD/CVD deposits made on prior shipments."
+}

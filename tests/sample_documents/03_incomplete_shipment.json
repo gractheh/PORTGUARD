@@ -1,0 +1,27 @@
+{
+  "_scenario": "INCOMPLETE — frozen shrimp food import with missing FDA Prior Notice, no country of origin on invoice, absent ISF elements (importer of record number, manufacturer, ship-to party), no USDA/NMFS documentation, partial B/L with illegible fields",
+  "_expected_decision": "HOLD",
+  "_expected_risk_level": "MEDIUM to HIGH",
+  "_missing_elements": [
+    "FDA Prior Notice: mandatory for all imported food under 21 CFR 1.279 — not present",
+    "Country of origin: not stated on commercial invoice",
+    "Manufacturer / producer: not identified anywhere in documents",
+    "Importer of Record number: missing from all documents",
+    "Ship-to party: not identified (ISF element 6 missing)",
+    "USDA NMFS seafood inspection documentation: absent",
+    "HACCP certificate or health certificate from exporting country authority: absent",
+    "HTS subheading: only 6-digit provided, 10-digit required for CBP entry",
+    "Consignee number (ISF element 4): missing",
+    "Declared value currency ambiguous — '$' symbol with no currency code"
+  ],
+  "documents": [
+    {
+      "filename": "bill_of_lading_partial.txt",
+      "raw_text": "BILL OF LADING (COPY — NOT NEGOTIABLE)\n\nB/L No.: [ILLEGIBLE — water damaged]\nDate: 2024-11-[illegible]\n\nSHIPPER\nIndian Ocean Seafood Processors\n[address: illegible]\nDhaka [or Chittagong?]\n\nCONSIGNEE\nAmerican Seafood Distributors\n[full address not provided on this copy]\n\nNOTIFY PARTY: Same as consignee\n\nVESSEL: [vessel name smudged]\nVOYAGE: [illegible]\nPORT OF LOADING: Chittagong Port, Bangladesh\nPORT OF DISCHARGE: Port of New York / Newark\nON BOARD DATE: 2024-11-04\n\nDESCRIPTION\nFrozen Shrimp (processed)\nHS Code: 0306.17 [6-digit only]\n\nPackages: 500 master cartons\nGross Weight: 10,500 KG (approx.)\nNet Weight: [not stated]\nMeasurement: [not stated]\nTemperature: -18°C (frozen)\n\nFREIGHT: [prepaid or collect — not specified]\n\nNote: 1 original, 2 copies\nCarrier signature: [present but illegible]"
+    },
+    {
+      "filename": "commercial_invoice.txt",
+      "raw_text": "INVOICE\n\nInvoice No.: ASD-NOV2024\nDate: 2024-11-01\n\nFrom: Indian Ocean Seafood Processors, Bangladesh\nTo: American Seafood Distributors, USA\n\nGoods: Frozen Shrimp, shell-on, headless, IQF\n       Species: Penaeus vannamei (White leg shrimp)\n\nQuantity: 500 cartons × 20 kg = 10,000 kg net\nUnit Price: $ 3.20 per kg\nTotal: $ 32,000\n\n[Currency not specified — assumed USD]\n[Country of origin: NOT STATED]\n[HTS code: NOT STATED]\n[Manufacturer/Processing plant: NOT STATED]\n[No FDA establishment registration number]\n[No HACCP plan reference]\n[No export health certificate reference]\n[No USDA/NMFS documentation attached]\n\nPayment: Wire transfer\nBank: [not specified]\n\nSignature: A. Rahman, Manager\n[No company stamp, no date on signature line]"
+    }
+  ]
+}

@@ -1,0 +1,28 @@
+{
+  "_scenario": "SUSPICIOUS — multiple red flags: shipper/seller mismatch, declared origin inconsistent with port of loading, severely undervalued semiconductor goods, vague B/L description, Section 301 exposure",
+  "_expected_decision": "FLAG_FOR_INSPECTION or HOLD",
+  "_expected_risk_level": "HIGH or CRITICAL",
+  "_red_flags": [
+    "Shipper on B/L (Guangzhou Apex Trading Ltd, China) differs from invoice seller (Sunrise Global Exports Pte Ltd, Singapore)",
+    "Invoice declares country of origin as Malaysia, but port of loading is Yantian (Shenzhen), China",
+    "B/L description is 'General Merchandise' — vague, inconsistent with invoice description of semiconductor ICs",
+    "Declared value USD 6,800 for 8,000 integrated circuit boards is approximately USD 0.85/unit — market rate for comparable ICs is USD 4–12/unit (potential 80% undervaluation)",
+    "HTS 8542.31.0000 (monolithic integrated circuits) from China subject to Section 301 List 3 at 25%",
+    "Notify party is a freight forwarder with no discernible connection to the consignee",
+    "Payment terms: full TT advance payment to offshore account — atypical for legitimate commercial relationships of this value"
+  ],
+  "documents": [
+    {
+      "filename": "bill_of_lading.txt",
+      "raw_text": "BILL OF LADING\n\nB/L No.: APXT-YTN-2024-0892\nDate: 2024-09-14\n\nSHIPPER\nGuangzhou Apex Trading Ltd.\n Room 1108, Fortune Plaza\n 182 Tianhe North Road, Tianhe District\n Guangzhou, Guangdong, P.R. China 510620\n\nCONSIGNEE: TO ORDER\n\nNOTIFY PARTY\nGlobal Freight Solutions LLC\n3300 NW 79th Ave, Suite 200\nMiami, FL 33122, USA\nTel: +1-305-555-0142\n\nVESSEL / VOYAGE: COSCO SHIPPING UNIVERSE / 082E\nPORT OF LOADING: Yantian International Container Terminal, Shenzhen, China\nPORT OF DISCHARGE: Port of Miami, Florida, USA\n\nON BOARD DATE: 2024-09-14\nETA MIAMI: 2024-10-03\n\nDESCRIPTION OF CARGO\nGeneral Merchandise\n200 Cartons\nGross Weight: 420 KG\nMeasurement: 1.8 CBM\nFreight: Collect\n\nMarks & Numbers: SGL/MIA/2024/09\n\nORIGINAL B/L: 3/3 originals issued\nSigned: Apex Freight Agency, Shenzhen (as agent for carrier)\nDate: 2024-09-14"
+    },
+    {
+      "filename": "commercial_invoice.txt",
+      "raw_text": "COMMERCIAL INVOICE\n\nInvoice No.: SGE-INV-2024-0091\nDate: 2024-09-10\n\nSELLER\nSunrise Global Exports Pte. Ltd.\n10 Anson Road, #28-01 International Plaza\n Singapore 079903\n\nBUYER\nNexGen Components Inc.\n8750 NW 36th Street, Suite 400\nDoral, FL 33166, USA\n\nCOUNTRY OF ORIGIN: Malaysia\nCOUNTRY OF DESTINATION: USA\nPORT OF SHIPMENT: [not specified]\n\nDELIVERY TERMS: CIF Miami\nPAYMENT TERMS: 100% TT in advance — paid to OCBC Bank, Singapore, Acct: 501-XXXXX-001\n\n-----------------------------------------------------------------------\nLINE ITEMS\n-----------------------------------------------------------------------\nQty       Description                     HTS           Unit $    Total\n8,000 pcs Monolithic Integrated Circuit   8542.31.0000   $0.85   $6,800.00\n          Boards, memory type,\n          Country of Origin: Malaysia\n          Manufacturer: [not specified]\n-----------------------------------------------------------------------\nTOTAL:                                                          USD 6,800.00\n-----------------------------------------------------------------------\n\nNote: Goods packed in 200 cartons, 40 pcs per carton.\n\nDeclared for customs purposes.\nSignature: [illegible]"
+    },
+    {
+      "filename": "packing_list.txt",
+      "raw_text": "PACKING LIST\n\nRef: SGE-PL-2024-0091\nDate: 2024-09-10\n\nShipper: Sunrise Global Exports Pte. Ltd., Singapore\nConsignee: NexGen Components Inc., Doral, FL, USA\n\nCartons: 200\nContents: Electronic components — circuit boards\nQty per carton: 40 pcs\nTotal: 8,000 pcs\nGross weight per carton: 2.1 KG\nTotal gross weight: 420 KG\nNet weight: 380 KG\nMeasurement: 1.8 CBM\n\nCountry of origin: Malaysia\n\nNo individual unit markings.\nPacked in plain brown cartons, no retail packaging.\n\n[No authorized signature present on document]"
+    }
+  ]
+}

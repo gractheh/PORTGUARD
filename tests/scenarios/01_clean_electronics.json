@@ -1,0 +1,38 @@
+{
+  "importer_name": "Pacific Rim Electronics Inc",
+  "importer_country": "US",
+  "exporter_name": "Hanoi Technology Manufacturing Ltd",
+  "exporter_country": "Vietnam",
+  "shipment_date": "2025-03-15",
+  "port_of_entry": "Los Angeles, CA",
+  "incoterms": "FOB",
+  "line_items": [
+    {
+      "description": "Laptop computers, 15.6-inch display, Intel Core i7-1355U processor, 16GB DDR5 RAM, 512GB NVMe SSD, Windows 11 Pro",
+      "quantity": 5,
+      "unit": "units",
+      "unit_value": 320.00,
+      "currency": "USD",
+      "country_of_origin": "Vietnam",
+      "manufacturer": "Hanoi Technology Manufacturing Ltd",
+      "hts_declared": "8471.30.0100"
+    },
+    {
+      "description": "Laptop computers, 13.3-inch display, AMD Ryzen 7, 8GB RAM, 256GB SSD, Windows 11 Home",
+      "quantity": 5,
+      "unit": "units",
+      "unit_value": 280.00,
+      "currency": "USD",
+      "country_of_origin": "Vietnam",
+      "manufacturer": "Hanoi Technology Manufacturing Ltd",
+      "hts_declared": "8471.30.0100"
+    }
+  ],
+  "documents_present": [
+    "commercial invoice",
+    "packing list",
+    "bill of lading",
+    "certificate of origin"
+  ],
+  "additional_context": "Routine electronics import. All goods manufactured in Vietnam at importer-owned facility. No China-origin components above de minimis threshold."
+}

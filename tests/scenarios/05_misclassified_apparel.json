@@ -1,0 +1,28 @@
+{
+  "importer_name": "Fashion Forward Imports",
+  "importer_country": "US",
+  "exporter_name": "Phnom Penh Garments Co Ltd",
+  "exporter_country": "Cambodia",
+  "shipment_date": "2025-02-14",
+  "port_of_entry": "Los Angeles, CA",
+  "incoterms": "FOB",
+  "line_items": [
+    {
+      "description": "Men's knitted sweaters/pullovers, 60% polyester / 40% cotton by weight, crew neck, long sleeve, mixed colors and sizes (S, M, L, XL, XXL). Item style PFI-SWTR-2025.",
+      "quantity": 2000,
+      "unit": "units",
+      "unit_value": 6.00,
+      "currency": "USD",
+      "country_of_origin": "Cambodia",
+      "manufacturer": "Phnom Penh Garments Co Ltd",
+      "hts_declared": "6110.30.3053"
+    }
+  ],
+  "documents_present": [
+    "commercial invoice",
+    "packing list",
+    "bill of lading",
+    "fiber content test report"
+  ],
+  "additional_context": "Sweaters are declared under 6110.30 (man-made fiber knit sweaters) but fiber content is 60% polyester/40% cotton. Under HTSUS classification rules, chief weight is polyester (60%), so 6110.30 appears correct. However, importer should verify the specific subheading and whether cotton component affects classification under GRI 3(b). FTC fiber content labeling must accurately reflect 60% polyester, 40% cotton."
+}
