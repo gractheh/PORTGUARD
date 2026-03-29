@@ -1,9 +1,8 @@
-"""RiskAgent — rule-based + Claude-driven trade compliance risk assessment."""
+"""RiskAgent — rule-based trade compliance risk assessment (no external API)."""
 
-import json
 from portguard.agents.base import BaseAgent
-from portguard.data.section301 import get_section_301, SECTION_301_COUNTRIES
-from portguard.data.sanctions import get_sanctions_programs, is_comprehensively_sanctioned
+from portguard.data.section301 import get_section_301
+from portguard.data.sanctions import get_sanctions_programs
 from portguard.data.adcvd import get_adcvd_orders
 from portguard.models.shipment import ParsedShipment
 from portguard.models.classification import ClassificationResult
@@ -28,106 +27,6 @@ _XINJIANG_KEYWORDS = {
 
 class RiskAgent(BaseAgent):
     AGENT_NAME = "RiskAgent"
-
-    SYSTEM_PROMPT = """You are a senior trade compliance risk analyst specializing in US import
-enforcement with expertise in OFAC sanctions, antidumping/countervailing duty orders, Section 301
-tariffs, Section 232 national security tariffs, forced labor provisions, and export control
-regulations. You have 20+ years of experience at a major customs brokerage and trade law firm.
-
-Your role is to supplement automated rule-based risk checks with expert judgment, identifying
-risks that static data cannot capture. The rule-based system has already flagged known risks —
-your task is to:
-
-1. REVIEW the pre-identified rule-based risk factors for accuracy and completeness.
-
-2. IDENTIFY additional risks that require expert judgment, including:
-   - Transshipment risk: Goods routed through third countries to evade tariffs or sanctions
-     (common patterns: CN goods via VN, TW, MX, IN; RU goods via BY, KZ, GE, AM)
-   - ITAR/EAR export control concerns: Dual-use electronics, encryption, military/defense items
-     (relevant HTS: 8517, 8471, 8473, 8479, 8542, 9013, 9014, 9015)
-   - Denied party screening: Flag if manufacturer/exporter names suggest sanctioned entities
-     (use judgment — you don't have the full SDN list but note if names sound concerning)
-   - UFLPA (Uyghur Forced Labor Prevention Act): China-origin goods in high-risk categories
-     (cotton, polysilicon/solar, tomatoes, steel, aluminum, batteries) face rebuttable
-     presumption of forced labor — require supply chain documentation
-   - Section 201 solar safeguards: Chinese/global solar panels (HTS 8541.40)
-   - AD/CVD circumvention: Vietnamese steel, solar products may be subject to anti-circumvention
-   - CBP ADD/CVD Withhold Release Orders (WRO): Cotton from Xinjiang, certain seafood, etc.
-   - Commercial counterfeiting risk: Consumer goods from China in categories with high counterfeit
-     rates (electronics accessories, luxury goods, pharmaceuticals, apparel)
-
-3. ESTIMATE additional duty exposure: Provide estimated additional_duty_rate where applicable.
-
-4. ASSESS overall risk level:
-   - CRITICAL: Comprehensive OFAC sanctions, confirmed prohibited transaction
-   - HIGH: Section 301 (25%), AD/CVD orders, UFLPA-flagged goods, Section 232
-   - MEDIUM: Sectoral sanctions, Section 301 (7.5%), transshipment risk, export control concern
-   - LOW: Minor documentation risk, low-value de minimis considerations
-
-5. For each risk factor provide:
-   - The specific regulatory reference (e.g., "USTR Section 301 List 3, 83 FR 47974")
-   - A concrete recommended_action
-   - The additional duty rate if quantifiable
-
-Always err on the side of identifying potential risks — it is better to flag for review
-than to miss a compliance issue that could result in penalties, seizure, or enforcement action."""
-
-    _TOOL_SCHEMA = {
-        "type": "object",
-        "properties": {
-            "additional_risk_factors": {
-                "type": "array",
-                "description": "Additional risk factors identified by expert analysis (beyond rule-based checks)",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "risk_type": {
-                            "type": "string",
-                            "enum": [
-                                "SECTION_301", "SECTION_232", "SECTION_201",
-                                "ANTIDUMPING", "COUNTERVAILING", "OFAC_SANCTIONS",
-                                "EXPORT_CONTROL", "DENIED_PARTY", "FORCED_LABOR",
-                                "VALUATION", "OTHER",
-                            ],
-                        },
-                        "severity": {
-                            "type": "string",
-                            "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
-                        },
-                        "hts_code": {"type": ["string", "null"]},
-                        "country": {"type": ["string", "null"]},
-                        "entity": {"type": ["string", "null"]},
-                        "description": {"type": "string"},
-                        "additional_duty_rate": {"type": ["string", "null"]},
-                        "order_number": {"type": ["string", "null"]},
-                        "regulatory_reference": {"type": "string"},
-                        "recommended_action": {"type": "string"},
-                    },
-                    "required": [
-                        "risk_type", "severity", "description",
-                        "regulatory_reference", "recommended_action",
-                    ],
-                },
-            },
-            "overall_risk_level": {
-                "type": "string",
-                "enum": ["LOW", "MEDIUM", "HIGH", "CRITICAL"],
-                "description": "Overall risk assessment considering all factors",
-            },
-            "estimated_additional_duties_usd": {
-                "type": ["number", "null"],
-                "description": "Estimated total additional duties in USD from all risk factors",
-            },
-            "risk_notes": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Additional analysis notes and context",
-            },
-        },
-        "required": [
-            "additional_risk_factors", "overall_risk_level", "risk_notes",
-        ],
-    }
 
     def _check_section_301(
         self,
@@ -337,7 +236,6 @@ than to miss a compliance issue that could result in penalties, seizure, or enfo
         """Flag potential UFLPA (Uyghur Forced Labor Prevention Act) risks."""
         factors: list[RiskFactor] = []
 
-        # Check for explicit Xinjiang references
         full_text = " ".join([
             parsed_shipment.additional_context or "",
             " ".join(item.description.lower() for item in parsed_shipment.line_items),
@@ -418,7 +316,6 @@ than to miss a compliance issue that could result in penalties, seizure, or enfo
                 )
             )
         elif total > 2500:
-            # Formal entry threshold — just informational
             factors.append(
                 RiskFactor(
                     risk_type=RiskType.VALUATION,
@@ -450,67 +347,16 @@ than to miss a compliance issue that could result in penalties, seizure, or enfo
         }
         return max(risk_factors, key=lambda f: severity_order[f.severity]).severity
 
-    def _build_prompt(
-        self,
-        parsed_shipment: ParsedShipment,
-        classification_result: ClassificationResult,
-        rule_based_factors: list[RiskFactor],
-    ) -> str:
-        lines = [
-            "Perform expert trade compliance risk analysis on the following shipment. "
-            "Rule-based checks have already been run — review them and identify any "
-            "ADDITIONAL risks not captured by static data.\n",
-            "## SHIPMENT SUMMARY",
-            f"Importer: {parsed_shipment.importer_name}",
-            f"Exporter: {parsed_shipment.exporter_name or 'Unknown'}",
-            f"Exporter Country: {parsed_shipment.exporter_country or 'Unknown'}",
-            f"Total Value: ${parsed_shipment.total_value_usd:,.2f} USD\n",
-            "## LINE ITEMS",
-        ]
-
-        for cls in classification_result.classifications:
-            item = next(
-                (i for i in parsed_shipment.line_items if i.line_number == cls.line_number),
-                None,
-            )
-            if item:
-                lines.append(
-                    f"  Line {cls.line_number}: {item.description} | "
-                    f"HTS {cls.hts_code} | Origin: {item.country_of_origin} ({item.country_of_origin_iso2}) | "
-                    f"Value: ${item.total_value_usd:,.2f} | Manufacturer: {item.manufacturer or 'Unknown'}"
-                )
-
-        if rule_based_factors:
-            lines.append("\n## RULE-BASED RISK FACTORS ALREADY IDENTIFIED")
-            for i, factor in enumerate(rule_based_factors, 1):
-                lines.append(
-                    f"  {i}. [{factor.severity.value}] {factor.risk_type.value}: "
-                    f"{factor.description[:120]}..."
-                    if len(factor.description) > 120
-                    else f"  {i}. [{factor.severity.value}] {factor.risk_type.value}: {factor.description}"
-                )
-        else:
-            lines.append("\n## RULE-BASED RISK FACTORS: None identified")
-
-        lines.append(
-            "\nAnalyze the above for any additional risks: transshipment, export controls, "
-            "denied parties, UFLPA (if not already flagged), AD/CVD circumvention, "
-            "counterfeiting, or other compliance concerns. Also estimate total additional "
-            "duties if quantifiable."
-        )
-        return "\n".join(lines)
-
     async def assess_risk(
         self,
         parsed_shipment: ParsedShipment,
         classification_result: ClassificationResult,
     ) -> RiskAssessment:
-        """Perform a complete risk assessment combining rule-based and Claude analysis.
+        """Perform a complete rule-based risk assessment.
 
-        Rule-based checks run first (deterministic), then Claude adds expert analysis
-        for risks that require judgment.
+        Checks Section 301, Section 232, AD/CVD orders, OFAC sanctions, UFLPA,
+        and valuation thresholds — no external API calls.
         """
-        # Rule-based checks
         rule_factors: list[RiskFactor] = []
         rule_factors.extend(self._check_section_301(parsed_shipment, classification_result))
         rule_factors.extend(self._check_section_232(parsed_shipment, classification_result))
@@ -519,34 +365,14 @@ than to miss a compliance issue that could result in penalties, seizure, or enfo
         rule_factors.extend(self._check_uflpa(parsed_shipment, classification_result))
         rule_factors.extend(self._check_valuation(parsed_shipment))
 
-        # Claude expert analysis for additional risks
-        prompt = self._build_prompt(parsed_shipment, classification_result, rule_factors)
-        claude_result = await self._call_structured(
-            user_prompt=prompt,
-            tool_name="record_risk_assessment",
-            tool_description=(
-                "Record additional trade compliance risk factors identified through "
-                "expert analysis, beyond the rule-based checks already performed."
-            ),
-            output_schema=self._TOOL_SCHEMA,
-        )
-
-        # Merge rule-based and Claude risk factors
-        all_factors = list(rule_factors)
-        for factor_dict in claude_result.get("additional_risk_factors", []):
-            try:
-                all_factors.append(RiskFactor(**factor_dict))
-            except Exception:
-                pass  # Skip malformed factors from Claude
-
-        overall_risk = self._compute_overall_risk(all_factors)
-
-        # Use Claude's estimate if provided, otherwise None
-        estimated_additional = claude_result.get("estimated_additional_duties_usd")
+        overall_risk = self._compute_overall_risk(rule_factors)
 
         return RiskAssessment(
-            risk_factors=all_factors,
+            risk_factors=rule_factors,
             overall_risk_level=overall_risk,
-            estimated_additional_duties_usd=estimated_additional,
-            risk_notes=claude_result.get("risk_notes", []),
+            estimated_additional_duties_usd=None,
+            risk_notes=[
+                "Risk assessed using rule-based checks: "
+                "Section 301, Section 232, AD/CVD orders, OFAC sanctions, UFLPA, valuation."
+            ],
         )

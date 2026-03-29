@@ -298,7 +298,7 @@ def sample_screening_report(
         decision=sample_decision,
         pipeline_errors=[],
         processing_time_ms=4250.75,
-        model_used="claude-opus-4-6",
+        model_used="portguard-rule-based",
     )
 
 

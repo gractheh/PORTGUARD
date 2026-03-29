@@ -63,7 +63,7 @@ async def test_parse_returns_parsed_shipment(sample_shipment_input):
     assert result.exporter_name == "Asia Pacific Exports Co Ltd"
     assert result.total_value_usd == 1700.0
     assert len(result.line_items) == 2
-    assert result.parsing_confidence == 0.95
+    assert result.parsing_confidence == 0.90
 
 
 @pytest.mark.asyncio

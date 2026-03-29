@@ -76,7 +76,7 @@ async def test_health_endpoint(async_client):
     data = response.json()
     assert data["status"] == "ok"
     assert "model" in data
-    assert data["model"] == "claude-opus-4-6"
+    assert data["model"] == "portguard-rule-based"
 
 
 @pytest.mark.asyncio

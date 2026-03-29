@@ -1,6 +1,6 @@
 # PORTGUARD
 
-US import compliance screening system. Accepts raw shipping documents or structured shipment data and returns a risk score, compliance decision, and actionable findings — powered by Claude claude-opus-4-6.
+US import compliance screening system. Accepts raw shipping documents or structured shipment data and returns a risk score, compliance decision, and actionable findings — 100% rule-based, no external API required.
 
 ---
 
@@ -21,7 +21,7 @@ PORTGUARD screens import shipments for:
 
 ## Architecture
 
-There are two independent entry points that share the same Claude API key and `docs/prompts.md` system prompt.
+There are two independent entry points.
 
 ### Entry point 1 — Document analysis API (`api/app.py`)
 
@@ -30,8 +30,8 @@ Stateless. Accepts raw document text, returns a single structured screening resu
 ```
 POST /api/v1/analyze
      |
-     +-- Combines all document text into one prompt
-     +-- Calls Claude claude-opus-4-6 via tool_use (structured JSON output)
+     +-- Combines all document text into one request
+     +-- Runs regex extraction + rule-based risk scoring
      +-- Returns decision, risk score, explanations, next steps
 ```
 
@@ -44,16 +44,15 @@ POST /api/v1/screen
      |
      +-- ParserAgent      extract + normalize to ParsedShipment
      +-- ClassifierAgent  GRI 1-6 -> 10-digit HTSUS codes + duty rates
-     +-- ValidationAgent  ISF check + PGA lookup + Claude regulatory review
-     +-- RiskAgent        rule-based checks (301/232/ADCVD/sanctions/UFLPA)
-                          + Claude expert analysis for transshipment, export controls
-     +-- DecisionAgent    rule-based decision floor + Claude narrative synthesis
+     +-- ValidationAgent  ISF check + PGA lookup + rule-based compliance checks
+     +-- RiskAgent        rule-based checks (301/232/ADCVD/sanctions/UFLPA/transshipment)
+     +-- DecisionAgent    rule-based decision synthesis
      +-- ScreeningReport  stored in memory, retrievable by report_id
 ```
 
 ```
 portguard/
-  config.py               pydantic-settings: ANTHROPIC_API_KEY, model, max_tokens
+  config.py               pydantic-settings: app configuration (no API keys required)
   data/
     section301.py         333 HTS prefixes, Lists 1-4 (get_section_301)
     sanctions.py          10 OFAC programs (get_sanctions_programs)
@@ -67,7 +66,7 @@ portguard/
     decision.py           ComplianceDecision, DecisionLevel, RequiredAction
     report.py             ScreeningReport
   agents/
-    base.py               BaseAgent: AsyncAnthropic + _call_structured (tool_use)
+    base.py               BaseAgent: rule-based base class
     parser.py             ParserAgent
     classifier.py         ClassifierAgent
     validator.py          ValidationAgent
@@ -109,7 +108,7 @@ main.py                   CLI runner: runs all 3 test scenarios and prints resul
 
 ## Setup
 
-**Requirements:** Python 3.11+, an Anthropic API key with credits.
+**Requirements:** Python 3.11+. No API keys or external services needed.
 
 ```bash
 # 1. Clone and enter the directory
@@ -119,16 +118,8 @@ cd PORTGUARD
 # 2. Install dependencies
 pip install -r requirements.txt
 
-# 3. Configure environment
+# 3. Configure environment (optional)
 cp .env.example .env
-# Edit .env and set ANTHROPIC_API_KEY=sk-ant-...
-```
-
-**.env.example**
-```
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
-PORTGUARD_MODEL=claude-opus-4-6
-PORTGUARD_MAX_TOKENS=4096
 ```
 
 ---
@@ -247,7 +238,7 @@ Scenario 3: Incomplete Shipment  (Frozen shrimp -- missing FDA Prior Notice...)
 ======================================================================
 ```
 
-*(Actual output depends on Claude's analysis; decisions are driven by document content.)*
+*(Decisions are driven by rule-based analysis of document content.)*
 
 ### Document analysis API
 
@@ -381,4 +372,4 @@ Three sample request payloads in `tests/sample_documents/`:
 - **Reports are in-memory only.** The structured pipeline stores reports in a Python dict. Reports are lost on process restart.
 - **No authentication.** Neither API has request authentication.
 - **Single-process only.** The in-memory report store is not shared across workers.
-- **Claude's classification is not legally binding.** HTS classifications and duty rates produced by ClassifierAgent are for preliminary screening. A licensed customs broker must file the actual entry.
+- **Classification is not legally binding.** HTS classifications and duty rates produced by ClassifierAgent are for preliminary screening. A licensed customs broker must file the actual entry.

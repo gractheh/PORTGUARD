@@ -103,4 +103,4 @@ async def test_screen_processing_time_populated(
     assert result.processing_time_ms > 0, (
         f"processing_time_ms should be positive, got: {result.processing_time_ms}"
     )
-    assert result.model_used == "claude-opus-4-6"
+    assert result.model_used == "portguard-rule-based"

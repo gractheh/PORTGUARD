@@ -51,7 +51,7 @@ class HealthResponse(BaseModel):
 @router.get("/health", response_model=HealthResponse, tags=["System"])
 async def health_check() -> HealthResponse:
     """Return API health status and configured model."""
-    return HealthResponse(status="ok", model=settings.portguard_model)
+    return HealthResponse(status="ok", model="portguard-rule-based")
 
 
 @router.post("/screen", response_model=ScreeningReport, tags=["Screening"])

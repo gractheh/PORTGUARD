@@ -1,4 +1,4 @@
-"""DecisionAgent — synthesize all pipeline results into a final compliance decision."""
+"""DecisionAgent — synthesize pipeline results into a final compliance decision (rule-based)."""
 
 import re
 
@@ -12,121 +12,6 @@ from portguard.models.decision import ComplianceDecision, DecisionLevel, Require
 
 class DecisionAgent(BaseAgent):
     AGENT_NAME = "DecisionAgent"
-
-    SYSTEM_PROMPT = """You are the Chief Compliance Officer of a leading customs brokerage, making
-final import compliance release decisions. You synthesize parsed shipment data, HTS classifications,
-validation findings, and risk assessments into a clear, actionable compliance decision.
-
-Your decision framework:
-
-## Decision Levels
-- REJECT: The shipment involves a PROHIBITED transaction that cannot proceed:
-  * Comprehensive OFAC sanctions (Iran, Cuba, North Korea, Syria) — absolute prohibition
-  * Confirmed OFAC SDN (Specially Designated Nationals) party involvement
-  * CBP Withhold and Release Order goods from confirmed forced labor origin
-  * Other absolute legal prohibitions
-
-- HOLD: The shipment can potentially proceed but requires significant action before release:
-  * HIGH-severity risk factors requiring additional duty deposits (Section 301, AD/CVD, Section 232)
-  * CRITICAL validation errors that must be corrected
-  * Insufficient documentation for PGA clearance
-  * Suspected misclassification with duty implications
-  * UFLPA rebuttal evidence required
-  * Sectoral sanctions requiring OFAC licensing
-
-- REVIEW: The shipment requires additional review but no immediate blocking action:
-  * WARNING-level validation findings
-  * MEDIUM risk factors (sectoral sanctions concern, potential transshipment)
-  * Classification confidence below 0.70
-  * Missing optional documentation
-  * Low-probability risk factors requiring monitoring
-
-- CLEAR: The shipment may proceed with standard processing:
-  * No risk factors, or only LOW severity factors
-  * All required documentation present
-  * Compliant classification and valuation
-  * No PGA holds pending
-
-## Duty Estimation
-When estimating duties:
-- Base duty = general rate × declared customs value
-- Additional duties stack on top of the base duty
-- Section 301 applies to the full dutiable value (not just China-origin markup)
-- AD/CVD applies to the entered value
-- Section 232 applies at the port of entry
-
-## Required Actions
-List specific, prioritized actions. Priority 1 = most urgent. Assign responsible party
-(Importer, Customs Broker, Trade Counsel, CBP, OFAC). Include deadlines where regulatory
-timeframes apply.
-
-## Summary Requirements
-- Be direct and clear: "CLEAR — no material compliance issues identified" vs
-  "HOLD — Section 301 duties at 25% not yet deposited; AD/CVD bond required"
-- Key findings should be the 3-7 most important facts driving the decision
-- Decision rationale should explain the legal/regulatory basis for the decision level
-- Confidence score reflects certainty in the decision (0.0-1.0)"""
-
-    _TOOL_SCHEMA = {
-        "type": "object",
-        "properties": {
-            "decision": {
-                "type": "string",
-                "enum": ["CLEAR", "REVIEW", "HOLD", "REJECT"],
-                "description": "Final compliance decision",
-            },
-            "confidence": {
-                "type": "number",
-                "minimum": 0.0,
-                "maximum": 1.0,
-                "description": "Confidence in the decision",
-            },
-            "summary": {
-                "type": "string",
-                "description": "One-sentence decision summary",
-            },
-            "key_findings": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "3-7 key findings driving the decision",
-            },
-            "required_actions": {
-                "type": "array",
-                "description": "Prioritized list of required actions",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "priority": {"type": "integer", "minimum": 1},
-                        "action": {"type": "string"},
-                        "responsible_party": {"type": "string"},
-                        "deadline": {"type": ["string", "null"]},
-                        "regulatory_reference": {"type": ["string", "null"]},
-                    },
-                    "required": ["priority", "action", "responsible_party"],
-                },
-            },
-            "estimated_base_duties_usd": {
-                "type": ["number", "null"],
-                "description": "Estimated base customs duties in USD",
-            },
-            "estimated_additional_duties_usd": {
-                "type": ["number", "null"],
-                "description": "Estimated additional duties (Section 301, AD/CVD, 232) in USD",
-            },
-            "estimated_total_duties_usd": {
-                "type": ["number", "null"],
-                "description": "Estimated total duties in USD",
-            },
-            "decision_rationale": {
-                "type": "string",
-                "description": "Full explanation of decision basis with regulatory citations",
-            },
-        },
-        "required": [
-            "decision", "confidence", "summary", "key_findings",
-            "required_actions", "decision_rationale",
-        ],
-    }
 
     def _determine_decision_level(
         self,
@@ -142,7 +27,6 @@ timeframes apply.
             if factor.risk_type == RiskType.OFAC_SANCTIONS and factor.severity in (
                 RiskSeverity.CRITICAL, RiskSeverity.HIGH
             ):
-                # Comprehensive sanctions → REJECT; sectoral → HOLD
                 if "COMPREHENSIVE" in factor.description.upper():
                     return DecisionLevel.REJECT
 
@@ -191,23 +75,19 @@ timeframes apply.
                 continue
             value = item.total_value_usd
 
-            # Parse base duty rate
             rate_str = cls.duty_rate_general.lower().strip()
-            if rate_str == "free" or rate_str == "0%" or rate_str == "0.0%":
+            if rate_str in ("free", "0%", "0.0%"):
                 base_rate = 0.0
             else:
-                # Extract numeric portion
                 try:
                     base_rate = float(rate_str.rstrip("%")) / 100.0
                 except ValueError:
                     base_rate = 0.0
             base_duties += value * base_rate
 
-        # Additional duties from risk factors
         for factor in risk_assessment.risk_factors:
             if not factor.additional_duty_rate or not factor.hts_code:
                 continue
-            # Find the classification whose HTS code matches the risk factor
             matching_cls = next(
                 (c for c in classification_result.classifications if c.hts_code == factor.hts_code),
                 None,
@@ -220,7 +100,6 @@ timeframes apply.
             )
             if item:
                 rate_str = factor.additional_duty_rate.lower()
-                # Take the first numeric rate found (handles "265.79% (all others)")
                 rates = re.findall(r"[\d.]+%", rate_str)
                 if rates:
                     try:
@@ -239,82 +118,102 @@ timeframes apply.
             round(total, 2),
         )
 
-    def _build_prompt(
+    def _build_key_findings(
         self,
         parsed_shipment: ParsedShipment,
         classification_result: ClassificationResult,
         validation_result: ValidationResult,
         risk_assessment: RiskAssessment,
-        preliminary_decision: DecisionLevel,
-        base_duties: float | None,
-        additional_duties: float | None,
-        total_duties: float | None,
-    ) -> str:
-        lines = [
-            "Synthesize the following compliance pipeline results into a final compliance decision "
-            f"with detailed findings and required actions.\n",
-            f"## PRELIMINARY DECISION (rule-based): {preliminary_decision.value}",
-            f"## SHIPMENT OVERVIEW",
-            f"Importer: {parsed_shipment.importer_name}",
-            f"Total Value: ${parsed_shipment.total_value_usd:,.2f} USD",
-            f"Countries of Origin: {', '.join(set(i.country_of_origin_iso2 for i in parsed_shipment.line_items))}",
-            f"Line Items: {len(parsed_shipment.line_items)}",
-        ]
+    ) -> list[str]:
+        """Generate key findings from pipeline results."""
+        findings: list[str] = []
 
-        if base_duties is not None:
-            lines.append(f"Estimated Base Duties: ${base_duties:,.2f} USD")
-        if additional_duties is not None:
-            lines.append(f"Estimated Additional Duties: ${additional_duties:,.2f} USD")
-        if total_duties is not None:
-            lines.append(f"Estimated Total Duties: ${total_duties:,.2f} USD")
+        # Risk factors (most important)
+        for factor in risk_assessment.risk_factors:
+            if factor.severity in (RiskSeverity.CRITICAL, RiskSeverity.HIGH):
+                findings.append(factor.description[:200])
 
-        lines.append("\n## CLASSIFICATIONS")
+        # Validation findings (errors and warnings)
+        for vf in validation_result.findings:
+            if vf.severity in (FindingSeverity.CRITICAL, FindingSeverity.ERROR, FindingSeverity.WARNING):
+                findings.append(vf.message[:200])
+
+        # Classification summary
         for cls in classification_result.classifications:
             item = next(
                 (i for i in parsed_shipment.line_items if i.line_number == cls.line_number),
                 None,
             )
-            desc = item.description if item else "Unknown"
-            lines.append(
-                f"  Line {cls.line_number}: {desc} → {cls.hts_code} "
-                f"({cls.duty_rate_general}) confidence={cls.confidence:.2f}"
+            if item:
+                findings.append(
+                    f"{item.description[:60]} classified as HTS {cls.hts_code} "
+                    f"({cls.duty_rate_general}) from {item.country_of_origin}"
+                )
+
+        # ISF status
+        if validation_result.isf_complete:
+            findings.append("ISF data elements are complete.")
+        else:
+            findings.append("ISF is incomplete — one or more required data elements are missing.")
+
+        # PGA requirements
+        if validation_result.pga_requirements:
+            findings.append(
+                f"PGA requirements apply: {'; '.join(validation_result.pga_requirements[:3])}"
             )
 
-        if validation_result.findings:
-            lines.append(f"\n## VALIDATION FINDINGS ({len(validation_result.findings)} total)")
-            for finding in validation_result.findings:
-                lines.append(f"  [{finding.severity.value}] {finding.code}: {finding.message}")
-        else:
-            lines.append("\n## VALIDATION FINDINGS: None")
+        # LOW-severity medium risk factors
+        for factor in risk_assessment.risk_factors:
+            if factor.severity == RiskSeverity.MEDIUM:
+                findings.append(factor.description[:200])
 
-        lines.append(f"\n## ISF COMPLETE: {validation_result.isf_complete}")
-        lines.append(f"## MARKING COMPLIANT: {validation_result.marking_compliant}")
+        return findings[:7] or ["No material compliance issues identified."]
 
-        if validation_result.pga_requirements:
-            lines.append(f"\n## PGA REQUIREMENTS ({len(validation_result.pga_requirements)} agencies)")
-            for req in validation_result.pga_requirements:
-                lines.append(f"  - {req}")
+    def _build_required_actions(
+        self,
+        decision_level: DecisionLevel,
+        risk_assessment: RiskAssessment,
+        validation_result: ValidationResult,
+    ) -> list[RequiredAction]:
+        """Build prioritized required actions from risk factors and validation findings."""
+        actions: list[RequiredAction] = []
+        priority = 1
 
-        if risk_assessment.risk_factors:
-            lines.append(f"\n## RISK FACTORS ({len(risk_assessment.risk_factors)} identified)")
-            for factor in risk_assessment.risk_factors:
-                lines.append(
-                    f"  [{factor.severity.value}] {factor.risk_type.value}: "
-                    f"{factor.description[:150]}"
-                )
-        else:
-            lines.append("\n## RISK FACTORS: None identified")
+        # Actions from risk factors (high/critical first)
+        for factor in sorted(
+            risk_assessment.risk_factors,
+            key=lambda f: {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3}[f.severity.value],
+        ):
+            if factor.recommended_action:
+                actions.append(RequiredAction(
+                    priority=priority,
+                    action=factor.recommended_action,
+                    responsible_party="Importer",
+                    regulatory_reference=factor.regulatory_reference,
+                ))
+                priority += 1
 
-        lines.append(f"\n## OVERALL RISK LEVEL: {risk_assessment.overall_risk_level.value}")
+        # Actions from validation findings
+        for vf in validation_result.findings:
+            if vf.severity in (FindingSeverity.CRITICAL, FindingSeverity.ERROR):
+                actions.append(RequiredAction(
+                    priority=priority,
+                    action=vf.remediation,
+                    responsible_party="Customs Broker",
+                    regulatory_reference=vf.regulatory_reference,
+                ))
+                priority += 1
 
-        lines.append(
-            "\nBased on the above, provide the final compliance decision with: "
-            "one-sentence summary, 3-7 key findings, all required actions with priorities, "
-            "duty estimates, and full decision rationale with regulatory citations. "
-            f"The rule-based system has determined: {preliminary_decision.value}. "
-            "Validate this or escalate if your expert analysis indicates a more severe level."
-        )
-        return "\n".join(lines)
+        # Default action for CLEAR decisions
+        if not actions:
+            actions.append(RequiredAction(
+                priority=1,
+                action="File formal customs entry (CBP Form 7501) and pay applicable duties.",
+                responsible_party="Customs Broker",
+                regulatory_reference="19 CFR 143.21",
+            ))
+
+        return actions
 
     async def decide(
         self,
@@ -323,59 +222,52 @@ timeframes apply.
         validation_result: ValidationResult,
         risk_assessment: RiskAssessment,
     ) -> ComplianceDecision:
-        """Make a final compliance decision synthesizing all pipeline results.
-
-        Rule-based decision logic determines the minimum decision level; Claude
-        synthesizes the narrative, key findings, required actions, and may escalate.
-        """
-        preliminary_decision = self._determine_decision_level(
+        """Make a final compliance decision using rule-based logic only."""
+        decision_level = self._determine_decision_level(
             risk_assessment, validation_result, classification_result
         )
         base_duties, additional_duties, total_duties = self._estimate_duties(
             parsed_shipment, classification_result, risk_assessment
         )
 
-        prompt = self._build_prompt(
-            parsed_shipment,
-            classification_result,
-            validation_result,
-            risk_assessment,
-            preliminary_decision,
-            base_duties,
-            additional_duties,
-            total_duties,
+        key_findings = self._build_key_findings(
+            parsed_shipment, classification_result, validation_result, risk_assessment
         )
-        result = await self._call_structured(
-            user_prompt=prompt,
-            tool_name="record_compliance_decision",
-            tool_description=(
-                "Record the final import compliance decision including decision level, "
-                "key findings, required actions, duty estimates, and full rationale."
-            ),
-            output_schema=self._TOOL_SCHEMA,
+        required_actions = self._build_required_actions(
+            decision_level, risk_assessment, validation_result
         )
 
-        # Ensure Claude's decision is at least as severe as our rule-based determination
-        _level_order = {
-            DecisionLevel.CLEAR: 0,
-            DecisionLevel.REVIEW: 1,
-            DecisionLevel.HOLD: 2,
-            DecisionLevel.REJECT: 3,
+        # Build summary
+        level_summaries = {
+            DecisionLevel.CLEAR: "CLEAR — no material compliance issues identified; standard processing may proceed.",
+            DecisionLevel.REVIEW: "REVIEW — minor compliance issues detected; proceed with compliance review.",
+            DecisionLevel.HOLD: "HOLD — significant compliance issues require resolution before cargo release.",
+            DecisionLevel.REJECT: "REJECT — prohibited transaction; OFAC sanctions or embargo applies.",
         }
-        claude_level = DecisionLevel(result.get("decision", preliminary_decision.value))
-        final_level = (
-            claude_level
-            if _level_order[claude_level] >= _level_order[preliminary_decision]
-            else preliminary_decision
+        summary = level_summaries[decision_level]
+
+        # Build rationale
+        risk_summary = (
+            f"{len(risk_assessment.risk_factors)} risk factor(s) identified "
+            f"(overall: {risk_assessment.overall_risk_level.value})."
+            if risk_assessment.risk_factors
+            else "No risk factors identified."
         )
-        result["decision"] = final_level.value
+        rationale = (
+            f"Rule-based decision: {decision_level.value}. "
+            f"{risk_summary} "
+            f"ISF complete: {validation_result.isf_complete}. "
+            f"Validation findings: {len(validation_result.findings)}."
+        )
 
-        # Use our computed duty estimates if Claude didn't provide them
-        if result.get("estimated_base_duties_usd") is None:
-            result["estimated_base_duties_usd"] = base_duties
-        if result.get("estimated_additional_duties_usd") is None:
-            result["estimated_additional_duties_usd"] = additional_duties
-        if result.get("estimated_total_duties_usd") is None:
-            result["estimated_total_duties_usd"] = total_duties
-
-        return ComplianceDecision(**result)
+        return ComplianceDecision(
+            decision=decision_level,
+            confidence=0.85,
+            summary=summary,
+            key_findings=key_findings,
+            required_actions=required_actions,
+            estimated_base_duties_usd=base_duties,
+            estimated_additional_duties_usd=additional_duties,
+            estimated_total_duties_usd=total_duties,
+            decision_rationale=rationale,
+        )

@@ -9,19 +9,20 @@ from portguard.agents.classifier import ClassifierAgent
 from portguard.agents.validator import ValidationAgent
 from portguard.agents.risk import RiskAgent
 from portguard.agents.decision import DecisionAgent
-from portguard.config import settings
 from portguard.models.shipment import ShipmentInput
 from portguard.models.report import ScreeningReport
+
+_ENGINE = "portguard-rule-based"
 
 
 class OrchestratorAgent:
     """Runs the full 5-stage PORTGUARD compliance screening pipeline.
 
-    Pipeline stages (each is optional/fault-tolerant):
+    Pipeline stages (each is fault-tolerant):
     1. ParserAgent — extract and normalize shipment data
     2. ClassifierAgent — classify all line items under HTSUS
     3. ValidationAgent — check ISF, PGA, marking, documentation
-    4. RiskAgent — section 301, 232, AD/CVD, sanctions, UFLPA
+    4. RiskAgent — Section 301, 232, AD/CVD, sanctions, UFLPA
     5. DecisionAgent — synthesize final compliance decision
 
     Failures in any stage are captured as pipeline_errors and processing continues
@@ -36,15 +37,7 @@ class OrchestratorAgent:
         self.decision_maker = DecisionAgent()
 
     async def screen(self, shipment_input: ShipmentInput) -> ScreeningReport:
-        """Screen a shipment through the full compliance pipeline.
-
-        Args:
-            shipment_input: The raw or structured shipment data to screen.
-
-        Returns:
-            A ScreeningReport containing all pipeline results, any errors,
-            and processing metadata.
-        """
+        """Screen a shipment through the full compliance pipeline."""
         start = time.monotonic()
         report_id = str(uuid.uuid4())
         errors: list[str] = []
@@ -103,5 +96,5 @@ class OrchestratorAgent:
             decision=decision,
             pipeline_errors=errors,
             processing_time_ms=round(elapsed_ms, 2),
-            model_used=settings.portguard_model,
+            model_used=_ENGINE,
         )
