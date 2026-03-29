@@ -1,6 +1,6 @@
 """OFAC sanctions programs data — US Treasury Office of Foreign Assets Control."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass

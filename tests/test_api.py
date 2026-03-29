@@ -5,7 +5,6 @@ import pytest
 from unittest.mock import AsyncMock, patch
 
 from portguard.api import routes as routes_module
-from portguard.models.report import ScreeningReport
 
 
 # ---------------------------------------------------------------------------

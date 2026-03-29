@@ -1,7 +1,7 @@
 """Tests for OrchestratorAgent."""
 
 import pytest
-from unittest.mock import AsyncMock, patch, MagicMock
+from unittest.mock import AsyncMock
 
 from portguard.agents.orchestrator import OrchestratorAgent
 from portguard.models.report import ScreeningReport

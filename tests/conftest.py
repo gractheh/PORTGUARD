@@ -2,7 +2,7 @@
 
 import pytest
 import pytest_asyncio
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 from httpx import AsyncClient, ASGITransport
 
 from portguard.api.main import app

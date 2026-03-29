@@ -1049,16 +1049,24 @@ app.add_middleware(
 @app.get("/demo", include_in_schema=False)
 def serve_demo():
     demo_path = Path(__file__).parent.parent / "demo.html"
-    return FileResponse(demo_path, media_type="text/html")
+    try:
+        return FileResponse(demo_path, media_type="text/html")
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="demo.html not found")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/v1/health")
 def health():
-    return {
-        "status": "ok",
-        "engine": "portguard-rule-based",
-        "service": "portguard-analyze",
-    }
+    try:
+        return {
+            "status": "ok",
+            "engine": "portguard-rule-based",
+            "service": "portguard-analyze",
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/v1/analyze", response_model=AnalyzeResponse)

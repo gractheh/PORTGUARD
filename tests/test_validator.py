@@ -4,7 +4,6 @@ import pytest
 from unittest.mock import AsyncMock, patch
 
 from portguard.agents.validator import ValidationAgent
-from portguard.models.shipment import ParsedShipment
 from portguard.models.validation import ValidationResult
 
 

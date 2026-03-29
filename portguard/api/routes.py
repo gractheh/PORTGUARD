@@ -7,7 +7,6 @@ from portguard.agents.orchestrator import OrchestratorAgent
 from portguard.agents.parser import ParserAgent
 from portguard.agents.classifier import ClassifierAgent
 from portguard.agents.risk import RiskAgent
-from portguard.config import settings
 from portguard.models.shipment import ShipmentInput, ParsedShipment
 from portguard.models.classification import ClassificationResult
 from portguard.models.risk import RiskAssessment

@@ -1,6 +1,6 @@
 """Antidumping (AD) and Countervailing Duty (CVD) orders — active US Commerce orders."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 
 @dataclass
