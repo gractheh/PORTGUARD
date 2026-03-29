@@ -925,7 +925,7 @@ def _compute_confidence(sd: dict, documents: list) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Main analysis function (replaces _call_claude)
+# Main analysis function
 # ---------------------------------------------------------------------------
 
 def _analyze_documents(documents: list) -> dict:

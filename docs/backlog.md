@@ -17,16 +17,12 @@
 
 ### E1 — Core Hardening
 
-**E1-1: Pop failed message from history on API error**
+**E1-1: Pop failed message from history on error**
 When `chat()` throws, the user message has already been appended to history, causing a malformed `[user, user, ...]` sequence on retry. Expose `popLast(sessionId)` in `claude.js` and call it from the error handler in `index.js`.
-- Acceptance: retrying the same input after an API error produces a valid response with no sequence error
+- Acceptance: retrying the same input after an error produces a valid response with no sequence error
 
-**E1-2: Make model parameters configurable via environment**
-`model`, `max_tokens`, and `effort` are hardcoded in `src/claude.js`. Move them to environment variables with documented defaults so users can tune without touching source.
-- `AICORD_MODEL` (default: `claude-opus-4-6`)
-- `AICORD_MAX_TOKENS` (default: `8192`)
-- `AICORD_EFFORT` (default: `medium`, accepts `low | medium | high | max`)
-- Acceptance: setting any variable in `.env` changes the corresponding API call parameter; unset falls back to default
+**E1-2: Make response parameters configurable via environment**
+Response behavior is currently fixed in `src/claude.js`. Move to environment variables with documented defaults so users can tune without touching source.
 
 **E1-3: Prompt hot-reload in dev mode**
 `SYSTEM_PROMPT` is read once at module load. Add a `--watch-prompt` flag (or honor `NODE_ENV=development`) that re-reads `docs/prompts.md` on each turn, so prompt changes take effect without restarting.
@@ -57,15 +53,15 @@ Add `/export` command that writes the current session's conversation to a Markdo
 - Acceptance: exported file contains full conversation with timestamps; can be opened in any Markdown viewer
 
 **E2-4: Auto-summarize old context**
-When history approaches `MAX_HISTORY`, instead of simply evicting the oldest exchange, summarize the oldest N exchanges into a single compressed context block and prepend it to the history. This preserves long-term context at lower token cost.
-- Acceptance: conversations longer than 10 exchanges retain semantic continuity; token count does not grow unboundedly
+When history approaches `MAX_HISTORY`, instead of simply evicting the oldest exchange, summarize the oldest N exchanges into a single compressed context block and prepend it to the history. This preserves long-term context.
+- Acceptance: conversations longer than 10 exchanges retain semantic continuity; history does not grow unboundedly
 
 ---
 
 ### E3 — HTTP API
 
 **E3-1: Scaffold HTTP server (Hono)**
-Add Hono as a dependency and create `src/server.js` as an alternative entry point to `src/index.js`. The server should import `chat` and `reset` from `src/claude.js` — no duplication of AI logic.
+Add Hono as a dependency and create `src/server.js` as an alternative entry point to `src/index.js`. The server should import `chat` and `reset` from `src/claude.js` — no duplication of logic.
 - Acceptance: `node src/server.js` starts an HTTP server; `node src/index.js` still starts the CLI
 
 **E3-2: POST /chat endpoint**
@@ -107,7 +103,7 @@ All endpoints return structured JSON errors:
 ```
 - Missing fields → 400
 - Auth failure → 401
-- Anthropic API error → 502
+- Internal error → 502
 - Acceptance: every error path returns valid JSON with an appropriate HTTP status code
 
 ---
@@ -172,7 +168,7 @@ Use Node's built-in `node:test` runner (no Jest/Vitest). Write unit tests for:
 - `reset()` — clears history
 - `chat()` — appends correct message structure, trims history at limit
 - `splitMessage()` — splits at newlines, handles edge cases
-- Acceptance: `npm test` runs and all tests pass; tests mock the Anthropic client
+- Acceptance: `npm test` runs and all tests pass
 
 **E6-3: GitHub Actions CI**
 Add `.github/workflows/ci.yml` that runs lint and tests on push and pull request to `main`.

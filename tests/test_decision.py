@@ -63,10 +63,10 @@ def _transshipment_medium_factor() -> RiskFactor:
 
 
 # ---------------------------------------------------------------------------
-# Claude decision response templates
+# Decision response templates
 # ---------------------------------------------------------------------------
 
-def _make_claude_decision(decision: str, confidence: float = 0.9) -> dict:
+def _make_decision_response(decision: str, confidence: float = 0.9) -> dict:
     return {
         "decision": decision,
         "confidence": confidence,
@@ -102,7 +102,7 @@ async def test_decision_clear_for_no_risk(
     risk = _make_risk_assessment(risk_factors=[], overall_risk_level=RiskSeverity.LOW)
 
     agent = DecisionAgent()
-    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_make_claude_decision("CLEAR"))):
+    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_make_decision_response("CLEAR"))):
         result = await agent.decide(
             sample_parsed_shipment,
             sample_classification_result,
@@ -127,7 +127,7 @@ async def test_decision_reject_for_comprehensive_sanctions(
     )
 
     agent = DecisionAgent()
-    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_make_claude_decision("REJECT", 0.99))):
+    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_make_decision_response("REJECT", 0.99))):
         result = await agent.decide(
             sample_parsed_shipment,
             sample_classification_result,
@@ -151,7 +151,7 @@ async def test_decision_hold_for_high_risk(
     )
 
     agent = DecisionAgent()
-    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_make_claude_decision("HOLD", 0.92))):
+    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_make_decision_response("HOLD", 0.92))):
         result = await agent.decide(
             sample_parsed_shipment,
             sample_classification_result,
@@ -175,7 +175,7 @@ async def test_decision_review_for_medium_risk(
     )
 
     agent = DecisionAgent()
-    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_make_claude_decision("REVIEW", 0.85))):
+    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_make_decision_response("REVIEW", 0.85))):
         result = await agent.decide(
             sample_parsed_shipment,
             sample_classification_result,
@@ -197,9 +197,9 @@ async def test_decision_required_actions_populated(
         risk_factors=[_section301_high_factor()],
         overall_risk_level=RiskSeverity.HIGH,
     )
-    claude_response = _make_claude_decision("HOLD", 0.92)
+    agent_response = _make_decision_response("HOLD", 0.92)
     # Ensure required_actions is populated
-    claude_response["required_actions"] = [
+    agent_response["required_actions"] = [
         {
             "priority": 1,
             "action": "Deposit Section 301 additional duty of 25% before cargo release.",
@@ -217,7 +217,7 @@ async def test_decision_required_actions_populated(
     ]
 
     agent = DecisionAgent()
-    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=claude_response)):
+    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=agent_response)):
         result = await agent.decide(
             sample_parsed_shipment,
             sample_classification_result,

@@ -24,12 +24,6 @@ const line = (text = '') => console.log(text);
 // Startup checks
 // ---------------------------------------------------------------------------
 
-if (!process.env.ANTHROPIC_API_KEY) {
-  console.error('\nERROR: ANTHROPIC_API_KEY is not set.');
-  console.error('Copy .env.example to .env and add your key.\n');
-  process.exit(1);
-}
-
 // ---------------------------------------------------------------------------
 // UI
 // ---------------------------------------------------------------------------
@@ -37,7 +31,7 @@ if (!process.env.ANTHROPIC_API_KEY) {
 function banner() {
   line();
   line(`  ${c.bold}${c.white}aicord${c.reset}  ${c.dim}software engineering · customs & trade compliance${c.reset}`);
-  line(`  ${c.gray}Model: claude-opus-4-6 · Adaptive thinking enabled${c.reset}`);
+  line(`  ${c.gray}Running in local mode${c.reset}`);
   line();
   line(`  ${c.gray}Commands: /help  /reset  /exit${c.reset}`);
   line();

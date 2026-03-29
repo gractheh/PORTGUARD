@@ -40,7 +40,7 @@ _VALIDATION_DICT_ISF_INCOMPLETE = {
         }
     ],
     "pga_requirements": ["FTC — Textile fiber products labeling"],
-    "isf_complete": True,  # Claude returns true here, but we override it
+    "isf_complete": True,  # rule-based check will override this
     "marking_compliant": None,
     "validation_notes": ["Exporter name missing — ISF incomplete."],
 }
@@ -75,7 +75,7 @@ async def test_validate_isf_incomplete_when_missing_exporter(
     with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_VALIDATION_DICT_ISF_INCOMPLETE)):
         result = await agent.validate(shipment_no_exporter, sample_classification_result)
 
-    # Our rule-based check overrides Claude's isf_complete
+    # Our rule-based check sets isf_complete correctly
     assert result.isf_complete is False, (
         "isf_complete should be False when exporter_name is None"
     )

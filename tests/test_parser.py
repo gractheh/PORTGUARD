@@ -7,7 +7,7 @@ from portguard.agents.parser import ParserAgent
 from portguard.models.shipment import ShipmentInput, ParsedShipment
 
 
-# Reusable valid ParsedShipment dict that Claude would return
+# Reusable valid ParsedShipment dict for rule-based parser tests
 _VALID_PARSED_DICT = {
     "importer_name": "Global Tech Imports LLC",
     "importer_country": "US",

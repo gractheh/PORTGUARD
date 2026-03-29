@@ -9,7 +9,6 @@
     "dev": "node --watch src/index.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.39.0",
     "dotenv": "^16.4.0"
   }
 }

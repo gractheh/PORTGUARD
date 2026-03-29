@@ -1,4 +1,4 @@
-"""Tests for RiskAgent — focusing on rule-based checks that don't need Claude mocking."""
+"""Tests for RiskAgent — rule-based checks."""
 
 import pytest
 from unittest.mock import AsyncMock, patch
@@ -70,15 +70,15 @@ def _make_classification_result(line_number: int = 1, hts_code: str = "8471.30.0
     )
 
 
-# Minimal Claude response for risk tests (no additional risks)
-_EMPTY_CLAUDE_RISK = {
+# Minimal stub response for risk tests (no additional risks)
+_EMPTY_RISK_STUB = {
     "additional_risk_factors": [],
     "overall_risk_level": "LOW",
     "estimated_additional_duties_usd": None,
     "risk_notes": ["No additional risks identified by expert analysis."],
 }
 
-_CRITICAL_CLAUDE_RISK = {
+_CRITICAL_RISK_STUB = {
     "additional_risk_factors": [],
     "overall_risk_level": "CRITICAL",
     "estimated_additional_duties_usd": None,
@@ -97,7 +97,7 @@ async def test_risk_no_factors_for_clean_shipment():
     classification = _make_classification_result(hts_code="8471.30.0100")
 
     agent = RiskAgent()
-    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_EMPTY_CLAUDE_RISK)):
+    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_EMPTY_RISK_STUB)):
         result = await agent.assess_risk(shipment, classification)
 
     assert isinstance(result, RiskAssessment)
@@ -118,7 +118,7 @@ async def test_risk_section301_flagged_for_china():
     classification = _make_classification_result(hts_code="8471.30.0100")
 
     agent = RiskAgent()
-    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_EMPTY_CLAUDE_RISK)):
+    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_EMPTY_RISK_STUB)):
         result = await agent.assess_risk(shipment, classification)
 
     section_301_factors = [f for f in result.risk_factors if f.risk_type == RiskType.SECTION_301]
@@ -141,7 +141,7 @@ async def test_risk_ofac_comprehensive_sanctions():
     classification = _make_classification_result(hts_code="5702.39.2000")
 
     agent = RiskAgent()
-    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_CRITICAL_CLAUDE_RISK)):
+    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_CRITICAL_RISK_STUB)):
         result = await agent.assess_risk(shipment, classification)
 
     ofac_factors = [f for f in result.risk_factors if f.risk_type == RiskType.OFAC_SANCTIONS]
@@ -171,7 +171,7 @@ async def test_risk_adcvd_flagged():
     shipment.line_items[0].goods_category = "steel/metals"
 
     agent = RiskAgent()
-    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_EMPTY_CLAUDE_RISK)):
+    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_EMPTY_RISK_STUB)):
         result = await agent.assess_risk(shipment, classification)
 
     ad_factors = [f for f in result.risk_factors if f.risk_type == RiskType.ANTIDUMPING]
@@ -198,7 +198,7 @@ async def test_risk_section232_steel():
     classification = _make_classification_result(hts_code="7208.36.0030")
 
     agent = RiskAgent()
-    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_EMPTY_CLAUDE_RISK)):
+    with patch.object(agent, "_call_structured", new=AsyncMock(return_value=_EMPTY_RISK_STUB)):
         result = await agent.assess_risk(shipment, classification)
 
     section_232_factors = [f for f in result.risk_factors if f.risk_type == RiskType.SECTION_232]

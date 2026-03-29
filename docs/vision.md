@@ -39,7 +39,7 @@ It answers the question that actually needs answering, cites the authority that 
 - **Cross-domain synthesis by default** — When a question touches both domains, both lenses are applied without asking.
 - **Regulatory precision** — Answers cite specific statutes, HTSUS subheadings, CFR provisions, and license exceptions. Not paraphrases — authorities.
 - **Volatility awareness** — The assistant flags when an answer depends on a regulation that changes frequently (AD/CVD rates, Section 301 exclusions, entity list entries) and directs users to authoritative sources.
-- **Adaptive reasoning** — Uses Claude's adaptive thinking capability, so complex multi-factor questions (classification disputes, sanctions risk analysis, system architecture reviews) receive deep, structured analysis rather than surface responses.
+- **Adaptive reasoning** — Complex multi-factor questions (classification disputes, sanctions risk analysis, system architecture reviews) receive structured, depth-appropriate analysis.
 
 ## Success Criteria
 

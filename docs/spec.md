@@ -22,17 +22,16 @@
 
 ## 1. System Overview
 
-aicord is a single-user CLI application that provides an interactive, multi-turn conversation interface backed by Anthropic's Claude claude-opus-4-6 model. The system prompt (defined in `docs/prompts.md`) configures the model as a dual-domain expert in software engineering and customs/trade compliance.
+aicord is a single-user CLI application that provides an interactive, multi-turn conversation interface. The system prompt (defined in `docs/prompts.md`) configures the assistant as a dual-domain expert in software engineering and customs/trade compliance.
 
 The application has two runtime components:
 
 | Component | File | Responsibility |
 |---|---|---|
 | CLI Interface | `src/index.js` | Terminal I/O, user input handling, output streaming, REPL loop |
-| AI Client | `src/claude.js` | Anthropic API communication, conversation history, prompt loading |
+| AI Client | `src/claude.js` | Conversation history, prompt loading, response generation |
 
 **Runtime environment:** Node.js ≥ 18.0.0 (ESM, `node --watch` for dev)
-**External dependency:** Anthropic API (`api.anthropic.com`)
 **No persistence:** All state is in-process; exits clean on termination.
 
 ---
@@ -63,9 +62,8 @@ The application has two runtime components:
                                            │
                                            ▼
                               ┌────────────────────────┐
-                              │   Anthropic API         │
-                              │   claude-opus-4-6        │
-                              │   Streaming Messages    │
+                              │   Local Response Engine │
+                              │   (src/claude.js)       │
                               └────────────────────────┘
 ```
 
@@ -108,8 +106,6 @@ node src/index.js
       │
       ├─ dotenv loads .env
       │
-      ├─ validate ANTHROPIC_API_KEY present → exit(1) if missing
-      │
       ├─ claude.js module load:
       │     ├─ read docs/prompts.md synchronously
       │     └─ parse SYSTEM_PROMPT (split on '## System Prompt\n\n')
@@ -125,7 +121,7 @@ node src/index.js
 
 ### 3.1 `src/index.js` — CLI Interface
 
-**Purpose:** Owns all terminal I/O. Has no knowledge of the Anthropic API.
+**Purpose:** Owns all terminal I/O. Has no knowledge of the response engine.
 
 #### Exports
 None. Entry point only.
@@ -178,7 +174,7 @@ prompt()
 
 ### 3.2 `src/claude.js` — AI Client
 
-**Purpose:** Owns all Anthropic API communication and conversation state. Has no knowledge of the terminal.
+**Purpose:** Owns conversation state and response generation. Has no knowledge of the terminal.
 
 #### Module-Level Initialization
 
@@ -187,7 +183,6 @@ Executed once at import time:
 1. Reads `docs/prompts.md` synchronously via `readFileSync`.
 2. Splits on `'## System Prompt\n\n'` and takes the second segment.
 3. Falls back to `'You are a helpful assistant.'` if parsing fails.
-4. Instantiates `new Anthropic()` — reads `ANTHROPIC_API_KEY` from environment.
 
 **Failure mode:** If `docs/prompts.md` does not exist, `readFileSync` throws synchronously and the process exits before the REPL starts. This is intentional — the prompt is required.
 
@@ -203,30 +198,14 @@ chat(
   userMessage: string,
   opts?: { onChunk?: (text: string) => void }
 ): Promise<string>
-  Appends userMessage to history, calls the Anthropic streaming API,
-  fires onChunk for each text delta, appends the assistant reply to history,
+  Appends userMessage to history, generates a response,
+  fires onChunk for each text chunk, appends the assistant reply to history,
   trims history if over MAX_HISTORY, returns the full reply text.
 ```
 
-#### API Call Parameters
+#### Response Generation
 
-| Parameter | Value | Rationale |
-|---|---|---|
-| `model` | `claude-opus-4-6` | Most capable Claude model; required for deep reasoning on complex trade/engineering questions |
-| `max_tokens` | `8192` | Sufficient for detailed analysis; bounded to prevent runaway costs |
-| `thinking.type` | `'adaptive'` | Claude decides reasoning depth per question; appropriate for variable-complexity queries |
-| `output_config.effort` | `'medium'` | Balanced cost/quality for interactive use; upgrade to `'high'` for batch/analysis workloads |
-| `system[0].cache_control` | `{type: 'ephemeral'}` | Caches the system prompt (~1000+ tokens) across turns; ~90% cost reduction on cached portion |
-
-#### Streaming Pattern
-
-```javascript
-const stream = client.messages.stream({ ... });
-if (onChunk) stream.on('text', onChunk);   // fires for text deltas only
-const response = await stream.finalMessage(); // accumulates full message
-```
-
-The `'text'` event fires only for `text_delta` content block events. Thinking block deltas (`thinking_delta`) are automatically excluded. `finalMessage()` resolves after the stream ends and returns the complete `Message` object.
+Responses are generated locally. The `onChunk` callback fires synchronously with the complete reply text before `chat()` resolves.
 
 ---
 
@@ -246,7 +225,7 @@ Message {
 **Invariants:**
 - Messages alternate `user` / `assistant` (enforced by append order).
 - The first message in any history is always `role: 'user'`.
-- Content is always a plain string. Thinking blocks from the API response are filtered out before storage.
+- Content is always a plain string.
 - History length is bounded at `MAX_HISTORY` (20 messages = 10 exchanges). When exceeded, the oldest two messages (one user + one assistant) are spliced off.
 
 **Lifetime:** In-process only. Cleared on `/reset` or process exit.
@@ -272,28 +251,13 @@ The CLI uses a single fixed session key `'cli'`. This is the only session that e
 
 ### 5.1 Environment Variables
 
-| Variable | Required | Description |
-|---|---|---|
-| `ANTHROPIC_API_KEY` | Yes | Anthropic API key. Validated at startup; process exits with code 1 if absent. |
+No required environment variables. `.env` is loaded via `dotenv` from the project root if present.
 
-Loaded via `dotenv` from `.env` in the project root. The `import 'dotenv/config'` call at the top of `src/index.js` loads this before any other module code executes.
-
-### 5.2 `.env.example`
-
-```
-ANTHROPIC_API_KEY=your_anthropic_api_key_here
-```
-
-### 5.3 Hardcoded Constants
-
-These are defined in source and not currently configurable via environment:
+### 5.2 Hardcoded Constants
 
 | Constant | Location | Value | Description |
 |---|---|---|---|
 | `MAX_HISTORY` | `src/claude.js` | `20` | Maximum messages retained per session |
-| `model` | `src/claude.js` | `claude-opus-4-6` | Anthropic model ID |
-| `max_tokens` | `src/claude.js` | `8192` | Maximum tokens per response |
-| `effort` | `src/claude.js` | `'medium'` | Reasoning effort level |
 | `SESSION` | `src/index.js` | `'cli'` | Session identifier for the CLI |
 
 ---
@@ -315,11 +279,9 @@ Parameters:
 
 Returns:
   Promise<string>   The full assistant response text.
-                    Returns '(No response.)' if the API returns no text blocks.
+                    Returns '(No response.)' if no text is produced.
 
 Throws:
-  Anthropic SDK errors (APIError, AuthenticationError, RateLimitError, etc.)
-  Network errors
   Does NOT throw on empty response — returns fallback string instead.
 
 Side effects:
@@ -351,7 +313,6 @@ Throws: never.
 
 | Condition | Behavior |
 |---|---|
-| `ANTHROPIC_API_KEY` not set | Print error to stderr, `process.exit(1)` |
 | `docs/prompts.md` not found | `readFileSync` throws synchronously, unhandled, process crashes with stack trace |
 | `docs/prompts.md` missing `## System Prompt\n\n` | Fallback to `'You are a helpful assistant.'` |
 
@@ -368,18 +329,13 @@ try {
 }
 ```
 
-After displaying the error, the REPL calls `prompt()` and continues. The failed user message **remains in history** (appended before the API call). If this is undesirable for retry scenarios, the caller should pop the last history entry on error — this is a known gap (see §9).
+After displaying the error, the REPL calls `prompt()` and continues. The failed user message **remains in history** (appended before `chat()` was called). If this is undesirable for retry scenarios, the caller should pop the last history entry on error — this is a known gap (see §9).
 
-### 7.3 Known Error Classes (Anthropic SDK)
+### 7.3 Known Error Classes
 
-| Class | Common Cause | Behavior |
+| Condition | Common Cause | Behavior |
 |---|---|---|
-| `AuthenticationError` (401) | Invalid API key | Displayed; session continues |
-| `RateLimitError` (429) | Rate limit exceeded | Displayed; session continues |
-| `APIStatusError` (5xx) | Anthropic service error | Displayed; session continues |
-| `APIConnectionError` | Network failure | Displayed; session continues |
-
-The Anthropic SDK performs automatic retry with exponential backoff on 429 and 5xx errors (default `max_retries: 2`) before surfacing the error to the application.
+| Runtime error in `chat()` | Any unexpected failure | Displayed; session continues |
 
 ---
 
@@ -389,22 +345,21 @@ The Anthropic SDK performs automatic retry with exponential backoff on 429 and 5
 
 | Metric | Target | Notes |
 |---|---|---|
-| Time to first token | < 3s under normal API load | Dependent on Anthropic API; adaptive thinking adds pre-response latency |
+| Time to first token | < 100ms | Local generation |
 | Input handling latency | < 1ms | readline + sync history append |
 | Memory per session | < 50KB | 20 messages × ~1KB average |
 
 ### 8.2 Reliability
 
 - **No local persistence** — a process crash loses conversation history only. No data corruption risk.
-- **Stateless toward the API** — every call sends the full conversation history. No session state on the server side to lose.
+- **Stateless** — every call uses the full conversation history in-process.
 - **Graceful degradation** — API errors display a message and continue the REPL; they do not crash the process.
 
 ### 8.3 Security
 
-- `ANTHROPIC_API_KEY` is loaded from `.env` and never logged or displayed.
 - `.env` is listed in `.gitignore`.
 - No user input is executed as code, passed to shell commands, or written to disk.
-- No network connections are made except to `api.anthropic.com` via the Anthropic SDK.
+- No network connections are made.
 
 ### 8.4 Compatibility
 
@@ -430,9 +385,9 @@ The following are known natural extension points given the current architecture.
 
 `chat()` and `reset()` already accept a `sessionId` parameter. A multi-session interface (e.g., named workspaces, per-project contexts) could be added to `index.js` without changing `claude.js`.
 
-### 9.3 Configurable Model Parameters
+### 9.3 Configurable Response Parameters
 
-`max_tokens`, `effort`, and `model` are hardcoded. These could be moved to environment variables or a `config.json` to support different usage profiles (e.g., `effort: 'high'` for deep analysis, `effort: 'low'` for quick lookups).
+Response behavior is currently fixed. These could be moved to environment variables or a `config.json` to support different usage profiles.
 
 ### 9.4 HTTP API Surface
 

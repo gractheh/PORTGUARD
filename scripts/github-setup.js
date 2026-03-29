@@ -98,7 +98,7 @@ const ISSUES = [
     labels: ['epic: core hardening'],
     sprint: 1,
     body: `## Context
-When \`chat()\` throws an error, the user message has already been appended to history. A retry then produces a malformed \`[user, user, ...]\` sequence, which causes an Anthropic API validation error on the follow-up call.
+When \`chat()\` throws an error, the user message has already been appended to history. A retry then produces a malformed \`[user, user, ...]\` sequence on the follow-up call.
 
 ## Changes required
 - Add \`popLast(sessionId)\` export to \`src/claude.js\` that removes the last message from a session's history.
@@ -121,7 +121,7 @@ Read the following env vars in \`src/claude.js\`, with documented defaults:
 
 | Variable | Default | Valid values |
 |---|---|---|
-| \`AICORD_MODEL\` | \`claude-opus-4-6\` | Any Anthropic model ID |
+| \`AICORD_MODEL\` | — | Model identifier |
 | \`AICORD_MAX_TOKENS\` | \`8192\` | Integer > 0 |
 | \`AICORD_EFFORT\` | \`medium\` | \`low\`, \`medium\`, \`high\`, \`max\` |
 
@@ -263,9 +263,9 @@ Exported: <ISO timestamp>
 The current history eviction strategy (splice oldest pair) loses information abruptly. Long working sessions lose context that may still be relevant.
 
 ## Changes required
-When history length reaches \`MAX_HISTORY - 2\`, summarize the oldest 6 messages (3 exchanges) into a single compressed system-adjacent message using a secondary Claude call, then replace those 6 messages with the summary.
+When history length reaches \`MAX_HISTORY - 2\`, summarize the oldest 6 messages (3 exchanges) into a single compressed system-adjacent message, then replace those 6 messages with the summary.
 
-The summary call should use a lightweight model (\`claude-haiku-4-5\`) and a simple prompt: *"Summarize this conversation excerpt in 3–5 sentences, preserving key facts, decisions, and entities."*
+Use a simple prompt: *"Summarize this conversation excerpt in 3–5 sentences, preserving key facts, decisions, and entities."*
 
 ## Acceptance criteria
 - [ ] Conversations longer than 10 exchanges retain semantic continuity (test with a reference question about an early turn)
@@ -314,7 +314,7 @@ Content-Type: application/json
 ## Acceptance criteria
 - [ ] Valid request returns the assistant's full reply as JSON
 - [ ] Missing \`sessionId\` or \`message\` returns 400 with an error body
-- [ ] Anthropic API errors return 502 with an error body
+- [ ] Internal errors return 502 with an error body
 - [ ] Empty \`message\` string returns 400`,
   },
   {
@@ -404,13 +404,13 @@ All API error paths must return consistent, machine-readable JSON.
 | Missing required field | 400 | \`MISSING_FIELD\` |
 | Empty message string | 400 | \`EMPTY_MESSAGE\` |
 | Auth failure | 401 | \`UNAUTHORIZED\` |
-| Anthropic API error | 502 | \`UPSTREAM_ERROR\` |
+| Internal error | 502 | \`UPSTREAM_ERROR\` |
 | Unexpected server error | 500 | \`INTERNAL_ERROR\` |
 
 ## Acceptance criteria
 - [ ] Every error path returns valid JSON with \`error\` and \`code\` fields
 - [ ] HTTP status codes match the table above
-- [ ] Anthropic error messages are not leaked verbatim (log them server-side, return a generic message to the client)`,
+- [ ] Internal error details are not leaked verbatim (log server-side, return a generic message to the client)`,
   },
 
   // ── E4: Web Interface ────────────────────────────────────────────────────
@@ -629,13 +629,12 @@ Use Node's built-in \`node:test\` runner. Create \`test/\` directory. Write test
 - \`splitMessage()\` — splits at newlines, exact-length boundary, no trailing whitespace
 - \`popLast()\` (after E1-1) — removes last message, no-op on empty history
 
-Mock the Anthropic client (replace \`client.messages.stream\` with a stub).
+Mock the chat module where needed (replace with a stub).
 
 - Add \`"test": "node --test test/"\` to package.json scripts.
 
 ## Acceptance criteria
 - [ ] \`npm test\` runs and all tests pass
-- [ ] Tests mock the Anthropic client — no real API calls
 - [ ] A broken \`reset()\` implementation causes at least one test to fail`,
   },
   {

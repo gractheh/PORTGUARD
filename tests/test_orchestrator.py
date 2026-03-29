@@ -44,14 +44,14 @@ async def test_screen_returns_screening_report(
 async def test_screen_pipeline_errors_on_parser_failure(sample_shipment_input):
     """If ParserAgent fails, pipeline_errors should contain the error and decision should be None."""
     orchestrator = OrchestratorAgent()
-    orchestrator.parser.parse = AsyncMock(side_effect=RuntimeError("Claude API timeout"))
+    orchestrator.parser.parse = AsyncMock(side_effect=RuntimeError("parser timeout"))
 
     result = await orchestrator.screen(sample_shipment_input)
 
     assert isinstance(result, ScreeningReport)
     assert len(result.pipeline_errors) > 0
     assert any("ParserAgent" in err for err in result.pipeline_errors)
-    assert "Claude API timeout" in result.pipeline_errors[0]
+    assert "parser timeout" in result.pipeline_errors[0]
     assert result.parsed_shipment is None
     assert result.decision is None
 

@@ -303,12 +303,12 @@ def sample_screening_report(
 
 
 # ---------------------------------------------------------------------------
-# Mock Claude response factory
+# Mock response factory
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def mock_claude_response():
-    """Factory fixture that returns a mock AsyncAnthropic response with a tool_use block."""
+def mock_agent_response():
+    """Factory fixture that returns a mock response with a tool_use block."""
     def _make_response(tool_input: dict):
         tool_use_block = MagicMock()
         tool_use_block.type = "tool_use"
