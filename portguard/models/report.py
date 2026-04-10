@@ -20,3 +20,13 @@ class ScreeningReport(BaseModel):
     pipeline_errors: list[str] = []
     processing_time_ms: float
     model_used: str
+
+    # Pattern learning fields — None / empty when history is insufficient or
+    # pattern learning is disabled.  Existing consumers that don't reference
+    # these fields are unaffected.
+    shipment_id: str | None = None
+    pattern_score: float | None = None
+    pattern_effective_score: float | None = None
+    history_available: bool = False
+    pattern_signals: list[str] = []
+    pattern_history_depth: int = 0

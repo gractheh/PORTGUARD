@@ -1,5 +1,8 @@
 """PORTGUARD API route handlers."""
 
+import logging
+import os
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -12,12 +15,27 @@ from portguard.models.classification import ClassificationResult
 from portguard.models.risk import RiskAssessment
 from portguard.models.report import ScreeningReport
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 # ---------------------------------------------------------------------------
 # Singleton agent instances (initialized once at module load)
 # ---------------------------------------------------------------------------
-_orchestrator = OrchestratorAgent()
+
+# Wire up PatternDB when pattern learning is enabled.  Failures here are
+# non-fatal — the orchestrator runs rule-only if no DB is available.
+_pattern_db = None
+if os.getenv("PORTGUARD_PATTERN_LEARNING_ENABLED", "true").lower() not in ("0", "false", "no"):
+    try:
+        from portguard.pattern_db import PatternDB
+        _db_path = os.getenv("PORTGUARD_PATTERN_DB_PATH", "portguard_patterns.db")
+        _pattern_db = PatternDB(_db_path)
+        logger.info("routes: PatternDB initialized at %s", _db_path)
+    except Exception as _exc:
+        logger.warning("routes: PatternDB init failed (%s) — running rule-only", _exc)
+
+_orchestrator = OrchestratorAgent(db=_pattern_db)
 _parser = ParserAgent()
 _classifier = ClassifierAgent()
 _risk_agent = RiskAgent()

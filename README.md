@@ -1,6 +1,6 @@
 # PORTGUARD
 
-US import compliance screening system. Accepts raw shipping documents or structured shipment data and returns a risk score, compliance decision, and actionable findings — 100% rule-based, no external services required.
+US import compliance screening system. Accepts raw shipping documents or structured shipment data and returns a risk score, compliance decision, and actionable findings. Rule-based at its core — no external services or API keys required — with an optional **Localized Pattern Learning** layer that improves screening accuracy as officers submit feedback over time.
 
 ---
 
@@ -76,7 +76,9 @@ POST /api/v1/analyze
 Additional endpoints:
 - `GET /api/v1/health` — liveness check
 - `POST /api/v1/extract-text` — upload a `.pdf` or `.txt` file; returns extracted text, page count, and any warnings
-- `GET /demo` — browser UI (`demo.html`) with 3 pre-loaded test scenarios and file upload support
+- `POST /api/v1/feedback` — record an officer's verdict on a screened shipment (CONFIRMED_FRAUD / CLEARED / UNRESOLVED); drives pattern learning
+- `GET /api/v1/pattern-history` — aggregate pattern statistics: total shipments analyzed, confirmed fraud count, top-5 riskiest shippers and routes
+- `GET /demo` — browser UI (`demo.html`) with 3 pre-loaded test scenarios, pattern intelligence display, and officer feedback buttons
 
 ### Entry point 2 — Structured screening pipeline (`portguard/`)
 
@@ -133,6 +135,11 @@ Additional pipeline endpoints:
 ```
 portguard/
   config.py               pydantic-settings configuration (no API keys)
+  pattern_db.py           SQLite data layer — shipment history, entity profiles,
+                          route risk, HS baselines, migrations, PatternDB class
+  pattern_engine.py       Read-only scoring engine — 5 typed signals, Bayesian
+                          Beta scoring, Welford z-score, Poisson frequency,
+                          cold start handling, plain-English explanations
   data/
     sanctions.py          10 OFAC programs -- get_sanctions_programs(iso2)
     section301.py         333 HTS prefixes, Lists 1-4A -- get_section_301(hts, iso2)
@@ -144,7 +151,7 @@ portguard/
     validation.py         ValidationResult, ValidationFinding, FindingSeverity
     risk.py               RiskAssessment, RiskFactor, RiskType, RiskSeverity
     decision.py           ComplianceDecision, DecisionLevel, RequiredAction
-    report.py             ScreeningReport
+    report.py             ScreeningReport (includes pattern learning fields)
   agents/
     base.py               BaseAgent
     parser.py             ParserAgent
@@ -152,18 +159,107 @@ portguard/
     validator.py          ValidationAgent
     risk.py               RiskAgent
     decision.py           DecisionAgent
-    orchestrator.py       OrchestratorAgent (pipeline runner)
+    orchestrator.py       OrchestratorAgent — Stage 4.5 pattern scoring,
+                          score blending (rule 65% + pattern 35%), DB recording
   api/
     main.py               FastAPI app (structured pipeline)
     routes.py             /health /screen /parse /classify /assess-risk /reports/{id}
+  tests/
+    test_pattern_db.py    59 tests — PatternDB data layer
+    test_pattern_engine.py  71 tests — PatternEngine scoring logic
 
 api/
-  app.py                  FastAPI app (document analysis, stateless)
+  app.py                  FastAPI app (document analysis + pattern learning overlay)
+                          /analyze, /feedback, /pattern-history
   document_parser.py      PDF and plain-text extraction (pdfplumber)
+
+docs/
+  pattern_learning_architecture.md  Full LPL design spec
 
 main.py                   CLI runner: 3 test scenarios, prints results
 run_demo.py               Starts API server, opens demo in browser
+test_e2e_pattern_learning.py  End-to-end pipeline test (36 checks)
 ```
+
+---
+
+## Pattern Learning System
+
+PORTGUARD includes a **Localized Pattern Learning (LPL)** layer that accumulates institutional knowledge from officer feedback and improves risk scores over time. It runs entirely on-device using SQLite — no cloud services, no training pipelines, no data leaving the machine.
+
+### How it works
+
+Every shipment analyzed by `POST /api/v1/analyze` is recorded to a local SQLite database (`portguard_patterns.db`). When an officer submits feedback via `POST /api/v1/feedback`, that outcome updates entity and route risk profiles. Subsequent screenings of the same shipper, consignee, or corridor reflect that accumulated history.
+
+The final risk score blends two views:
+
+```
+final_score = rule_score × 0.65 + pattern_score × 0.35
+```
+
+When there is insufficient history (cold start), the blend is not applied and the pure rule score is returned unchanged.
+
+### Five pattern signals
+
+| Signal | Weight | Algorithm |
+|---|---|---|
+| **Shipper reputation** | 0.30 | Bayesian Beta(α=1, β=5 prior): `(w_fraud+1)/(w_fraud+w_cleared+6)`. Blended 60/40 with flag frequency. |
+| **Consignee reputation** | 0.20 | Identical algorithm applied to consignee profiles. |
+| **Route fraud rate** | 0.20 | Bayesian Beta(α=β=0.5 Jeffrey's prior) per origin-ISO2→port corridor. |
+| **Flag frequency** | 0.15 | Sigmoid amplifier: `1/(1+exp(-8×(rate-0.40)))` on 90-day decay-weighted flag rate. |
+| **Value anomaly** | 0.15 | Welford online z-score against HS-code value baselines. Triggers only on undervaluation (z < -1). |
+
+All event counts use **exponential temporal decay** (λ=0.023, 30-day half-life) so recent activity outweighs historical events.
+
+### Cold start and trust
+
+- **Cold start**: fewer than 3 prior analyses for the shipper → `effective_pattern_score = pattern_score × 0.5` and the blend is not applied. The response carries `history_available: false`.
+- **Auto-trust**: a shipper with ≥20 weighted cleared outcomes and zero confirmed fraud is automatically marked trusted; its scores are clamped to zero.
+
+### Feedback loop
+
+```
+POST /api/v1/feedback
+{
+  "shipment_id": "<id from analyze response>",
+  "outcome": "CONFIRMED_FRAUD" | "CLEARED" | "UNRESOLVED",
+  "officer_id": "optional",
+  "notes": "optional"
+}
+```
+
+- `CONFIRMED_FRAUD` — increments weighted fraud count for shipper, consignee, and route; increases future risk scores for all three
+- `CLEARED` — increments weighted cleared count; reduces future false-positive rates and contributes toward auto-trust
+- `UNRESOLVED` — stored for auditability; no scores updated until resolved
+- Resolved outcomes (CONFIRMED_FRAUD or CLEARED) are immutable; a second feedback call on the same shipment returns HTTP 409
+
+### Pattern Learning response fields
+
+Every `POST /api/v1/analyze` response includes:
+
+| Field | Type | Description |
+|---|---|---|
+| `shipment_id` | string \| null | ID to pass to `/api/v1/feedback` |
+| `pattern_score` | float \| null | Raw pattern risk score (0–1). Null when history is insufficient. |
+| `history_available` | bool | True when the pattern engine contributed to the final risk score. |
+| `pattern_signals` | list[string] | Plain-English explanations from triggered pattern signals, sorted by severity. |
+
+### Configuration
+
+| Env var | Default | Description |
+|---|---|---|
+| `PORTGUARD_PATTERN_LEARNING_ENABLED` | `true` | Set to `false`, `0`, or `no` to disable entirely. |
+| `PORTGUARD_PATTERN_DB_PATH` | `portguard_patterns.db` | Path to the SQLite database file. |
+
+The app starts and operates rule-only if the DB file is inaccessible — pattern learning failures are never fatal.
+
+### Demo UI
+
+The browser demo (`GET /demo`) surfaces pattern learning in three panels:
+
+- **Pattern Intelligence** — shown after each analysis; displays history depth ("Based on 12 prior shipments"), animated pattern score gauge, and signal cards color-coded by severity (CRITICAL=red, HIGH=orange, MEDIUM=amber, LOW=blue).
+- **Officer Feedback** — shown after flagged results; two buttons ("✓ Confirmed Fraud" / "✗ Cleared") post to `/api/v1/feedback` and display a contextual confirmation message. Buttons are disabled after submission.
+- **Pattern Learning History** — always visible; loads aggregate stats from `GET /api/v1/pattern-history` on demand: total shipments, total confirmed fraud, top-5 riskiest shippers and routes.
 
 ---
 
@@ -377,7 +473,14 @@ Error responses use structured `detail` bodies with a machine-readable `code`:
   ],
   "inconsistencies_found": 2,
   "documents_analyzed": 3,
-  "processing_time_seconds": 0.003
+  "processing_time_seconds": 0.003,
+  "shipment_id": "a3f7c2d1-...",
+  "pattern_score": 0.62,
+  "history_available": true,
+  "pattern_signals": [
+    "Shipper 'Dragon Phoenix Trading Ltd': 5 prior shipment(s). 3 confirmed fraud outcome(s) (Bayesian reputation score: 0.44). Blended signal score: 0.71.",
+    "Route 'CN → Port of Miami': Bayesian fraud rate 60.0%. Exceeds 30% alert threshold."
+  ]
 }
 ```
 
@@ -422,20 +525,34 @@ Interactive docs at `http://localhost:8001/docs`.
 ### Tests
 
 ```bash
+# All tests
 python -m pytest
+
+# Pattern learning tests only
+python -m pytest portguard/tests/
+
+# End-to-end pipeline integration test
+python test_e2e_pattern_learning.py
 ```
 
-33 tests across 7 files, all passing:
+163 tests across 9 files, all passing:
 
 ```
-tests/test_api.py           7 tests   FastAPI routes (httpx AsyncClient)
-tests/test_parser.py        4 tests   ParserAgent
-tests/test_classifier.py    4 tests   ClassifierAgent
-tests/test_validator.py     4 tests   ValidationAgent
-tests/test_risk.py          5 tests   RiskAgent (Section 301, OFAC, AD/CVD, Section 232)
-tests/test_decision.py      5 tests   DecisionAgent (CLEAR/REVIEW/HOLD/REJECT)
-tests/test_orchestrator.py  4 tests   Pipeline fault tolerance
+tests/test_api.py                       7 tests   FastAPI routes (httpx AsyncClient)
+tests/test_parser.py                    4 tests   ParserAgent
+tests/test_classifier.py               4 tests   ClassifierAgent
+tests/test_validator.py                4 tests   ValidationAgent
+tests/test_risk.py                      5 tests   RiskAgent (Section 301, OFAC, AD/CVD, Section 232)
+tests/test_decision.py                  5 tests   DecisionAgent (CLEAR/REVIEW/HOLD/REJECT)
+tests/test_orchestrator.py             4 tests   Pipeline fault tolerance
+portguard/tests/test_pattern_db.py     59 tests   PatternDB data layer (normalization,
+                                                   Bayesian scoring, Welford, migrations,
+                                                   CRUD, auto-trust, decay weights)
+portguard/tests/test_pattern_engine.py 71 tests   PatternEngine scoring (all 5 signals,
+                                                   cold start, composite score, explanations)
 ```
+
+The end-to-end test (`test_e2e_pattern_learning.py`) runs 36 checks across 8 scenarios against a live FastAPI TestClient with an isolated temporary SQLite database: health check, 5-shipment analysis, DB state verification, CONFIRMED_FRAUD feedback, repeat offender detection, cold start behavior, pattern history endpoint, and edge cases (duplicate feedback, unknown ID, invalid outcome).
 
 ---
 

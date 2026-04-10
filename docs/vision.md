@@ -21,7 +21,13 @@ Each of these checks requires regulatory data (HTS tables, sanctions lists, AD/C
 
 ## Solution
 
-**PORTGUARD** is a fully local, rule-based US import compliance screening system. It ingests raw shipping documents or structured shipment data and returns, in under one second, a risk score, a compliance decision, a list of specific findings, and prioritized remediation steps — with no external API calls, no paid services, and no network dependency.
+**PORTGUARD** is a fully local US import compliance screening system. It ingests raw shipping documents or structured shipment data and returns, in under one second, a risk score, a compliance decision, a list of specific findings, and prioritized remediation steps — with no external API calls, no paid services, and no network dependency.
+
+The system has two complementary layers:
+
+1. **Rule-based compliance engine** — static regulatory knowledge encoded directly in Python: OFAC sanctions, Section 301 tariffs, AD/CVD orders, UFLPA, ISF, PGA requirements, document inconsistency detection, and undervaluation benchmarks. Deterministic and fully auditable.
+
+2. **Localized Pattern Learning (LPL)** — an adaptive layer that accumulates institutional knowledge from officer feedback and improves accuracy over time. Runs entirely on-device using SQLite. When officers mark a shipment as confirmed fraud or cleared, that verdict updates entity and route risk profiles; future screenings of the same shipper, consignee, or corridor reflect the accumulated history.
 
 Every compliance check is implemented directly in code:
 
@@ -34,6 +40,103 @@ Every compliance check is implemented directly in code:
 - PGA requirements are mapped across 72 HTS chapters to FDA, USDA (FSIS/APHIS/AMS/NMFS), FTC, CPSC, FCC, NHTSA, ATF, EPA, TTB, Commerce, NRC, FAA, FRA, and US Fish & Wildlife
 - Transshipment is detected by comparing port-of-loading city to declared country of origin, using a mapping of 35+ port cities to ISO2 country codes
 - Undervaluation is flagged when declared unit value falls below 40% of a commodity benchmark for five product types: semiconductor ICs, laptops, smartphones, solar panels, and flat-panel displays
+
+---
+
+## Pattern Learning
+
+### Design philosophy
+
+Customs officers and compliance teams accumulate domain-specific knowledge that static rules cannot capture: which shippers are serial offenders, which origin-to-port corridors carry elevated fraud rates, which consignees are associated with confirmed evasion schemes. PORTGUARD's pattern learning layer is designed to encode this institutional knowledge locally and apply it automatically to future screenings.
+
+The core principle is **conservative Bayesian inference with temporal decay**. Every signal starts with an informative prior that assumes innocence. Evidence accumulates as analyses and feedback flow in. Recent events outweigh historical ones. The system never becomes overconfident — with thin history, it self-reports uncertainty and defaults to the pure rule score.
+
+### Scoring pipeline (Stage 4.5)
+
+After the rule-based risk assessment (Stage 4) and before the final decision (Stage 5), the OrchestratorAgent runs a pattern scoring step. This step is read-only with respect to the database — the write happens after the report is returned. If the PatternDB is unavailable for any reason, the step is silently skipped and the pipeline returns the pure rule result.
+
+```
+POST /api/v1/analyze
+     |
+     +-- Rule pipeline (sanctions, 301, AD/CVD, ISF, inconsistencies...)
+     |     → rule_score, rule_decision
+     |
+     +-- Stage 4.5: PatternEngine.score(shipper, consignee, origin, port, hs_codes, value)
+     |     |
+     |     +-- ShipperRiskSignal   (weight 0.30)
+     |     |     Bayesian Beta(α=1, β=5 prior) reputation score
+     |     |     60% reputation × 40% flag frequency (sigmoid amplified)
+     |     |
+     |     +-- ConsigneeRiskSignal (weight 0.20)
+     |     |     Identical algorithm applied to consignee profile
+     |     |
+     |     +-- RouteRiskSignal     (weight 0.20)
+     |     |     Bayesian Beta(α=β=0.5 Jeffrey's prior) per origin→port corridor
+     |     |     Triggers at ≥5 analyses; early-warning at ≥3 if fraud present
+     |     |
+     |     +-- ValueAnomalySignal  (weight 0.15)
+     |     |     Welford online z-score vs. HS-code unit value baseline
+     |     |     Triggers only on undervaluation (z < -1); ignores overvaluation
+     |     |
+     |     +-- FrequencyAnomalySignal (weight 0.15)
+     |     |     Poisson tail probability for shipper-consignee pair frequency
+     |     |     Triggers when P(X ≥ observed | Poisson(μ)) < 0.05
+     |     |
+     |     → pattern_score ∈ [0,1], is_cold_start, history_depth, explanations
+     |
+     +-- Score blending
+     |     if history_available:   final = rule × 0.65 + pattern × 0.35
+     |     if cold start:          final = rule × 1.00  (no change)
+     |
+     +-- PatternDB.record_shipment()  (best-effort, post-response)
+     |     Updates shipper/consignee profiles, route risk, HS baselines
+     |
+     +-- AnalyzeResponse
+           risk_score, decision, explanations, ...
+           shipment_id, pattern_score, history_available, pattern_signals
+```
+
+### Feedback loop
+
+```
+POST /api/v1/feedback  { shipment_id, outcome, officer_id?, notes? }
+     |
+     +-- outcome = CONFIRMED_FRAUD
+     |     → increments weighted_confirmed_fraud for shipper, consignee, route
+     |     → Bayesian reputation score rises; future screenings show elevated risk
+     |
+     +-- outcome = CLEARED
+     |     → increments weighted_cleared for shipper, consignee
+     |     → reputation score falls; contributes toward auto-trust (≥20 clears,
+     |       zero fraud → is_trusted=1, reputation clamped to 0.0)
+     |
+     +-- outcome = UNRESOLVED
+     |     → stored for audit; no score changes until resolved
+```
+
+Resolved outcomes (CONFIRMED_FRAUD or CLEARED) are immutable — a second feedback call on the same shipment returns HTTP 409. This prevents accidental score manipulation and preserves audit integrity.
+
+### Cold start and auto-trust
+
+**Cold start** (`history_depth < 3`): the pattern engine returns a half-weighted score and the blend is not applied. The response carries `history_available: false`. This prevents premature scoring from single-observation noise.
+
+**Auto-trust** (`weighted_cleared ≥ 20` and `weighted_confirmed_fraud = 0`): the shipper is marked trusted; its scores are clamped to 0.0 regardless of future flag frequency. This recognizes that consistently clean shippers should not generate false positives.
+
+### Storage
+
+All pattern data is stored in a local SQLite database using WAL mode for concurrent reads. Seven tables:
+
+| Table | Contents |
+|---|---|
+| `shipment_history` | Every screened shipment — rule score, decision, pattern score, entity keys |
+| `pattern_outcomes` | Officer verdicts — immutable once resolved |
+| `shipper_profiles` | Bayesian reputation, decay-weighted event counts, trust flag |
+| `consignee_profiles` | Identical structure to shipper_profiles |
+| `route_risk_profiles` | Bayesian fraud rate per origin-ISO2 → port-of-entry corridor |
+| `hs_code_baselines` | Welford running mean/variance of unit values per HS prefix |
+| `schema_migrations` | Forward-only migration history (idempotent) |
+
+Entity keys are SHA-256 hashes of normalized names (Unicode→ASCII, lowercase, legal suffixes stripped) so "Dragon Phoenix Trading Ltd", "DRAGON PHOENIX TRADING LIMITED", and "Dragon Phoenix Trading" all resolve to the same profile.
 
 ---
 
@@ -340,7 +443,7 @@ Risk score is a weighted sum of individual factor scores (sanctions 0.90, transs
 
 - `python run_demo.py` — starts the API server, polls `/api/v1/health` every 250ms, opens `http://localhost:8000/demo` in the browser automatically
 - `python main.py` — runs the three sample scenarios against the API in-process using FastAPI's test client, prints color-coded results with PASS/FAIL status
-- `demo.html` — browser UI with pre-loaded document text for all three test scenarios; displays risk score, decision, findings, and next steps
+- `demo.html` — browser UI with pre-loaded document text for all three test scenarios; displays risk score, decision, findings, next steps, pattern intelligence panel (history depth, signal cards, pattern gauge), officer feedback buttons, and pattern history statistics
 
 Three sample scenarios are provided in `tests/sample_documents/`:
 
@@ -349,6 +452,26 @@ Three sample scenarios are provided in `tests/sample_documents/`:
 | `01_clean_shipment.json` | Vietnamese laptops, 4 consistent documents | APPROVE |
 | `02_suspicious_shipment.json` | Chinese ICs via Singapore — transshipment, mismatch, undervaluation | FLAG_FOR_INSPECTION |
 | `03_incomplete_shipment.json` | Frozen shrimp — missing FDA Prior Notice, no origin, illegible B/L | REQUEST_MORE_INFORMATION |
+
+### Adaptive Pattern Intelligence (Demo UI)
+
+After any analysis, the browser demo surfaces three additional panels:
+
+**Pattern Intelligence card** — visible when the pattern engine has data for the screened entities. Shows:
+- History indicator: "Based on 12 prior shipments" (active) or "Building history — 2 analyzed so far" (cold start)
+- Animated pattern score gauge alongside the existing rule-engine risk gauge
+- Signal cards with severity color coding: CRITICAL (red), HIGH (orange), MEDIUM (amber), LOW (blue), each with a plain-English explanation
+
+**Officer Feedback card** — visible after FLAG_FOR_INSPECTION, REVIEW_RECOMMENDED, or REJECT decisions. Two buttons:
+- "✓ Confirmed Fraud" → POST `/api/v1/feedback` with `CONFIRMED_FRAUD`; updates shipper, consignee, and route risk profiles
+- "✗ Cleared — Legitimate" → POST `/api/v1/feedback` with `CLEARED`; updates trust scores
+
+Both buttons disable after submission and display a contextual confirmation message.
+
+**Pattern Learning History panel** — always visible below results. A Refresh button calls `GET /api/v1/pattern-history` and displays:
+- Total shipments analyzed / total confirmed fraud
+- Top-5 riskiest shippers (name, analysis count, reputation score)
+- Top-5 riskiest routes (origin country, port of entry, Bayesian fraud rate)
 
 ---
 
@@ -360,3 +483,6 @@ Three sample scenarios are provided in `tests/sample_documents/`:
 - **In-memory report storage.** The structured pipeline stores reports in a Python dict. Reports are lost on process restart. Not suitable for multi-worker deployments.
 - **Classification is preliminary.** HTS classifications and duty rate estimates are for screening purposes only. A licensed customs broker must file the actual entry. These outputs are not legally binding.
 - **ISF checks are partial.** Only four of the ten ISF importer-provided data elements can be verified from document text. Elements 2 (buyer), 6 (ship-to party), 9 (consolidator), and 10 (container stuffing location) are not checked.
+- **Pattern learning requires feedback volume.** The LPL layer is conservative by design — meaningful score adjustments require at least 3 prior analyses (cold start threshold) and confirmed outcomes. A new deployment starts in rule-only mode and builds accuracy gradually.
+- **Pattern DB is single-node.** The SQLite PatternDB uses WAL mode for concurrent reads but serializes all writes through a threading.Lock. It is not designed for multi-process or distributed deployments.
+- **Pattern scores are auxiliary.** Pattern learning outputs are advisory signals that blend with the rule engine (35% weight). They do not override or suppress compliance rule findings. All rule-based findings remain fully visible regardless of pattern history.

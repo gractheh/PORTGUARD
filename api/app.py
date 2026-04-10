@@ -6,11 +6,14 @@ GET  /api/v1/health   — liveness check
 
 from __future__ import annotations
 
+import logging
+import os
 import re
 import time
 from pathlib import Path
+from typing import Optional
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi import BackgroundTasks, FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -29,6 +32,35 @@ from api.document_parser import (
 from portguard.data.sanctions import get_sanctions_programs
 from portguard.data.section301 import get_section_301
 from portguard.data.adcvd import get_adcvd_orders
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Pattern learning — module-level singleton (best-effort; never crashes app)
+# ---------------------------------------------------------------------------
+# Enabled by default.  Set PORTGUARD_PATTERN_LEARNING_ENABLED=false to disable.
+# DB path is controlled by PORTGUARD_PATTERN_DB_PATH (default: portguard_patterns.db
+# in the process working directory).
+
+_pattern_db = None
+_pattern_engine = None
+
+if os.getenv("PORTGUARD_PATTERN_LEARNING_ENABLED", "true").lower() not in ("0", "false", "no"):
+    try:
+        from portguard.pattern_db import PatternDB
+        from portguard.pattern_engine import PatternEngine
+        _db_path = os.getenv("PORTGUARD_PATTERN_DB_PATH", "portguard_patterns.db")
+        _pattern_db = PatternDB(_db_path)
+        _pattern_engine = PatternEngine(_pattern_db)
+        logger.info("Pattern learning initialized at %s", _db_path)
+    except Exception as _exc:
+        logger.warning(
+            "Pattern learning init failed (%s) — running rule-only mode", _exc
+        )
+
+# Blend weights (task spec: rule 65%, pattern 35%)
+_RULE_WEIGHT = 0.65
+_PATTERN_WEIGHT = 0.35
 
 # ---------------------------------------------------------------------------
 # Country normalization
@@ -986,6 +1018,12 @@ def _analyze_documents(documents: list) -> dict:
         "explanations": all_explanations,
         "recommended_next_steps": next_steps,
         "inconsistencies_found": len(inconsistency_codes),
+        # Internal lists exposed for pattern score re-derivation in the handlers.
+        # These are prefixed with _ to signal they are implementation details,
+        # not part of the public response shape.
+        "_risk_factors": risk_factors,
+        "_missing_msgs": missing_msgs,
+        "_inconsistency_codes": inconsistency_codes,
     }
 
 
@@ -1040,6 +1078,173 @@ class AnalyzeResponse(BaseModel):
     documents_analyzed: int
     processing_time_seconds: float
 
+    # Pattern learning fields — always present; defaults make them safe for
+    # existing callers that don't reference them.
+    shipment_id: Optional[str] = Field(
+        None,
+        description="ID of the recorded shipment.  Pass to POST /api/v1/feedback "
+                    "to record an outcome and improve future pattern scores.",
+    )
+    pattern_score: Optional[float] = Field(
+        None,
+        ge=0.0, le=1.0,
+        description="Raw pattern risk score (0–1) from the LPL engine.  None when "
+                    "history is insufficient.",
+    )
+    history_available: bool = Field(
+        False,
+        description="True when the pattern engine had enough history to contribute "
+                    "to the final risk score.",
+    )
+    pattern_signals: list[str] = Field(
+        default_factory=list,
+        description="Plain-English explanations from triggered pattern signals, "
+                    "sorted by severity (CRITICAL first).",
+    )
+
+
+class FeedbackRequest(BaseModel):
+    """Body for POST /api/v1/feedback."""
+    shipment_id: str = Field(
+        ...,
+        description="The shipment_id returned by POST /api/v1/analyze.",
+    )
+    outcome: str = Field(
+        ...,
+        description="Officer verdict: CONFIRMED_FRAUD | CLEARED | UNRESOLVED",
+    )
+    officer_id: Optional[str] = Field(
+        None,
+        description="Optional officer identifier for audit logging.",
+    )
+    notes: Optional[str] = Field(
+        None,
+        description="Free-text notes — evidence summary, case number, etc.",
+    )
+    case_reference: Optional[str] = Field(
+        None,
+        description="Optional external case or seizure reference number.",
+    )
+
+
+class FeedbackResponse(BaseModel):
+    """Response from POST /api/v1/feedback."""
+    status: str
+    shipment_id: str
+    outcome: str
+    message: str
+
+
+# ---------------------------------------------------------------------------
+# Pattern learning helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_scoring_request(sd: dict):
+    """Build a PatternEngine ScoringRequest from a shipment-data dict.
+
+    Parameters
+    ----------
+    sd:
+        The ``shipment_data`` dict returned by :func:`_analyze_documents`.
+
+    Returns
+    -------
+    ScoringRequest or None if the import fails.
+    """
+    try:
+        from portguard.pattern_engine import ScoringRequest
+        declared_value: Optional[float] = None
+        quantity: Optional[float] = None
+        try:
+            declared_value = float(sd["declared_value"]) if sd.get("declared_value") else None
+        except (ValueError, TypeError):
+            pass
+        try:
+            quantity = float(sd["quantity"]) if sd.get("quantity") else None
+        except (ValueError, TypeError):
+            pass
+        return ScoringRequest(
+            shipper_name=sd.get("exporter"),
+            consignee_name=sd.get("importer") or sd.get("consignee"),
+            origin_iso2=sd.get("origin_country_iso2"),
+            port_of_entry=sd.get("port_of_entry") or sd.get("port_of_discharge"),
+            hs_codes=sd.get("hts_codes_declared") or [],
+            declared_value_usd=declared_value,
+            quantity=quantity,
+        )
+    except Exception as exc:
+        logger.warning("_build_scoring_request failed: %s", exc)
+        return None
+
+
+def _record_shipment_bg(
+    sd: dict,
+    rule_score: float,
+    rule_decision: str,
+    rule_confidence: str,
+    risk_factors: list[dict],
+    pattern_result,
+    final_score: float,
+    final_decision: str,
+    final_confidence: str,
+) -> Optional[str]:
+    """Write a shipment analysis snapshot to PatternDB and return the analysis_id.
+
+    This is designed to be called from a FastAPI BackgroundTask.  All errors
+    are caught and logged; the function always returns either an ID string or
+    None.
+    """
+    if _pattern_db is None:
+        return None
+    try:
+        from portguard.pattern_db import ShipmentFingerprint
+        fp = ShipmentFingerprint(
+            shipper_name=sd.get("exporter"),
+            consignee_name=sd.get("importer") or sd.get("consignee"),
+            origin_iso2=sd.get("origin_country_iso2"),
+            port_of_entry=sd.get("port_of_entry") or sd.get("port_of_discharge"),
+            hs_codes=sd.get("hts_codes_declared") or [],
+            declared_value_usd=(
+                float(sd["declared_value"]) if sd.get("declared_value") else None
+            ),
+            quantity=(
+                float(sd["quantity"]) if sd.get("quantity") else None
+            ),
+            gross_weight_kg=None,
+            incoterms=sd.get("incoterms"),
+            rule_risk_score=rule_score,
+            rule_decision=rule_decision,
+            rule_confidence=rule_confidence,
+            pattern_score=getattr(pattern_result, "pattern_score", None),
+            pattern_shipper_score=(
+                getattr(pattern_result, "shipper_score", None)
+            ),
+            pattern_consignee_score=(
+                getattr(pattern_result, "consignee_score", None)
+            ),
+            pattern_route_score=(
+                getattr(pattern_result, "route_score", None)
+            ),
+            pattern_value_z_score=None,
+            pattern_flag_frequency=(
+                getattr(pattern_result, "frequency_score", None)
+            ),
+            pattern_history_depth=(
+                getattr(pattern_result, "history_depth", None)
+            ),
+            pattern_cold_start=(
+                getattr(pattern_result, "is_cold_start", True)
+            ),
+            final_risk_score=final_score,
+            final_decision=final_decision,
+            final_confidence=final_confidence,
+        )
+        return _pattern_db.record_shipment(fp, final_decision, risk_factors, final_confidence)
+    except Exception as exc:
+        logger.warning("PatternDB.record_shipment() failed (non-fatal): %s", exc)
+        return None
+
 
 # ---------------------------------------------------------------------------
 # FastAPI app
@@ -1085,7 +1290,7 @@ def health():
 
 
 @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
-def analyze(request: AnalyzeRequest):
+def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks):
     start = time.monotonic()
     try:
         result = _analyze_documents(request.documents)
@@ -1093,20 +1298,85 @@ def analyze(request: AnalyzeRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
     elapsed = round(time.monotonic() - start, 3)
-    shipment_raw = result.get("shipment_data", {})
+    sd = result.get("shipment_data", {})
+
+    # --- Pattern learning overlay ---
+    rule_score: float = result["risk_score"]
+    rule_decision: str = result["decision"]
+    rule_confidence: str = result["confidence"]
+
+    pattern_result = None
+    pattern_score_val: Optional[float] = None
+    history_available: bool = False
+    pattern_signals: list[str] = []
+    final_score: float = rule_score
+    final_decision: str = rule_decision
+
+    if _pattern_engine is not None:
+        try:
+            scoring_req = _build_scoring_request(sd)
+            if scoring_req is not None:
+                pattern_result = _pattern_engine.score(scoring_req)
+                pattern_score_val = pattern_result.pattern_score
+                history_available = not pattern_result.is_cold_start
+                pattern_signals = pattern_result.explanations
+
+                if history_available:
+                    # Weighted blend: rule 65%, pattern 35%
+                    blended = _RULE_WEIGHT * rule_score + _PATTERN_WEIGHT * pattern_score_val
+                    final_score = round(min(1.0, blended), 4)
+                    # Re-derive decision from the blended score so that pattern
+                    # signals can push a borderline APPROVE to REVIEW_RECOMMENDED.
+                    final_decision = _make_decision(
+                        result.get("_risk_factors", []),
+                        result.get("_missing_msgs", []),
+                        result.get("_inconsistency_codes", []),
+                        final_score,
+                        sd,
+                    )
+        except Exception as exc:
+            logger.warning("PatternEngine.score() failed (non-fatal): %s", exc)
+
+    # Recompute risk level from the final (possibly blended) score
+    if final_score <= 0.25:
+        final_risk_level = "LOW"
+    elif final_score <= 0.50:
+        final_risk_level = "MEDIUM"
+    elif final_score <= 0.75:
+        final_risk_level = "HIGH"
+    else:
+        final_risk_level = "CRITICAL"
+
+    # Record analysis to PatternDB inline (fast — < 10 ms); shipment_id is
+    # needed in the response so we cannot defer it to a true background task.
+    shipment_id: Optional[str] = _record_shipment_bg(
+        sd=sd,
+        rule_score=rule_score,
+        rule_decision=rule_decision,
+        rule_confidence=rule_confidence,
+        risk_factors=result.get("_risk_factors", []),
+        pattern_result=pattern_result,
+        final_score=final_score,
+        final_decision=final_decision,
+        final_confidence=rule_confidence,
+    )
 
     return AnalyzeResponse(
         status="completed",
-        shipment_data=ShipmentData(**shipment_raw),
-        risk_score=result["risk_score"],
-        risk_level=result["risk_level"],
-        decision=result["decision"],
-        confidence=result["confidence"],
+        shipment_data=ShipmentData(**sd),
+        risk_score=final_score,
+        risk_level=final_risk_level,
+        decision=final_decision,
+        confidence=rule_confidence,
         explanations=result["explanations"],
         recommended_next_steps=result["recommended_next_steps"],
         inconsistencies_found=result["inconsistencies_found"],
         documents_analyzed=len(request.documents),
         processing_time_seconds=elapsed,
+        shipment_id=shipment_id,
+        pattern_score=pattern_score_val,
+        history_available=history_available,
+        pattern_signals=pattern_signals,
     )
 
 
@@ -1226,23 +1496,230 @@ async def analyze_files(files: list[UploadFile] = File(...)):
         raise HTTPException(status_code=500, detail=str(exc))
 
     elapsed = round(time.monotonic() - start, 3)
-    shipment_raw = result_data.get("shipment_data", {})
+    sd = result_data.get("shipment_data", {})
 
-    # Surface any per-file extraction warnings as additional explanations
-    # so they appear in the response even though they were non-fatal.
+    # Surface any per-file extraction warnings as additional explanations.
     if extraction_warnings:
         result_data["explanations"] = extraction_warnings + result_data.get("explanations", [])
 
+    # --- Pattern learning overlay (identical logic to /api/v1/analyze) ---
+    rule_score: float = result_data["risk_score"]
+    rule_decision: str = result_data["decision"]
+    rule_confidence: str = result_data["confidence"]
+
+    pattern_result = None
+    pattern_score_val: Optional[float] = None
+    history_available: bool = False
+    pattern_signals: list[str] = []
+    final_score: float = rule_score
+    final_decision: str = rule_decision
+
+    if _pattern_engine is not None:
+        try:
+            scoring_req = _build_scoring_request(sd)
+            if scoring_req is not None:
+                pattern_result = _pattern_engine.score(scoring_req)
+                pattern_score_val = pattern_result.pattern_score
+                history_available = not pattern_result.is_cold_start
+                pattern_signals = pattern_result.explanations
+                if history_available:
+                    blended = _RULE_WEIGHT * rule_score + _PATTERN_WEIGHT * pattern_score_val
+                    final_score = round(min(1.0, blended), 4)
+                    final_decision = _make_decision(
+                        result_data.get("_risk_factors", []),
+                        result_data.get("_missing_msgs", []),
+                        result_data.get("_inconsistency_codes", []),
+                        final_score,
+                        sd,
+                    )
+        except Exception as exc:
+            logger.warning("PatternEngine.score() failed (non-fatal): %s", exc)
+
+    if final_score <= 0.25:
+        final_risk_level = "LOW"
+    elif final_score <= 0.50:
+        final_risk_level = "MEDIUM"
+    elif final_score <= 0.75:
+        final_risk_level = "HIGH"
+    else:
+        final_risk_level = "CRITICAL"
+
+    shipment_id: Optional[str] = _record_shipment_bg(
+        sd=sd,
+        rule_score=rule_score,
+        rule_decision=rule_decision,
+        rule_confidence=rule_confidence,
+        risk_factors=result_data.get("_risk_factors", []),
+        pattern_result=pattern_result,
+        final_score=final_score,
+        final_decision=final_decision,
+        final_confidence=rule_confidence,
+    )
+
     return AnalyzeResponse(
         status="completed",
-        shipment_data=ShipmentData(**shipment_raw),
-        risk_score=result_data["risk_score"],
-        risk_level=result_data["risk_level"],
-        decision=result_data["decision"],
-        confidence=result_data["confidence"],
+        shipment_data=ShipmentData(**sd),
+        risk_score=final_score,
+        risk_level=final_risk_level,
+        decision=final_decision,
+        confidence=rule_confidence,
         explanations=result_data["explanations"],
         recommended_next_steps=result_data["recommended_next_steps"],
         inconsistencies_found=result_data["inconsistencies_found"],
         documents_analyzed=len(documents),
         processing_time_seconds=elapsed,
+        shipment_id=shipment_id,
+        pattern_score=pattern_score_val,
+        history_available=history_available,
+        pattern_signals=pattern_signals,
     )
+
+
+# ---------------------------------------------------------------------------
+# Feedback endpoint — officers close the loop
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/v1/feedback", response_model=FeedbackResponse)
+def feedback(request: FeedbackRequest):
+    """Record an officer's verdict for a previously analyzed shipment.
+
+    This is the feedback loop that teaches the pattern learning system.
+    The ``shipment_id`` is the value returned by ``POST /api/v1/analyze``.
+
+    Outcomes:
+    - ``CONFIRMED_FRAUD`` — the flag was correct; increases future risk scores
+      for this shipper, consignee, and route corridor.
+    - ``CLEARED`` — the flag was a false positive; reduces future false-positive
+      rates for this entity and may auto-trust consistently clean shippers.
+    - ``UNRESOLVED`` — investigation ongoing; stored but not yet applied to scores.
+
+    Resolved outcomes (CONFIRMED_FRAUD or CLEARED) are immutable.
+    UNRESOLVED outcomes can be updated to a resolved state.
+    """
+    if _pattern_db is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "PATTERN_LEARNING_DISABLED",
+                "message": (
+                    "Pattern learning is not enabled on this instance. "
+                    "Set PORTGUARD_PATTERN_LEARNING_ENABLED=true and restart."
+                ),
+            },
+        )
+
+    valid_outcomes = {"CONFIRMED_FRAUD", "CLEARED", "UNRESOLVED"}
+    if request.outcome not in valid_outcomes:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_OUTCOME",
+                "message": (
+                    f"Invalid outcome '{request.outcome}'. "
+                    f"Must be one of: {sorted(valid_outcomes)}"
+                ),
+            },
+        )
+
+    try:
+        _pattern_db.record_outcome(
+            analysis_id=request.shipment_id,
+            outcome=request.outcome,
+            officer_id=request.officer_id,
+            notes=request.notes,
+            case_reference=request.case_reference,
+        )
+    except Exception as exc:
+        # Import specific exception types for precise HTTP status codes
+        try:
+            from portguard.pattern_db import (
+                RecordNotFoundError,
+                DuplicateOutcomeError,
+                InvalidOutcomeError,
+            )
+            if isinstance(exc, RecordNotFoundError):
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "code": "SHIPMENT_NOT_FOUND",
+                        "message": f"No shipment found with id '{request.shipment_id}'.",
+                    },
+                )
+            if isinstance(exc, DuplicateOutcomeError):
+                raise HTTPException(
+                    status_code=409,
+                    detail={
+                        "code": "OUTCOME_ALREADY_RECORDED",
+                        "message": str(exc),
+                    },
+                )
+            if isinstance(exc, InvalidOutcomeError):
+                raise HTTPException(
+                    status_code=422,
+                    detail={"code": "INVALID_OUTCOME", "message": str(exc)},
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "FEEDBACK_ERROR", "message": str(exc)},
+        )
+
+    outcome_messages = {
+        "CONFIRMED_FRAUD": (
+            "Fraud outcome recorded. Shipper, consignee, and route risk profiles "
+            "have been updated. Future screenings for these entities will reflect "
+            "this confirmed fraud event."
+        ),
+        "CLEARED": (
+            "Cleared outcome recorded. Entity trust scores have been updated. "
+            "Continued clear outcomes will reduce future false-positive rates "
+            "for this shipper and consignee."
+        ),
+        "UNRESOLVED": (
+            "Unresolved outcome recorded. No score changes applied yet. "
+            "Submit CONFIRMED_FRAUD or CLEARED when the investigation concludes."
+        ),
+    }
+
+    return FeedbackResponse(
+        status="ok",
+        shipment_id=request.shipment_id,
+        outcome=request.outcome,
+        message=outcome_messages[request.outcome],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Pattern History
+# ---------------------------------------------------------------------------
+
+
+@app.get("/api/v1/pattern-history")
+def pattern_history():
+    """Return aggregate pattern learning statistics for the dashboard.
+
+    Returns total shipments analyzed, total confirmed fraud events, and
+    the top-5 riskiest shippers and routes by learned risk score.
+
+    Returns 503 when pattern learning is disabled.
+    """
+    if _pattern_db is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "PATTERN_LEARNING_DISABLED",
+                "message": "Pattern learning is not enabled on this instance.",
+            },
+        )
+    try:
+        return _pattern_db.get_summary_stats()
+    except Exception as exc:
+        logger.warning("get_summary_stats() failed: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "STATS_ERROR", "message": str(exc)},
+        )
