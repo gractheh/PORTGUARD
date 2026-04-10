@@ -638,7 +638,10 @@ function renderPane() {
 
   document.getElementById('fname-' + tab.id).addEventListener('input', e => {
     tab.filename = e.target.value;
-    renderTabs();
+    // Update only the tab label — do NOT call renderTabs()/renderPane() which
+    // would destroy this input element and lose focus on every keystroke.
+    const tabBtn = document.querySelector(`.tab-btn[data-id="${tab.id}"] span`);
+    if (tabBtn) tabBtn.textContent = tab.filename || 'Document ' + tab.id;
   });
   document.getElementById('text-' + tab.id).addEventListener('input', e => {
     tab.text = e.target.value;
