@@ -1408,6 +1408,57 @@ class PatternDB:
             exists=True,
         )
 
+    def reset(self) -> int:
+        """Delete all learned data from every pattern learning table.
+
+        Clears shipment_history, pattern_outcomes (via ON DELETE CASCADE),
+        shipper_profiles, consignee_profiles, route_risk_profiles, and
+        hs_code_baselines.  The schema_migrations table is intentionally
+        preserved so that re-initialisation is safe and idempotent.
+
+        Returns
+        -------
+        int
+            Number of rows deleted from shipment_history (used for the
+            audit log and the API response ``shipments_deleted`` field).
+
+        Notes
+        -----
+        The operation runs in a single serialised write transaction.
+        It is safe to call on a live database — in-flight reads see a
+        consistent pre-reset snapshot; new reads after the commit see the
+        empty state.
+        """
+        with self._lock:
+            # Count before clearing so the audit entry and API response
+            # reflect the actual number of records destroyed.
+            count: int = self._conn.execute(
+                "SELECT COUNT(*) FROM shipment_history"
+            ).fetchone()[0]
+
+            # Delete in dependency order inside a single explicit transaction.
+            # pattern_outcomes has ON DELETE CASCADE from shipment_history, but
+            # we delete it explicitly first to be safe with any FK constraint
+            # enforcement state.  isolation_level=None (autocommit) means we
+            # must issue BEGIN/COMMIT ourselves.
+            self._conn.execute("BEGIN")
+            try:
+                self._conn.execute("DELETE FROM pattern_outcomes")
+                self._conn.execute("DELETE FROM shipment_history")
+                self._conn.execute("DELETE FROM shipper_profiles")
+                self._conn.execute("DELETE FROM consignee_profiles")
+                self._conn.execute("DELETE FROM route_risk_profiles")
+                self._conn.execute("DELETE FROM hs_code_baselines")
+                self._conn.execute("COMMIT")
+            except Exception:
+                self._conn.execute("ROLLBACK")
+                raise
+
+            # Flush the WAL so the file size reflects the cleared state.
+            self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+        return count
+
     def get_summary_stats(self) -> dict:
         """Return aggregate statistics for the Pattern History panel.
 

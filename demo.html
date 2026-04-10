@@ -557,6 +557,91 @@
     .ph-score-md { color: var(--orange); }
     .ph-score-lo { color: var(--amber); }
     .ph-empty { color: var(--faint); font-size: .82rem; font-style: italic; }
+
+    /* ---- Reset button ---- */
+    .ph-reset-btn {
+      background: transparent;
+      border: 1px solid rgba(239,68,68,.45);
+      color: #fca5a5;
+      font-size: .78rem; font-weight: 600;
+      padding: .38rem .9rem; border-radius: var(--radius);
+      cursor: pointer; transition: all .2s;
+    }
+    .ph-reset-btn:hover:not(:disabled) {
+      background: rgba(239,68,68,.12);
+      border-color: var(--red);
+      color: var(--red);
+    }
+    .ph-reset-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    .ph-success {
+      display: none; align-items: center; gap: .5rem;
+      font-size: .82rem; color: #86efac;
+      padding: .55rem .8rem; border-radius: 7px;
+      background: rgba(34,197,94,.08);
+      border: 1px solid rgba(34,197,94,.25);
+      margin-bottom: 1rem;
+    }
+    .ph-success.visible { display: flex; }
+
+    /* ---- Confirmation modal ---- */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 200;
+      background: rgba(0,0,0,.65);
+      backdrop-filter: blur(4px);
+      display: none; align-items: center; justify-content: center;
+      padding: 1rem;
+    }
+    .modal-overlay.visible { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid rgba(239,68,68,.35);
+      border-radius: 14px;
+      padding: 2rem 2.2rem;
+      max-width: 440px; width: 100%;
+      box-shadow: 0 24px 64px rgba(0,0,0,.5);
+      animation: modal-in .18s ease;
+    }
+    @keyframes modal-in {
+      from { opacity: 0; transform: scale(.96) translateY(6px); }
+      to   { opacity: 1; transform: scale(1)  translateY(0); }
+    }
+    .modal-icon {
+      font-size: 2rem; margin-bottom: 1rem; line-height: 1;
+    }
+    .modal-title {
+      font-size: 1.1rem; font-weight: 800; color: var(--text);
+      margin-bottom: .6rem;
+    }
+    .modal-body {
+      font-size: .88rem; color: var(--muted); line-height: 1.65;
+      margin-bottom: 1.6rem;
+    }
+    .modal-body strong { color: #fca5a5; font-weight: 700; }
+    .modal-btns {
+      display: flex; gap: .65rem; justify-content: flex-end;
+    }
+    .modal-cancel {
+      background: var(--card); border: 1px solid var(--border);
+      color: var(--muted); font-family: 'Inter', sans-serif;
+      font-size: .85rem; font-weight: 600;
+      padding: .55rem 1.2rem; border-radius: var(--radius);
+      cursor: pointer; transition: all .18s;
+    }
+    .modal-cancel:hover { border-color: var(--border-hi); color: var(--text); }
+    .modal-confirm {
+      background: rgba(239,68,68,.15);
+      border: 1px solid rgba(239,68,68,.5);
+      color: #fca5a5;
+      font-family: 'Inter', sans-serif; font-size: .85rem; font-weight: 700;
+      padding: .55rem 1.2rem; border-radius: var(--radius);
+      cursor: pointer; transition: all .18s;
+    }
+    .modal-confirm:hover:not(:disabled) {
+      background: rgba(239,68,68,.25); border-color: var(--red); color: var(--red);
+    }
+    .modal-confirm:disabled { opacity: .5; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -787,11 +872,37 @@
   <div class="ph-panel" id="ph-panel">
     <div class="ph-header">
       <div class="section-label" style="margin-bottom:0">Pattern Learning History</div>
-      <button class="ph-load-btn" onclick="loadPatternHistory()">&#8635; Refresh</button>
+      <div style="display:flex;gap:.5rem;align-items:center">
+        <button class="ph-reset-btn" id="ph-reset-btn" onclick="openResetModal()">&#9003; Reset History</button>
+        <button class="ph-load-btn" onclick="loadPatternHistory()">&#8635; Refresh</button>
+      </div>
+    </div>
+    <div class="ph-success" id="ph-success">
+      <span>&#10003;</span><span>History cleared &mdash; PortGuard is starting fresh.</span>
     </div>
     <div id="ph-stats" class="ph-stats" style="display:none"></div>
     <div id="ph-tables" class="ph-tables" style="display:none"></div>
     <div id="ph-empty" class="ph-empty">No history loaded yet &mdash; click Refresh to load pattern statistics.</div>
+  </div>
+
+  <!-- Reset confirmation modal -->
+  <div class="modal-overlay" id="reset-modal" onclick="handleModalOverlayClick(event)">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-icon">&#9888;</div>
+      <div class="modal-title" id="modal-title">Reset Pattern Learning History</div>
+      <div class="modal-body" id="modal-body">
+        Are you sure? This will permanently delete all
+        <strong id="modal-count">0</strong> shipment(s) from your pattern
+        learning history. All shipper profiles, route risk data, and officer
+        feedback will be erased. <strong>This cannot be undone.</strong>
+      </div>
+      <div class="modal-btns">
+        <button class="modal-cancel" onclick="closeResetModal()">Cancel</button>
+        <button class="modal-confirm" id="modal-confirm-btn" onclick="confirmReset()">
+          Yes, Reset History
+        </button>
+      </div>
+    </div>
   </div>
 
 </div><!-- /container -->
@@ -1808,6 +1919,102 @@ function phScoreClass(score) {
   if (score >= 0.40) return 'ph-score-md';
   return 'ph-score-lo';
 }
+
+// ---------------------------------------------------------------------------
+// Pattern History Reset
+// ---------------------------------------------------------------------------
+
+let _resetShipmentCount = 0;
+
+async function openResetModal() {
+  // Fetch the current shipment count to show in the modal body.
+  // We reuse the pattern-history endpoint which always returns total_shipments.
+  const countEl   = document.getElementById('modal-count');
+  const confirmBtn = document.getElementById('modal-confirm-btn');
+  countEl.textContent = '…';
+  confirmBtn.disabled = false;
+
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/pattern-history');
+    if (res.ok) {
+      const data = await res.json();
+      _resetShipmentCount = data.total_shipments ?? 0;
+      countEl.textContent = _resetShipmentCount;
+    } else {
+      countEl.textContent = 'an unknown number of';
+    }
+  } catch (_) {
+    countEl.textContent = 'an unknown number of';
+  }
+
+  document.getElementById('reset-modal').classList.add('visible');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeResetModal() {
+  document.getElementById('reset-modal').classList.remove('visible');
+  document.body.style.overflow = '';
+}
+
+function handleModalOverlayClick(e) {
+  // Close only when clicking the backdrop, not the modal card itself.
+  if (e.target === document.getElementById('reset-modal')) {
+    closeResetModal();
+  }
+}
+
+async function confirmReset() {
+  const confirmBtn = document.getElementById('modal-confirm-btn');
+  const resetBtn   = document.getElementById('ph-reset-btn');
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'Resetting…';
+
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/pattern-history/reset', {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ confirm: true }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const msg = (err.detail && err.detail.message) || `HTTP ${res.status}`;
+      throw new Error(msg);
+    }
+
+    // ── Success ──────────────────────────────────────────────────────────
+    closeResetModal();
+
+    // Clear the history panel UI
+    document.getElementById('ph-stats').style.display  = 'none';
+    document.getElementById('ph-tables').style.display = 'none';
+    document.getElementById('ph-stats').innerHTML      = '';
+    document.getElementById('ph-tables').innerHTML     = '';
+    document.getElementById('ph-empty').style.display  = 'block';
+    document.getElementById('ph-empty').textContent    =
+      'History cleared. Analyze shipments to start building new patterns.';
+
+    // Show green success banner
+    const successEl = document.getElementById('ph-success');
+    successEl.classList.add('visible');
+    setTimeout(() => successEl.classList.remove('visible'), 6000);
+
+    // Re-enable reset button (it was not disabled, just reset the count)
+    _resetShipmentCount = 0;
+
+  } catch (e) {
+    closeResetModal();
+    showError('Reset failed: ' + e.message);
+  } finally {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'Yes, Reset History';
+  }
+}
+
+// Keyboard: Escape closes the modal.
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeResetModal();
+});
 
 // ---------------------------------------------------------------------------
 // Init

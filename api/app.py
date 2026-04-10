@@ -1694,8 +1694,80 @@ def feedback(request: FeedbackRequest):
 
 
 # ---------------------------------------------------------------------------
-# Pattern History
+# Pattern History — read and reset
 # ---------------------------------------------------------------------------
+
+
+class ResetRequest(BaseModel):
+    """Body for DELETE /api/v1/pattern-history/reset."""
+    confirm: bool = False
+
+
+class ResetResponse(BaseModel):
+    success: bool
+    message: str
+    shipments_deleted: int
+
+
+@app.delete("/api/v1/pattern-history/reset", response_model=ResetResponse)
+def reset_pattern_history(request: ResetRequest):
+    """Permanently delete all pattern learning data.
+
+    Clears ``shipment_history``, ``pattern_outcomes``,
+    ``shipper_profiles``, ``consignee_profiles``,
+    ``route_risk_profiles``, and ``hs_code_baselines``.
+    The schema_migrations table is preserved.
+
+    The caller must include ``{"confirm": true}`` in the request body;
+    omitting it or sending ``false`` returns HTTP 400.
+
+    Returns
+    -------
+    ResetResponse
+        ``success``, human-readable ``message``, and ``shipments_deleted``
+        count for UI feedback and audit purposes.
+    """
+    if _pattern_db is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "PATTERN_LEARNING_DISABLED",
+                "message": "Pattern learning is not enabled on this instance.",
+            },
+        )
+
+    if not request.confirm:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "CONFIRMATION_REQUIRED",
+                "message": (
+                    "Reset requires explicit confirmation. "
+                    "Send {\"confirm\": true} to proceed."
+                ),
+            },
+        )
+
+    try:
+        deleted = _pattern_db.reset()
+    except Exception as exc:
+        logger.error("pattern_db.reset() failed: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "RESET_ERROR", "message": str(exc)},
+        )
+
+    logger.warning(
+        "PATTERN HISTORY RESET at %s — %d shipment record(s) deleted",
+        __import__("datetime").datetime.utcnow().isoformat(timespec="seconds"),
+        deleted,
+    )
+
+    return ResetResponse(
+        success=True,
+        message="Pattern history cleared",
+        shipments_deleted=deleted,
+    )
 
 
 @app.get("/api/v1/pattern-history")
