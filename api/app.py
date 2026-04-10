@@ -4,14 +4,27 @@ POST /api/v1/analyze  — stateless document screening (rule-based, no external 
 GET  /api/v1/health   — liveness check
 """
 
+from __future__ import annotations
+
 import re
 import time
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+
+from api.document_parser import (
+    extract_text,
+    DocumentParserError,
+    ScannedPDFError,
+    PasswordProtectedPDFError,
+    CorruptPDFError,
+    FileSizeError,
+    PageLimitError,
+    UnsupportedFormatError,
+)
 
 from portguard.data.sanctions import get_sanctions_programs
 from portguard.data.section301 import get_section_301
@@ -1043,6 +1056,7 @@ app.add_middleware(
     allow_origins=["*"],
     allow_methods=["POST", "GET", "OPTIONS"],
     allow_headers=["*"],
+    expose_headers=["Content-Type"],
 )
 
 
@@ -1092,5 +1106,143 @@ def analyze(request: AnalyzeRequest):
         recommended_next_steps=result["recommended_next_steps"],
         inconsistencies_found=result["inconsistencies_found"],
         documents_analyzed=len(request.documents),
+        processing_time_seconds=elapsed,
+    )
+
+
+# ---------------------------------------------------------------------------
+# File upload response model
+# ---------------------------------------------------------------------------
+
+class ExtractTextResponse(BaseModel):
+    """Response from POST /api/v1/extract-text."""
+
+    text: str = Field(..., description="Extracted plain text from the uploaded file")
+    filename: str = Field(..., description="Original filename as provided by the client")
+    page_count: int = Field(..., description="Number of pages (always 1 for plain-text files)")
+    warnings: list[str] = Field(
+        default_factory=list,
+        description="Non-fatal extraction warnings, e.g. image-only pages in a mixed PDF",
+    )
+
+
+# ---------------------------------------------------------------------------
+# File upload endpoints
+# ---------------------------------------------------------------------------
+
+
+def _parser_error_to_http(exc: DocumentParserError) -> HTTPException:
+    """Map a DocumentParserError to the appropriate HTTPException.
+
+    FileSizeError and PageLimitError are client errors caused by uploading
+    files that exceed enforced limits (413 / 422).  All others are 422
+    because the file was received successfully but cannot be processed.
+    """
+    status = 413 if isinstance(exc, FileSizeError) else 422
+    return HTTPException(
+        status_code=status,
+        detail={"code": exc.code, "message": str(exc)},
+    )
+
+
+@app.post("/api/v1/extract-text", response_model=ExtractTextResponse)
+async def extract_text_endpoint(file: UploadFile = File(...)):
+    """Extract plain text from an uploaded PDF or text file.
+
+    Returns the extracted text so the caller can review or edit it before
+    submitting to /api/v1/analyze.  This two-step flow is used by the
+    browser demo: the user uploads a file, sees the extracted text in the
+    textarea, and can correct any extraction errors before running analysis.
+
+    Accepts: .pdf (machine-readable), .txt, and other plain-text files.
+    Rejects: scanned PDFs (no text layer), password-protected PDFs,
+             corrupt PDFs, files over 10 MB, PDFs over 50 pages.
+    """
+    raw = await file.read()
+    filename = file.filename or "upload"
+
+    try:
+        result = extract_text(raw, filename)
+    except DocumentParserError as exc:
+        raise _parser_error_to_http(exc)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Unexpected extraction error: {exc}")
+
+    return ExtractTextResponse(
+        text=result.text,
+        filename=filename,
+        page_count=result.page_count,
+        warnings=result.warnings,
+    )
+
+
+@app.post("/api/v1/analyze-files", response_model=AnalyzeResponse)
+async def analyze_files(files: list[UploadFile] = File(...)):
+    """Run full compliance analysis directly from uploaded files.
+
+    Accepts 1–10 PDF or text files in a single multipart request.  Each
+    file is extracted to plain text and then passed through the identical
+    analysis pipeline as POST /api/v1/analyze — the response schema is
+    the same.
+
+    This endpoint is for API clients that prefer a single-step file →
+    analysis flow.  The browser demo uses the two-step extract-then-analyze
+    flow instead (upload to /extract-text, review text, then POST to
+    /analyze).
+    """
+    if not files:
+        raise HTTPException(status_code=422, detail="At least one file is required.")
+    if len(files) > 10:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Maximum 10 files per request; {len(files)} were uploaded.",
+        )
+
+    documents: list[Document] = []
+    extraction_warnings: list[str] = []
+
+    for upload in files:
+        raw = await upload.read()
+        filename = upload.filename or "upload"
+
+        try:
+            result = extract_text(raw, filename)
+        except DocumentParserError as exc:
+            raise _parser_error_to_http(exc)
+        except Exception as exc:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Unexpected extraction error for '{filename}': {exc}",
+            )
+
+        documents.append(Document(raw_text=result.text, filename=filename))
+        for w in result.warnings:
+            extraction_warnings.append(f"{filename}: {w}")
+
+    start = time.monotonic()
+    try:
+        result_data = _analyze_documents(documents)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    elapsed = round(time.monotonic() - start, 3)
+    shipment_raw = result_data.get("shipment_data", {})
+
+    # Surface any per-file extraction warnings as additional explanations
+    # so they appear in the response even though they were non-fatal.
+    if extraction_warnings:
+        result_data["explanations"] = extraction_warnings + result_data.get("explanations", [])
+
+    return AnalyzeResponse(
+        status="completed",
+        shipment_data=ShipmentData(**shipment_raw),
+        risk_score=result_data["risk_score"],
+        risk_level=result_data["risk_level"],
+        decision=result_data["decision"],
+        confidence=result_data["confidence"],
+        explanations=result_data["explanations"],
+        recommended_next_steps=result_data["recommended_next_steps"],
+        inconsistencies_found=result_data["inconsistencies_found"],
+        documents_analyzed=len(documents),
         processing_time_seconds=elapsed,
     )
