@@ -394,6 +394,47 @@
     .data-key  { font-size: .68rem; color: var(--faint); text-transform: uppercase; letter-spacing: .07em; margin-bottom: .15rem; }
     .data-val  { font-size: .82rem; color: var(--text); font-family: 'JetBrains Mono', monospace; word-break: break-all; }
     .data-val.empty { color: var(--faint); font-style: italic; }
+
+    /* ---- File upload ---- */
+    .upload-btn {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--muted);
+      font-family: 'Inter', sans-serif; font-size: .75rem; font-weight: 600;
+      padding: .28rem .75rem; cursor: pointer; transition: all .2s;
+      display: flex; align-items: center; gap: .35rem;
+      flex-shrink: 0; white-space: nowrap;
+    }
+    .upload-btn:hover { border-color: var(--blue); color: #93c5fd; }
+    .file-badge {
+      display: none; align-items: center;
+      background: rgba(59,130,246,.1); border: 1px solid rgba(59,130,246,.25);
+      border-radius: 999px; padding: .15rem .65rem;
+      font-size: .7rem; font-weight: 600; color: #93c5fd;
+      max-width: 20ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .file-badge.visible { display: inline-flex; }
+    .file-badge.pdf { background: rgba(168,85,247,.1); border-color: rgba(168,85,247,.3); color: #c084fc; }
+    .extract-status {
+      display: none; align-items: center; gap: .55rem;
+      font-size: .8rem; margin-bottom: .5rem;
+      padding: .5rem .75rem; border-radius: 7px;
+    }
+    .extract-status.loading {
+      display: flex;
+      background: rgba(59,130,246,.08); border: 1px solid rgba(59,130,246,.2);
+      color: #93c5fd;
+    }
+    .extract-status.error {
+      display: flex;
+      background: rgba(239,68,68,.08); border: 1px solid rgba(239,68,68,.25);
+      color: #fca5a5;
+    }
+    .extract-spinner {
+      width: 14px; height: 14px; flex-shrink: 0;
+      border: 2px solid rgba(147,197,253,.3); border-top-color: #93c5fd;
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
   </style>
 </head>
 <body>
@@ -631,8 +672,15 @@ function renderPane() {
       <span class="filename-label">Filename</span>
       <input class="filename-input" type="text" placeholder="e.g. bill_of_lading.txt"
              value="${escHtml(tab.filename)}" id="fname-${tab.id}">
+      <input type="file" accept=".pdf,.txt,text/plain,application/pdf"
+             id="ffile-${tab.id}" style="display:none">
+      <button class="upload-btn" onclick="document.getElementById('ffile-${tab.id}').click()">
+        &#8613; Upload file
+      </button>
+      <span class="file-badge" id="fbadge-${tab.id}"></span>
     </div>
-    <textarea class="doc-text" placeholder="Paste raw document text here..."
+    <div class="extract-status" id="fstatus-${tab.id}"></div>
+    <textarea class="doc-text" placeholder="Paste raw document text here, or upload a .pdf / .txt file above."
               id="text-${tab.id}">${escHtml(tab.text)}</textarea>
   `;
 
@@ -645,6 +693,11 @@ function renderPane() {
   });
   document.getElementById('text-' + tab.id).addEventListener('input', e => {
     tab.text = e.target.value;
+  });
+  document.getElementById('ffile-' + tab.id).addEventListener('change', e => {
+    const file = e.target.files[0];
+    if (file) handleFileUpload(tab.id, file);
+    e.target.value = ''; // reset so re-uploading same file triggers change again
   });
 }
 
@@ -1257,6 +1310,96 @@ function toggleShipmentData() {
   const arrow = document.getElementById('toggle-arrow');
   const open = grid.classList.toggle('open');
   arrow.classList.toggle('open', open);
+}
+
+// ---------------------------------------------------------------------------
+// File upload / extraction
+// ---------------------------------------------------------------------------
+async function handleFileUpload(tabId, file) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+
+  const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
+  const statusEl = document.getElementById('fstatus-' + tabId);
+  const badgeEl  = document.getElementById('fbadge-' + tabId);
+  const fnameEl  = document.getElementById('fname-' + tabId);
+  const textEl   = document.getElementById('text-' + tabId);
+
+  // Show loading state; hide stale badge
+  if (badgeEl) badgeEl.className = 'file-badge';
+  statusEl.className = 'extract-status loading';
+  statusEl.innerHTML = isPdf
+    ? '<div class="extract-spinner"></div><span>PDF detected \u2014 extracting text for analysis\u2026</span>'
+    : '<div class="extract-spinner"></div><span>Reading file\u2026</span>';
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/extract-text', {
+      method: 'POST',
+      body: formData
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const detail = err.detail || {};
+      throw { code: (typeof detail === 'object' ? detail.code : null),
+              message: (typeof detail === 'object' ? detail.message : null) || `HTTP ${res.status}` };
+    }
+
+    const data = await res.json();
+
+    // Populate textarea and tab state
+    if (textEl) { textEl.value = data.text; tab.text = data.text; }
+
+    // Auto-fill filename if the user hasn't typed one yet
+    if (fnameEl && !fnameEl.value) {
+      fnameEl.value = file.name;
+      tab.filename = file.name;
+      const tabBtn = document.querySelector(`.tab-btn[data-id="${tabId}"] span`);
+      if (tabBtn) tabBtn.textContent = file.name;
+    }
+
+    // Show file type badge
+    if (badgeEl) {
+      badgeEl.textContent = isPdf ? `PDF \u2022 ${data.page_count}p` : 'TXT';
+      badgeEl.className = 'file-badge visible' + (isPdf ? ' pdf' : '');
+    }
+
+    // Show non-fatal warnings (e.g. mixed scanned/text pages) in status bar
+    if (data.warnings && data.warnings.length) {
+      statusEl.className = 'extract-status error';
+      statusEl.innerHTML = `<span>&#9888;</span><span>${escHtml(data.warnings[0])}</span>`;
+    } else {
+      // Clear the loading state on success
+      statusEl.className = 'extract-status';
+      statusEl.innerHTML = '';
+    }
+
+  } catch (err) {
+    const code = err.code || '';
+    let userMsg;
+    if (code === 'SCANNED_PDF') {
+      userMsg = 'This PDF is a scanned image with no machine-readable text. Use OCR software to make it searchable, then try again.';
+    } else if (code === 'PASSWORD_PROTECTED') {
+      userMsg = 'This PDF is password-protected. Remove the password and re-upload.';
+    } else if (code === 'CORRUPT_PDF') {
+      userMsg = 'This PDF appears to be corrupt or malformed. Try exporting a fresh copy.';
+    } else if (code === 'FILE_TOO_LARGE') {
+      userMsg = 'File exceeds the 10 MB limit. Please upload a smaller file.';
+    } else if (code === 'TOO_MANY_PAGES') {
+      userMsg = 'PDF has too many pages (max 50). Split the document and try again.';
+    } else if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError'))) {
+      userMsg = 'Cannot reach the API. Make sure the server is running.';
+    } else {
+      userMsg = err.message || 'Could not extract text from this file.';
+    }
+
+    statusEl.className = 'extract-status error';
+    statusEl.innerHTML = `<span>&#9888;</span><span>${escHtml(userMsg)}</span>`;
+    if (badgeEl) badgeEl.className = 'file-badge'; // hide badge on failure
+  }
 }
 
 // ---------------------------------------------------------------------------

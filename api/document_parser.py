@@ -23,6 +23,7 @@ UnsupportedFormatError   — File is not a recognised format
 from __future__ import annotations
 
 import io
+import os
 from dataclasses import dataclass, field
 
 import pdfplumber
@@ -43,6 +44,10 @@ _MIN_TEXT_CHARS: int = 80
 
 # Magic bytes that identify a PDF regardless of filename extension.
 _PDF_MAGIC: bytes = b"%PDF"
+
+# File extensions that are treated as plain text.  Anything not in this set
+# and not recognised as a PDF raises UnsupportedFormatError.
+_PLAIN_TEXT_EXTENSIONS: frozenset[str] = frozenset({".txt"})
 
 # ---------------------------------------------------------------------------
 # Result and error types
@@ -304,5 +309,12 @@ def extract_text(file_bytes: bytes, filename: str) -> ExtractionResult:
 
     if _is_pdf(file_bytes, filename):
         return _extract_pdf_text(file_bytes)
+
+    ext = os.path.splitext(filename.lower())[1]
+    if ext not in _PLAIN_TEXT_EXTENSIONS:
+        raise UnsupportedFormatError(
+            f"'{ext or 'unknown'}' files are not supported. "
+            "Please upload a .pdf or .txt file."
+        )
 
     return _extract_plain_text(file_bytes, filename)

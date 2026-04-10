@@ -75,7 +75,8 @@ POST /api/v1/analyze
 
 Additional endpoints:
 - `GET /api/v1/health` — liveness check
-- `GET /demo` — browser UI (`demo.html`) with 3 pre-loaded test scenarios
+- `POST /api/v1/extract-text` — upload a `.pdf` or `.txt` file; returns extracted text, page count, and any warnings
+- `GET /demo` — browser UI (`demo.html`) with 3 pre-loaded test scenarios and file upload support
 
 ### Entry point 2 — Structured screening pipeline (`portguard/`)
 
@@ -158,6 +159,7 @@ portguard/
 
 api/
   app.py                  FastAPI app (document analysis, stateless)
+  document_parser.py      PDF and plain-text extraction (pdfplumber)
 
 main.py                   CLI runner: 3 test scenarios, prints results
 run_demo.py               Starts API server, opens demo in browser
@@ -178,7 +180,7 @@ cd PORTGUARD
 pip install -r requirements.txt
 ```
 
-Dependencies: `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `python-dotenv`, `httpx`, `pytest`, `pytest-asyncio`, `pytest-mock`.
+Dependencies: `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `python-dotenv`, `httpx`, `pdfplumber`, `python-multipart`, `pytest`, `pytest-asyncio`, `pytest-mock`.
 
 ---
 
@@ -302,11 +304,39 @@ uvicorn api.app:app --reload --port 8000
 # Health check
 curl http://localhost:8000/api/v1/health
 
+# Upload a document and extract its text
+curl -X POST http://localhost:8000/api/v1/extract-text \
+  -F "file=@bill_of_lading.pdf"
+
 # Analyze a shipment
 curl -X POST http://localhost:8000/api/v1/analyze \
   -H "Content-Type: application/json" \
   -d @tests/sample_documents/02_suspicious_shipment.json
 ```
+
+**`POST /api/v1/extract-text` — file upload**
+
+Accepts a `.pdf` or `.txt` file via multipart form upload. Returns the extracted text ready to pass to `/api/v1/analyze`.
+
+```json
+{
+  "text": "--- Page 1 ---\nCOMMERCIAL INVOICE\n...",
+  "filename": "commercial_invoice.pdf",
+  "page_count": 1,
+  "warnings": []
+}
+```
+
+Error responses use structured `detail` bodies with a machine-readable `code`:
+
+| HTTP | `code` | Cause |
+|---|---|---|
+| 413 | `FILE_TOO_LARGE` | File exceeds 10 MB |
+| 422 | `SCANNED_PDF` | PDF has no machine-readable text layer (scanned image) |
+| 422 | `PASSWORD_PROTECTED` | PDF is encrypted |
+| 422 | `CORRUPT_PDF` | PDF bytes are malformed |
+| 422 | `TOO_MANY_PAGES` | PDF exceeds 50 pages |
+| 422 | `UNSUPPORTED_FORMAT` | File extension is not `.pdf` or `.txt` |
 
 **Request:**
 ```json
@@ -462,7 +492,8 @@ Three sample request payloads in `tests/sample_documents/`:
 ## Limitations
 
 - **Static regulatory data.** Section 301 prefix tables, AD/CVD orders, and OFAC program lists are embedded at build time. They do not update automatically when regulations change.
-- **Document parsing is regex-based.** Field extraction works on well-structured plain-text documents. Scanned PDFs, heavily formatted layouts, or unusual document structures may not extract correctly.
+- **Document parsing is regex-based.** Field extraction works on well-structured text. Heavily formatted layouts or unusual document structures may not extract correctly.
+- **PDF support is text-layer only.** `POST /api/v1/extract-text` uses pdfplumber to extract machine-readable text from PDFs (up to 50 pages, 10 MB). Scanned PDFs with no text layer, password-protected PDFs, and corrupt PDFs are rejected with descriptive error codes. For scanned documents, run OCR before uploading.
 - **ISF checks are partial.** Only 4 of the 10 ISF importer-provided data elements can be verified from document text. Elements 2 (buyer), 6 (ship-to party), 9 (consolidator), and 10 (container stuffing location) are not checked.
 - **In-memory report storage.** The structured pipeline stores reports in a Python dict. Reports are lost on process restart. Not suitable for multi-worker deployments.
 - **No authentication.** Neither API endpoint has access control.
