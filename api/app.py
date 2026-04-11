@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, UploadFile, File
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -60,6 +60,24 @@ if os.getenv("PORTGUARD_PATTERN_LEARNING_ENABLED", "true").lower() not in ("0", 
         logger.warning(
             "Pattern learning init failed (%s) — running rule-only mode", _exc
         )
+
+# ---------------------------------------------------------------------------
+# Dashboard analytics — module-level singleton (best-effort; never crashes app)
+# ---------------------------------------------------------------------------
+# Shares the same db_path as the pattern learning DB.  Opens a separate
+# read-only connection so analytics queries never contend with PatternDB writes.
+
+_dashboard_analytics = None
+
+try:
+    from portguard.analytics import DashboardAnalytics as _DashboardAnalytics
+    _analytics_db_path = os.getenv("PORTGUARD_PATTERN_DB_PATH", "portguard_patterns.db")
+    _dashboard_analytics = _DashboardAnalytics(_analytics_db_path)
+    logger.info("DashboardAnalytics initialized at %s", _analytics_db_path)
+except Exception as _exc:
+    logger.warning(
+        "DashboardAnalytics init failed (%s) — dashboard endpoints will return 503", _exc
+    )
 
 # Blend weights (task spec: rule 65%, pattern 35%)
 _RULE_WEIGHT = 0.65
@@ -1828,3 +1846,276 @@ def pattern_history(current_org: dict = Depends(get_current_organization)):
             status_code=500,
             detail={"code": "STATS_ERROR", "message": str(exc)},
         )
+
+
+# ---------------------------------------------------------------------------
+# Dashboard analytics endpoints
+# ---------------------------------------------------------------------------
+# All endpoints:
+#   • Require a valid JWT Bearer token (get_current_organization dependency).
+#   • Return HTTP 503 when the analytics DB is unavailable (not initialized).
+#   • Never return HTTP 500 for empty-data scenarios — the DashboardAnalytics
+#     methods always return safe zero/empty responses in that case.
+#   • Accept an optional `days` query parameter where relevant (1–365).
+# ---------------------------------------------------------------------------
+
+
+def _require_analytics() -> None:
+    """Raise HTTP 503 if the DashboardAnalytics singleton is not available.
+
+    Called at the top of every dashboard endpoint so the error response is
+    consistent and the reason is machine-readable via the ``code`` field.
+    """
+    if _dashboard_analytics is None or not _dashboard_analytics.available:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "ANALYTICS_UNAVAILABLE",
+                "message": (
+                    "Analytics are not available on this instance. "
+                    "Ensure pattern learning is enabled and the database "
+                    "file is accessible, then restart the server."
+                ),
+            },
+        )
+
+
+@app.get("/api/v1/dashboard/summary")
+def dashboard_summary(
+    current_org: dict = Depends(get_current_organization),
+):
+    """Return high-level KPI metrics for the dashboard summary cards.
+
+    Counts all shipments and officer outcomes recorded for the authenticated
+    organization across all time.  Returns zeros when no history exists.
+
+    Response fields
+    ---------------
+    total_shipments (int):
+        Total rows in ``shipment_history`` for this organization.
+    total_confirmed_fraud (int):
+        Count of ``CONFIRMED_FRAUD`` outcomes submitted via
+        ``POST /api/v1/feedback``.
+    total_cleared (int):
+        Count of ``CLEARED`` outcomes.
+    total_unresolved (int):
+        Count of ``UNRESOLVED`` outcomes still pending resolution.
+    fraud_rate (float):
+        ``confirmed_fraud / (confirmed_fraud + cleared)`` rounded to 4 dp.
+        ``0.0`` when no resolved outcomes exist.
+    avg_risk_score (float):
+        Mean ``final_risk_score`` across all shipments, rounded to 4 dp.
+        ``0.0`` when no shipments exist.
+    avg_pattern_score (float | null):
+        Mean ``pattern_score`` for shipments where the pattern engine
+        contributed (non-cold-start).  ``null`` when none exist.
+    """
+    _require_analytics()
+    return _dashboard_analytics.get_summary_stats(
+        organization_id=current_org["organization_id"]
+    )
+
+
+@app.get("/api/v1/dashboard/decisions")
+def dashboard_decisions(
+    current_org: dict = Depends(get_current_organization),
+):
+    """Return the count and percentage for each decision type.
+
+    All five decision types are always present in the response even if their
+    count is zero, so the frontend can render a complete donut chart without
+    needing to handle missing keys.
+
+    Response fields
+    ---------------
+    total (int):
+        Sum of all decision counts.
+    decisions (list):
+        One entry per decision type, sorted highest-count-first.
+        Each entry: ``{decision, label, count, percentage}``.
+        ``label`` is a short human-readable string (e.g. ``"Flag"``).
+        ``percentage`` is ``count / total * 100`` rounded to 1 dp.
+    """
+    _require_analytics()
+    return _dashboard_analytics.get_decision_breakdown(
+        organization_id=current_org["organization_id"]
+    )
+
+
+@app.get("/api/v1/dashboard/fraud-trend")
+def dashboard_fraud_trend(
+    days: int = Query(default=30, ge=1, le=365, description="Rolling window in calendar days"),
+    current_org: dict = Depends(get_current_organization),
+):
+    """Return a daily time-series of fraud counts and fraud rates.
+
+    The series spans exactly *days* calendar days ending today.  Days with no
+    recorded shipments return ``total=0, fraud_count=0, fraud_rate=0.0`` so
+    the frontend always receives a continuous x-axis.
+
+    Query parameters
+    ----------------
+    days (int, 1–365):
+        Number of calendar days to include.  Default: 30.
+
+    Response fields
+    ---------------
+    window_days (int):
+        The *days* value used.
+    total_in_window (int):
+        Total shipments analyzed within the window.
+    fraud_in_window (int):
+        Total confirmed fraud events within the window.
+    trend (list):
+        One entry per day, oldest first.
+        Each: ``{day (YYYY-MM-DD), total, fraud_count, fraud_rate}``.
+    """
+    _require_analytics()
+    return _dashboard_analytics.get_fraud_trend(
+        organization_id=current_org["organization_id"],
+        days=days,
+    )
+
+
+@app.get("/api/v1/dashboard/top-shippers")
+def dashboard_top_shippers(
+    limit: int = Query(default=10, ge=1, le=50, description="Maximum number of shippers to return"),
+    current_org: dict = Depends(get_current_organization),
+):
+    """Return the riskiest shippers ranked by Bayesian reputation score.
+
+    Uses the live ``reputation_score`` stored in ``shipper_profiles``, which
+    is updated on every ``POST /api/v1/analyze`` and ``POST /api/v1/feedback``
+    call.  No recomputation is performed at query time.
+
+    Only shippers with at least one recorded analysis are included.  Trusted
+    shippers (auto-trusted or manually marked) are included with their
+    ``is_trusted`` flag set so officers can audit the trust list.
+
+    Query parameters
+    ----------------
+    limit (int, 1–50):
+        Maximum number of shippers to return.  Default: 10.
+
+    Response fields
+    ---------------
+    total_profiles (int):
+        Total distinct shipper profiles for this org (regardless of limit).
+    shippers (list):
+        Each entry: ``{name, reputation_score, total_analyses,
+        total_confirmed_fraud, total_cleared, is_trusted}``.
+        Sorted by ``reputation_score`` descending (most suspicious first).
+    """
+    _require_analytics()
+    return _dashboard_analytics.get_top_risky_shippers(
+        organization_id=current_org["organization_id"],
+        limit=limit,
+    )
+
+
+@app.get("/api/v1/dashboard/top-countries")
+def dashboard_top_countries(
+    limit: int = Query(default=10, ge=1, le=50, description="Maximum number of countries to return"),
+    current_org: dict = Depends(get_current_organization),
+):
+    """Return origin countries ranked by confirmed fraud count and average risk score.
+
+    Only shipments where ``origin_iso2`` was successfully extracted from the
+    document are included.  The primary sort is confirmed fraud count (hard
+    evidence); the secondary sort is average risk score (leading indicator
+    for countries with few or no confirmed outcomes yet).
+
+    Query parameters
+    ----------------
+    limit (int, 1–50):
+        Maximum number of countries to return.  Default: 10.
+
+    Response fields
+    ---------------
+    total_countries (int):
+        Number of distinct origin countries seen for this org.
+    countries (list):
+        Each entry: ``{iso2, country_name, total_shipments,
+        confirmed_fraud_count, avg_risk_score, fraud_rate}``.
+        Sorted by ``confirmed_fraud_count`` then ``avg_risk_score`` descending.
+    """
+    _require_analytics()
+    return _dashboard_analytics.get_top_risky_countries(
+        organization_id=current_org["organization_id"],
+        limit=limit,
+    )
+
+
+@app.get("/api/v1/dashboard/top-hs-codes")
+def dashboard_top_hs_codes(
+    limit: int = Query(default=10, ge=1, le=50, description="Maximum number of HS chapters to return"),
+    current_org: dict = Depends(get_current_organization),
+):
+    """Return HTS chapters ranked by flagged shipment count and flag rate.
+
+    Groups shipments by ``hs_chapter_primary`` (the 2-digit HTS chapter of
+    the primary declared HTS code).  A shipment is "flagged" when its
+    ``final_decision`` is anything other than ``APPROVE``.
+
+    Shipments where no HTS code was extracted from the document
+    (``hs_chapter_primary IS NULL``) are excluded.
+
+    Query parameters
+    ----------------
+    limit (int, 1–50):
+        Maximum number of chapters to return.  Default: 10.
+
+    Response fields
+    ---------------
+    total_chapters (int):
+        Number of distinct HTS chapters seen for this org.
+    hs_codes (list):
+        Each entry: ``{chapter, label, total_shipments, flagged_count,
+        flag_rate, avg_risk_score}``.
+        Sorted by ``flagged_count`` then ``avg_risk_score`` descending.
+        ``label`` maps the 2-digit chapter to a human-readable description
+        (e.g. ``"Ch.85 — Electronics"``).
+    """
+    _require_analytics()
+    return _dashboard_analytics.get_top_flagged_hs_codes(
+        organization_id=current_org["organization_id"],
+        limit=limit,
+    )
+
+
+@app.get("/api/v1/dashboard/recent-activity")
+def dashboard_recent_activity(
+    limit: int = Query(default=20, ge=1, le=100, description="Maximum number of rows to return"),
+    current_org: dict = Depends(get_current_organization),
+):
+    """Return the most recently analyzed shipments as an activity feed.
+
+    Each entry carries enough data to render one row in the activity feed:
+    timestamp, shipper name, origin country, decision, risk score, and the
+    resolved officer verdict if one has been submitted.
+
+    Results are ordered by ``analyzed_at`` descending (newest first).
+    The ``outcome`` field is ``null`` when no feedback has been submitted
+    for a shipment.
+
+    Query parameters
+    ----------------
+    limit (int, 1–100):
+        Maximum number of rows to return.  Default: 20.
+
+    Response fields
+    ---------------
+    total_shown (int):
+        Number of entries in *activity* (≤ *limit*).
+    activity (list):
+        Each entry: ``{analysis_id, analyzed_at, shipper_name, origin_iso2,
+        final_decision, final_risk_score, pattern_cold_start, outcome,
+        officer_id}``.
+        ``outcome`` is one of ``"CONFIRMED_FRAUD"``, ``"CLEARED"``,
+        ``"UNRESOLVED"``, or ``null`` (no feedback submitted yet).
+    """
+    _require_analytics()
+    return _dashboard_analytics.get_recent_activity(
+        organization_id=current_org["organization_id"],
+        limit=limit,
+    )

@@ -745,7 +745,226 @@
       background: rgba(239,68,68,.25); border-color: var(--red); color: var(--red);
     }
     .modal-confirm:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ======================================================
+       SECTION NAV (Analyze | Dashboard)
+       ====================================================== */
+    .section-nav {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 0 2rem;
+      display: flex; align-items: center; gap: 0;
+    }
+    .section-nav-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--muted); font-family: 'Inter', sans-serif;
+      font-size: .875rem; font-weight: 600; letter-spacing: .03em;
+      padding: .85rem 1.25rem; border-bottom: 2px solid transparent;
+      margin-bottom: -1px; transition: color .18s, border-color .18s;
+      display: flex; align-items: center; gap: .45rem;
+    }
+    .section-nav-btn:hover { color: var(--text); }
+    .section-nav-btn.active { color: var(--blue); border-bottom-color: var(--blue); }
+    .section-nav-btn svg { opacity: .7; }
+    .section-nav-btn.active svg { opacity: 1; }
+
+    /* ======================================================
+       DASHBOARD PANEL
+       ====================================================== */
+    #dashboard-panel { display: none; }
+    #dashboard-panel.visible { display: block; }
+    #analyze-panel.hidden { display: none; }
+
+    .dash-container {
+      max-width: 1100px; margin: 0 auto;
+      padding: 2rem 1.5rem 5rem;
+    }
+
+    .dash-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 2rem;
+    }
+    .dash-title {
+      font-size: 1.25rem; font-weight: 700; color: var(--text);
+    }
+    .dash-subtitle { font-size: .8rem; color: var(--muted); margin-top: .2rem; }
+    .dash-refresh-btn {
+      background: var(--card); border: 1px solid var(--border);
+      color: var(--muted); font-family: 'Inter', sans-serif;
+      font-size: .8rem; font-weight: 500; padding: .45rem .9rem;
+      border-radius: var(--radius); cursor: pointer; transition: all .18s;
+      display: flex; align-items: center; gap: .4rem;
+    }
+    .dash-refresh-btn:hover { color: var(--text); border-color: var(--border-hi); }
+    .dash-refresh-btn.spinning svg { animation: spin .7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* --- KPI Cards --- */
+    .kpi-row {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 1rem; margin-bottom: 1.5rem;
+    }
+    @media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 600px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+
+    .kpi-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.1rem 1.2rem;
+      display: flex; flex-direction: column; gap: .3rem;
+      transition: border-color .18s;
+    }
+    .kpi-card:hover { border-color: var(--border-hi); }
+    .kpi-label {
+      font-size: .7rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted);
+    }
+    .kpi-value {
+      font-size: 1.75rem; font-weight: 800; color: var(--text);
+      font-family: 'JetBrains Mono', monospace; line-height: 1;
+    }
+    .kpi-value.danger { color: var(--red); }
+    .kpi-value.warn   { color: var(--amber); }
+    .kpi-value.good   { color: var(--green); }
+    .kpi-sub { font-size: .72rem; color: var(--muted); }
+
+    /* skeleton pulse */
+    .skel {
+      background: linear-gradient(90deg, var(--card-hi) 25%, var(--border) 50%, var(--card-hi) 75%);
+      background-size: 200% 100%;
+      animation: skel-pulse 1.4s ease infinite;
+      border-radius: 4px;
+    }
+    @keyframes skel-pulse {
+      0%   { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+    .kpi-value.skel { height: 1.75rem; width: 70%; margin: .2rem 0; }
+    .kpi-sub.skel   { height: .65rem; width: 55%; }
+
+    /* --- Chart Grid --- */
+    .chart-row {
+      display: grid; gap: 1.25rem; margin-bottom: 1.25rem;
+    }
+    .chart-row-2 { grid-template-columns: 1fr 1fr; }
+    @media (max-width: 780px) { .chart-row-2 { grid-template-columns: 1fr; } }
+
+    .chart-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1.25rem;
+      display: flex; flex-direction: column;
+    }
+    .chart-title {
+      font-size: .8rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--muted); margin-bottom: 1rem;
+    }
+    .chart-canvas-wrap { position: relative; flex: 1; min-height: 200px; }
+    .chart-canvas-wrap canvas { width: 100% !important; }
+
+    /* --- Donut legend --- */
+    .donut-layout { display: flex; align-items: center; gap: 1.5rem; }
+    .donut-wrap { width: 160px; flex-shrink: 0; position: relative; }
+    .donut-center {
+      position: absolute; inset: 0; display: flex;
+      flex-direction: column; align-items: center; justify-content: center;
+      pointer-events: none;
+    }
+    .donut-center-val { font-size: 1.3rem; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+    .donut-center-lbl { font-size: .65rem; color: var(--muted); text-transform: uppercase; letter-spacing: .07em; }
+    .donut-legend { display: flex; flex-direction: column; gap: .55rem; flex: 1; }
+    .donut-item { display: flex; align-items: center; gap: .55rem; font-size: .8rem; }
+    .donut-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+    .donut-item-label { color: var(--muted); flex: 1; }
+    .donut-item-count { font-weight: 600; font-family: 'JetBrains Mono', monospace; }
+    .donut-item-pct { color: var(--faint); font-size: .72rem; min-width: 2.8rem; text-align: right; }
+
+    /* --- Activity Feed --- */
+    .activity-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden; margin-bottom: 1.25rem;
+    }
+    .activity-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);
+    }
+    .activity-title {
+      font-size: .8rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--muted);
+    }
+    .activity-refresh-note { font-size: .7rem; color: var(--faint); }
+    .activity-table-wrap { overflow-x: auto; }
+    table.activity-tbl {
+      width: 100%; border-collapse: collapse;
+      font-size: .8rem;
+    }
+    .activity-tbl th {
+      padding: .6rem 1rem; text-align: left;
+      font-size: .68rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--faint);
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+    .activity-tbl td {
+      padding: .65rem 1rem; border-bottom: 1px solid rgba(26,45,69,.5);
+      vertical-align: middle; white-space: nowrap;
+    }
+    .activity-tbl tr:last-child td { border-bottom: none; }
+    .activity-tbl tr:hover td { background: var(--card-hi); }
+    .act-time { color: var(--faint); font-family: 'JetBrains Mono', monospace; font-size: .72rem; }
+    .act-shipper { font-weight: 500; max-width: 160px; overflow: hidden; text-overflow: ellipsis; }
+    .act-origin { color: var(--muted); font-family: 'JetBrains Mono', monospace; }
+    .act-score { font-family: 'JetBrains Mono', monospace; font-weight: 600; }
+    .act-score.score-hi   { color: var(--red); }
+    .act-score.score-mid  { color: var(--amber); }
+    .act-score.score-low  { color: var(--green); }
+    .act-badge {
+      display: inline-block; padding: .2rem .55rem;
+      border-radius: 4px; font-size: .68rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .05em;
+    }
+    .act-signals { color: var(--muted); font-size: .72rem; max-width: 200px;
+      overflow: hidden; text-overflow: ellipsis; }
+    .act-outcome { font-size: .72rem; font-weight: 600; }
+    .act-outcome.fraud  { color: var(--red); }
+    .act-outcome.clear  { color: var(--green); }
+    .act-outcome.none   { color: var(--faint); }
+
+    /* decision badge colors */
+    .badge-approve    { background: rgba(34,197,94,.15); color: var(--green); }
+    .badge-review     { background: rgba(168,85,247,.15); color: var(--purple); }
+    .badge-flag       { background: rgba(249,115,22,.15); color: var(--orange); }
+    .badge-info       { background: rgba(245,158,11,.15); color: var(--amber); }
+    .badge-reject     { background: rgba(239,68,68,.15); color: var(--red); }
+
+    /* skel rows */
+    .skel-row td { padding: .8rem 1rem; }
+    .skel-cell { height: .75rem; border-radius: 3px; }
+
+    /* --- Empty state --- */
+    .dash-empty {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; padding: 5rem 2rem; text-align: center;
+      gap: 1rem;
+    }
+    .dash-empty-icon {
+      width: 64px; height: 64px;
+      background: var(--card-hi); border: 1px solid var(--border);
+      border-radius: 50%; display: flex; align-items: center; justify-content: center;
+      font-size: 1.6rem;
+    }
+    .dash-empty-title { font-size: 1.1rem; font-weight: 700; }
+    .dash-empty-sub { font-size: .875rem; color: var(--muted); max-width: 360px; }
+    .dash-empty-cta {
+      background: var(--blue); color: #fff;
+      border: none; cursor: pointer; font-family: 'Inter', sans-serif;
+      font-size: .875rem; font-weight: 600; padding: .65rem 1.4rem;
+      border-radius: var(--radius); transition: background .18s;
+      display: flex; align-items: center; gap: .5rem;
+    }
+    .dash-empty-cta:hover { background: var(--blue-dim); }
+
   </style>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 
@@ -837,6 +1056,27 @@
     </div>
   </div>
 </header>
+
+<!-- ===================== SECTION NAV ===================== -->
+<nav class="section-nav" id="section-nav" style="display:none">
+  <button class="section-nav-btn active" id="nav-analyze" onclick="showSection('analyze')">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path d="M9 12h6M9 16h6M7 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/>
+      <rect x="7" y="2" width="10" height="4" rx="1"/>
+    </svg>
+    Analyze
+  </button>
+  <button class="section-nav-btn" id="nav-dashboard" onclick="showSection('dashboard')">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>
+      <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
+    </svg>
+    Dashboard
+  </button>
+</nav>
+
+<!-- ===================== ANALYZE PANEL ===================== -->
+<div id="analyze-panel">
 
 <!-- ===================== HERO ===================== -->
 <div class="hero">
@@ -1083,6 +1323,123 @@
 
 </div><!-- /container -->
 
+</div><!-- /analyze-panel -->
+
+<!-- ===================== DASHBOARD PANEL ===================== -->
+<div id="dashboard-panel">
+  <div class="dash-container">
+
+    <!-- Header row -->
+    <div class="dash-header">
+      <div>
+        <div class="dash-title">Analytics Dashboard</div>
+        <div class="dash-subtitle" id="dash-last-updated">Loading…</div>
+      </div>
+      <button class="dash-refresh-btn" id="dash-refresh-btn" onclick="loadDashboard(true)">
+        <svg id="dash-refresh-icon" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+        Refresh
+      </button>
+    </div>
+
+    <!-- KPI row -->
+    <div class="kpi-row" id="kpi-row">
+      <!-- skeleton placeholders (replaced on load) -->
+      <div class="kpi-card"><div class="kpi-label">Total Shipments</div><div class="kpi-value skel skel"></div><div class="kpi-sub skel skel"></div></div>
+      <div class="kpi-card"><div class="kpi-label">Fraud Rate</div><div class="kpi-value skel skel"></div><div class="kpi-sub skel skel"></div></div>
+      <div class="kpi-card"><div class="kpi-label">Confirmed Fraud</div><div class="kpi-value skel skel"></div><div class="kpi-sub skel skel"></div></div>
+      <div class="kpi-card"><div class="kpi-label">Avg Risk Score</div><div class="kpi-value skel skel"></div><div class="kpi-sub skel skel"></div></div>
+      <div class="kpi-card"><div class="kpi-label">Pattern History</div><div class="kpi-value skel skel"></div><div class="kpi-sub skel skel"></div></div>
+    </div>
+
+    <!-- Charts row 1: Trend + Donut -->
+    <div class="chart-row chart-row-2">
+      <div class="chart-card" style="min-height:280px">
+        <div class="chart-title">Fraud Rate Trend — Last 30 Days</div>
+        <div class="chart-canvas-wrap">
+          <canvas id="chart-trend"></canvas>
+        </div>
+      </div>
+      <div class="chart-card" style="min-height:280px">
+        <div class="chart-title">Decision Breakdown</div>
+        <div class="donut-layout">
+          <div class="donut-wrap">
+            <canvas id="chart-donut" width="160" height="160"></canvas>
+            <div class="donut-center">
+              <div class="donut-center-val" id="donut-total">—</div>
+              <div class="donut-center-lbl">total</div>
+            </div>
+          </div>
+          <div class="donut-legend" id="donut-legend">
+            <!-- injected by JS -->
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Charts row 2: Countries + Shippers -->
+    <div class="chart-row chart-row-2">
+      <div class="chart-card" style="min-height:300px">
+        <div class="chart-title">Top Origin Countries by Fraud Rate</div>
+        <div class="chart-canvas-wrap" style="min-height:250px">
+          <canvas id="chart-countries"></canvas>
+        </div>
+      </div>
+      <div class="chart-card" style="min-height:300px">
+        <div class="chart-title">Top Shippers by Flag Count</div>
+        <div class="chart-canvas-wrap" style="min-height:250px">
+          <canvas id="chart-shippers"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent activity -->
+    <div class="activity-card">
+      <div class="activity-header">
+        <div class="activity-title">Recent Activity</div>
+        <div class="activity-refresh-note" id="activity-refresh-note">Auto-refreshes every 30s</div>
+      </div>
+      <div class="activity-table-wrap">
+        <table class="activity-tbl">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Shipper</th>
+              <th>Origin</th>
+              <th>Decision</th>
+              <th>Risk</th>
+              <th>Outcome</th>
+              <th>Signals</th>
+            </tr>
+          </thead>
+          <tbody id="activity-tbody">
+            <!-- skeleton rows -->
+            <tr class="skel-row"><td><div class="skel-cell skel" style="width:80px"></div></td><td><div class="skel-cell skel" style="width:120px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:100px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:60px"></div></td><td><div class="skel-cell skel" style="width:140px"></div></td></tr>
+            <tr class="skel-row"><td><div class="skel-cell skel" style="width:80px"></div></td><td><div class="skel-cell skel" style="width:100px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:110px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:60px"></div></td><td><div class="skel-cell skel" style="width:160px"></div></td></tr>
+            <tr class="skel-row"><td><div class="skel-cell skel" style="width:80px"></div></td><td><div class="skel-cell skel" style="width:140px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:90px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:60px"></div></td><td><div class="skel-cell skel" style="width:120px"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Empty state (hidden until detected) -->
+    <div class="dash-empty" id="dash-empty" style="display:none">
+      <div class="dash-empty-icon">&#128202;</div>
+      <div class="dash-empty-title">No shipments analyzed yet</div>
+      <div class="dash-empty-sub">Run your first analysis to see fraud trends, decision breakdowns, and shipper intelligence appear here.</div>
+      <button class="dash-empty-cta" onclick="showSection('analyze')">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M9 12h6M9 16h6M7 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/>
+          <rect x="7" y="2" width="10" height="4" rx="1"/>
+        </svg>
+        Go to Analyze
+      </button>
+    </div>
+
+  </div>
+</div><!-- /dashboard-panel -->
+
 <script>
 'use strict';
 
@@ -1138,6 +1495,9 @@ function hideAuthOverlay() {
   document.getElementById('header-org').style.display   = 'flex';
   document.getElementById('logout-btn').style.display   = 'block';
   document.getElementById('header-org-name').textContent = _authOrgName || '';
+  // Show section navigation now that user is authenticated
+  const nav = document.getElementById('section-nav');
+  if (nav) nav.style.display = 'flex';
 }
 
 // ---------------------------------------------------------------------------
@@ -1286,6 +1646,7 @@ async function handleRegister(e) {
 
 async function handleLogout() {
   if (!_authToken) { showAuthOverlay(); return; }
+  if (typeof _dashCleanup === 'function') _dashCleanup();
   try {
     await fetch(apiUrl() + '/api/v1/auth/logout', authedJson('POST'));
   } catch (_) { /* best-effort */ }
@@ -2384,6 +2745,592 @@ async function confirmReset() {
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') closeResetModal();
 });
+
+// ---------------------------------------------------------------------------
+// Dashboard — section switching
+// ---------------------------------------------------------------------------
+
+let _currentSection = 'analyze';
+
+function showSection(section) {
+  _currentSection = section;
+  const analyzePanel = document.getElementById('analyze-panel');
+  const dashPanel    = document.getElementById('dashboard-panel');
+  const navAnalyze   = document.getElementById('nav-analyze');
+  const navDash      = document.getElementById('nav-dashboard');
+
+  if (section === 'dashboard') {
+    analyzePanel.classList.add('hidden');
+    dashPanel.classList.add('visible');
+    navAnalyze.classList.remove('active');
+    navDash.classList.add('active');
+    loadDashboard(false);
+  } else {
+    analyzePanel.classList.remove('hidden');
+    dashPanel.classList.remove('visible');
+    navAnalyze.classList.add('active');
+    navDash.classList.remove('active');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — Chart.js instances and timers
+// ---------------------------------------------------------------------------
+
+const _charts = {};         // keyed by canvas id
+let _dashInterval   = null; // 60s full refresh
+let _actInterval    = null; // 30s activity refresh
+let _dashLoaded     = false;
+
+// Color mapping for decisions (matches DECISION_CONFIG above)
+const DASH_DECISION_COLORS = {
+  APPROVE:                  { color: '#22c55e', label: 'Approve' },
+  REVIEW_RECOMMENDED:       { color: '#a855f7', label: 'Review' },
+  FLAG_FOR_INSPECTION:      { color: '#f97316', label: 'Flag' },
+  REQUEST_MORE_INFORMATION: { color: '#f59e0b', label: 'More Info' },
+  REJECT:                   { color: '#ef4444', label: 'Reject' },
+};
+
+// ---------------------------------------------------------------------------
+// Dashboard — global Chart.js defaults (dark theme)
+// ---------------------------------------------------------------------------
+
+function _applyChartDefaults() {
+  if (typeof Chart === 'undefined') return;
+  Chart.defaults.color          = '#7a93ab';
+  Chart.defaults.borderColor    = '#1a2d45';
+  Chart.defaults.font.family    = "'Inter', system-ui, sans-serif";
+  Chart.defaults.font.size      = 11;
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — destroy + rebuild a chart safely
+// ---------------------------------------------------------------------------
+
+function _destroyChart(id) {
+  if (_charts[id]) {
+    _charts[id].destroy();
+    delete _charts[id];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — load all data
+// ---------------------------------------------------------------------------
+
+async function loadDashboard(manual = false) {
+  if (manual) {
+    const btn = document.getElementById('dash-refresh-btn');
+    const ico = document.getElementById('dash-refresh-icon');
+    if (btn) btn.classList.add('spinning');
+    if (ico) ico.parentElement && ico.parentElement.classList.add('spinning');
+    btn && btn.classList.add('spinning');
+  }
+
+  try {
+    const base = apiUrl();
+    const _get = path => fetch(base + path, authedJson('GET'))
+      .then(r => { if (r.status === 401) { handle401(); throw new Error('401'); } return r.json(); });
+
+    const [summary, decisions, trend, countries, shippers, activity] = await Promise.all([
+      _get('/api/v1/dashboard/summary'),
+      _get('/api/v1/dashboard/decisions'),
+      _get('/api/v1/dashboard/fraud-trend?days=30'),
+      _get('/api/v1/dashboard/top-countries?limit=10'),
+      _get('/api/v1/dashboard/top-shippers?limit=10'),
+      _get('/api/v1/dashboard/recent-activity?limit=20'),
+    ]);
+
+    _applyChartDefaults();
+
+    const isEmpty = (summary.total_shipments || 0) === 0;
+    document.getElementById('dash-empty').style.display = isEmpty ? 'flex' : 'none';
+
+    _renderKpis(summary);
+    _buildFraudTrendChart(trend);
+    _buildDecisionDonut(decisions);
+    _buildCountriesChart(countries);
+    _buildShippersChart(shippers);
+    _renderActivityFeed(activity);
+
+    const now = new Date();
+    document.getElementById('dash-last-updated').textContent =
+      'Last updated ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+    _dashLoaded = true;
+    _startDashTimers();
+  } catch (e) {
+    if (e.message !== '401') {
+      document.getElementById('dash-last-updated').textContent = 'Failed to load — check API connection';
+    }
+  } finally {
+    const btn = document.getElementById('dash-refresh-btn');
+    if (btn) btn.classList.remove('spinning');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — auto-refresh timers
+// ---------------------------------------------------------------------------
+
+function _startDashTimers() {
+  if (_dashInterval) return; // already running
+  _dashInterval = setInterval(() => {
+    if (_currentSection === 'dashboard') loadDashboard(false);
+  }, 60000);
+
+  _actInterval = setInterval(() => {
+    if (_currentSection === 'dashboard') _refreshActivity();
+  }, 30000);
+}
+
+function _stopDashTimers() {
+  clearInterval(_dashInterval); _dashInterval = null;
+  clearInterval(_actInterval);  _actInterval  = null;
+}
+
+async function _refreshActivity() {
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/dashboard/recent-activity?limit=20', authedJson('GET'));
+    if (res.status === 401) { handle401(); return; }
+    const data = await res.json();
+    _renderActivityFeed(data);
+    const now = new Date();
+    const noteEl = document.getElementById('activity-refresh-note');
+    if (noteEl) noteEl.textContent = 'Updated ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  } catch (_) {}
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — KPI cards
+// ---------------------------------------------------------------------------
+
+function _renderKpis(s) {
+  const fraudRate  = ((s.fraud_rate || 0) * 100).toFixed(1);
+  // Risk scores are stored as 0–1 fractions; display as 0–100
+  const avgRiskRaw = s.avg_risk_score || 0;
+  const avgRisk    = (avgRiskRaw * 100).toFixed(0);
+  const avgPattern = ((s.avg_pattern_score || 0) * 100).toFixed(0);
+  const total      = s.total_shipments || 0;
+  const fraud      = s.total_confirmed_fraud || 0;
+
+  const frClass = s.fraud_rate > 0.15 ? 'danger' : s.fraud_rate > 0.05 ? 'warn' : 'good';
+  // Thresholds in 0–1 scale
+  const riskClass = avgRiskRaw > 0.65 ? 'danger' : avgRiskRaw > 0.40 ? 'warn' : '';
+
+  document.getElementById('kpi-row').innerHTML = `
+    <div class="kpi-card">
+      <div class="kpi-label">Total Shipments</div>
+      <div class="kpi-value">${total.toLocaleString()}</div>
+      <div class="kpi-sub">${s.total_cleared || 0} cleared · ${s.total_unresolved || 0} pending</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Fraud Rate</div>
+      <div class="kpi-value ${frClass}">${fraudRate}%</div>
+      <div class="kpi-sub">30-day rolling average</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Confirmed Fraud</div>
+      <div class="kpi-value ${fraud > 0 ? 'danger' : ''}">${fraud.toLocaleString()}</div>
+      <div class="kpi-sub">officer-confirmed outcomes</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Avg Risk Score</div>
+      <div class="kpi-value ${riskClass}">${avgRisk}</div>
+      <div class="kpi-sub">pattern score ${avgPattern} / 100</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Pattern History</div>
+      <div class="kpi-value">${total.toLocaleString()}</div>
+      <div class="kpi-sub">shipments in learning DB</div>
+    </div>
+  `;
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — Fraud Trend Line Chart
+// ---------------------------------------------------------------------------
+
+function _buildFraudTrendChart(data) {
+  _destroyChart('chart-trend');
+  const canvas = document.getElementById('chart-trend');
+  if (!canvas) return;
+
+  const trend  = data.trend || [];
+  const labels = trend.map(d => {
+    const dt = new Date(d.day + 'T00:00:00');
+    return dt.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  });
+  const rates  = trend.map(d => +(d.fraud_rate * 100).toFixed(1));
+  const totals = trend.map(d => d.total);
+
+  _charts['chart-trend'] = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Fraud Rate %',
+          data: rates,
+          borderColor: '#ef4444',
+          backgroundColor: 'rgba(239,68,68,.08)',
+          fill: true,
+          tension: 0.4,
+          pointRadius: 3,
+          pointHoverRadius: 5,
+          pointBackgroundColor: '#ef4444',
+          yAxisID: 'yRate',
+        },
+        {
+          label: 'Shipments',
+          data: totals,
+          borderColor: '#3b82f6',
+          backgroundColor: 'transparent',
+          borderDash: [4, 3],
+          tension: 0.4,
+          pointRadius: 2,
+          pointHoverRadius: 4,
+          pointBackgroundColor: '#3b82f6',
+          yAxisID: 'yTotal',
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: true,
+      aspectRatio: 1.9,
+      animation: { duration: 600, easing: 'easeOutQuart' },
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0c1a2e',
+          borderColor: '#1a2d45',
+          borderWidth: 1,
+          titleColor: '#dde6f0',
+          bodyColor: '#7a93ab',
+          callbacks: {
+            label: ctx => ctx.dataset.label + ': ' +
+              (ctx.dataset.yAxisID === 'yRate' ? ctx.parsed.y.toFixed(1) + '%' : ctx.parsed.y),
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(26,45,69,.5)' },
+          ticks: { maxTicksLimit: 8, maxRotation: 0 },
+        },
+        yRate: {
+          type: 'linear', position: 'left',
+          grid: { color: 'rgba(26,45,69,.5)' },
+          ticks: { callback: v => v + '%' },
+          min: 0,
+        },
+        yTotal: {
+          type: 'linear', position: 'right',
+          grid: { display: false },
+          ticks: { maxTicksLimit: 5 },
+          min: 0,
+        },
+      },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — Decision Donut
+// ---------------------------------------------------------------------------
+
+function _buildDecisionDonut(data) {
+  _destroyChart('chart-donut');
+  const canvas = document.getElementById('chart-donut');
+  if (!canvas) return;
+
+  const decisions = data.decisions || [];
+  const total     = data.total || 0;
+
+  document.getElementById('donut-total').textContent = total.toLocaleString();
+
+  const ORDER = ['APPROVE','REVIEW_RECOMMENDED','FLAG_FOR_INSPECTION','REQUEST_MORE_INFORMATION','REJECT'];
+  const sorted = ORDER.map(key => decisions.find(d => d.decision === key) || { decision: key, count: 0, percentage: 0 });
+
+  const labels = sorted.map(d => DASH_DECISION_COLORS[d.decision]?.label || d.decision);
+  const counts = sorted.map(d => d.count);
+  const colors = sorted.map(d => DASH_DECISION_COLORS[d.decision]?.color || '#7a93ab');
+
+  // Build custom legend
+  const legendEl = document.getElementById('donut-legend');
+  if (legendEl) {
+    legendEl.innerHTML = sorted.map((d, i) => `
+      <div class="donut-item">
+        <div class="donut-dot" style="background:${colors[i]}"></div>
+        <div class="donut-item-label">${labels[i]}</div>
+        <div class="donut-item-count">${d.count.toLocaleString()}</div>
+        <div class="donut-item-pct">${d.percentage.toFixed(1)}%</div>
+      </div>
+    `).join('');
+  }
+
+  _charts['chart-donut'] = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data: counts,
+        backgroundColor: colors,
+        borderColor: '#101f33',
+        borderWidth: 3,
+        hoverOffset: 6,
+      }],
+    },
+    options: {
+      responsive: false,
+      animation: { duration: 700, easing: 'easeOutQuart' },
+      cutout: '68%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0c1a2e',
+          borderColor: '#1a2d45',
+          borderWidth: 1,
+          titleColor: '#dde6f0',
+          bodyColor: '#7a93ab',
+          callbacks: {
+            label: ctx => ' ' + ctx.label + ': ' + ctx.parsed.toLocaleString() +
+              ' (' + (total > 0 ? (ctx.parsed / total * 100).toFixed(1) : 0) + '%)',
+          },
+        },
+      },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — Top Countries Horizontal Bar
+// ---------------------------------------------------------------------------
+
+function _buildCountriesChart(data) {
+  _destroyChart('chart-countries');
+  const canvas = document.getElementById('chart-countries');
+  if (!canvas) return;
+
+  const countries = (data.countries || []).slice(0, 10);
+  const labels    = countries.map(c => c.country_name || c.iso2 || '?');
+  const rates     = countries.map(c => +(c.fraud_rate * 100).toFixed(1));
+  const totals    = countries.map(c => c.total_shipments);
+
+  const bgColors = rates.map(r => r >= 50 ? 'rgba(239,68,68,.7)' : r >= 20 ? 'rgba(249,115,22,.7)' : 'rgba(59,130,246,.7)');
+
+  _charts['chart-countries'] = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Fraud Rate %',
+        data: rates,
+        backgroundColor: bgColors,
+        borderColor: bgColors.map(c => c.replace('.7)', '1)')),
+        borderWidth: 1,
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 600, easing: 'easeOutQuart' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0c1a2e',
+          borderColor: '#1a2d45',
+          borderWidth: 1,
+          titleColor: '#dde6f0',
+          bodyColor: '#7a93ab',
+          callbacks: {
+            label: (ctx) => {
+              const c = countries[ctx.dataIndex];
+              return [
+                ' Fraud rate: ' + ctx.parsed.x.toFixed(1) + '%',
+                ' Shipments: ' + (c.total_shipments || 0),
+                ' Confirmed fraud: ' + (c.confirmed_fraud_count || 0),
+              ];
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(26,45,69,.5)' },
+          ticks: { callback: v => v + '%' },
+          min: 0, max: 100,
+        },
+        y: {
+          grid: { display: false },
+          ticks: { font: { size: 11 } },
+        },
+      },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — Top Shippers Horizontal Bar
+// ---------------------------------------------------------------------------
+
+function _buildShippersChart(data) {
+  _destroyChart('chart-shippers');
+  const canvas = document.getElementById('chart-shippers');
+  if (!canvas) return;
+
+  const shippers = (data.shippers || []).slice(0, 10);
+  const labels   = shippers.map(s => s.name || 'Unknown');
+  const counts   = shippers.map(s => s.total_confirmed_fraud || 0);
+  const totals   = shippers.map(s => s.total_analyses || 0);
+  const bgColors = shippers.map(s => s.is_trusted ? 'rgba(34,197,94,.6)' : 'rgba(239,68,68,.65)');
+
+  _charts['chart-shippers'] = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Confirmed Fraud',
+        data: counts,
+        backgroundColor: bgColors,
+        borderColor: bgColors.map(c => c.replace(/\.6[05]\)/, '1)')),
+        borderWidth: 1,
+        borderRadius: 4,
+      }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: { duration: 600, easing: 'easeOutQuart' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0c1a2e',
+          borderColor: '#1a2d45',
+          borderWidth: 1,
+          titleColor: '#dde6f0',
+          bodyColor: '#7a93ab',
+          callbacks: {
+            label: (ctx) => {
+              const s = shippers[ctx.dataIndex];
+              const repPct = ((1 - (s.reputation_score || 0)) * 100).toFixed(0);
+              return [
+                ' Confirmed fraud: ' + ctx.parsed.x,
+                ' Total analyses: ' + (s.total_analyses || 0),
+                ' Risk score: ' + repPct + '%',
+              ];
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          grid: { color: 'rgba(26,45,69,.5)' },
+          ticks: { precision: 0 },
+          min: 0,
+        },
+        y: {
+          grid: { display: false },
+          ticks: {
+            font: { size: 11 },
+            callback: function(val) {
+              const lbl = this.getLabelForValue(val);
+              return lbl.length > 20 ? lbl.slice(0, 18) + '…' : lbl;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — Recent Activity Table
+// ---------------------------------------------------------------------------
+
+function _decisionBadgeClass(d) {
+  const map = {
+    APPROVE: 'badge-approve',
+    REVIEW_RECOMMENDED: 'badge-review',
+    FLAG_FOR_INSPECTION: 'badge-flag',
+    REQUEST_MORE_INFORMATION: 'badge-info',
+    REJECT: 'badge-reject',
+  };
+  return map[d] || 'badge-review';
+}
+
+function _decisionShortLabel(d) {
+  const map = {
+    APPROVE: 'Approve',
+    REVIEW_RECOMMENDED: 'Review',
+    FLAG_FOR_INSPECTION: 'Flag',
+    REQUEST_MORE_INFORMATION: 'More Info',
+    REJECT: 'Reject',
+  };
+  return map[d] || d;
+}
+
+function _renderActivityFeed(data) {
+  const tbody = document.getElementById('activity-tbody');
+  if (!tbody) return;
+
+  const rows = data.activity || [];
+
+  if (rows.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--faint)">No activity yet</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = rows.map(r => {
+    const ts   = r.analyzed_at ? new Date(r.analyzed_at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—';
+    const ship = escHtml(r.shipper_name || 'Unknown');
+    const ori  = escHtml(r.origin_iso2 || '—');
+    const dec  = r.final_decision || 'REVIEW_RECOMMENDED';
+    const badgeCls = _decisionBadgeClass(dec);
+    const decLabel = _decisionShortLabel(dec);
+
+    const score = r.final_risk_score != null ? +r.final_risk_score : null;
+    // Risk scores are 0–1; display as 0–100 integer
+    const scoreTxt = score != null ? Math.round(score * 100).toString() : '—';
+    const scoreCls = score == null ? '' : score >= 0.65 ? 'score-hi' : score >= 0.40 ? 'score-mid' : 'score-low';
+
+    const outcome = r.outcome;
+    let outcomeTxt = '—', outcomeCls = 'none';
+    if (outcome === 'CONFIRMED_FRAUD')  { outcomeTxt = 'Fraud';   outcomeCls = 'fraud'; }
+    else if (outcome === 'CLEARED')     { outcomeTxt = 'Cleared'; outcomeCls = 'clear'; }
+    else if (outcome)                   { outcomeTxt = escHtml(outcome); }
+
+    const sigs = r.pattern_cold_start ? 'cold start' : '—';
+
+    return `<tr>
+      <td class="act-time">${ts}</td>
+      <td class="act-shipper" title="${ship}">${ship}</td>
+      <td class="act-origin">${ori}</td>
+      <td><span class="act-badge ${badgeCls}">${decLabel}</span></td>
+      <td class="act-score ${scoreCls}">${scoreTxt}</td>
+      <td class="act-outcome ${outcomeCls}">${outcomeTxt}</td>
+      <td class="act-signals">${sigs}</td>
+    </tr>`;
+  }).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — cleanup on logout (called from handleLogout below via _dashCleanup)
+// ---------------------------------------------------------------------------
+
+function _dashCleanup() {
+  _stopDashTimers();
+  Object.keys(_charts).forEach(k => _destroyChart(k));
+  _dashLoaded = false;
+  const nav = document.getElementById('section-nav');
+  if (nav) nav.style.display = 'none';
+  showSection('analyze');
+}
 
 // ---------------------------------------------------------------------------
 // Init

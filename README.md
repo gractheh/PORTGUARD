@@ -173,15 +173,25 @@ portguard/
                           creation/verification, AuthDB (SQLite), rate limiting,
                           get_current_organization FastAPI dependency
 
+portguard/
+  analytics.py            DashboardAnalytics — read-only SQLite connection, 7 query
+                          methods for summary stats, decision breakdown, fraud trend
+                          (gap-filled), top countries/shippers/HS codes, recent activity
+
 api/
   app.py                  FastAPI app (document analysis + pattern learning overlay)
-                          /analyze, /feedback, /pattern-history
+                          /analyze, /feedback, /pattern-history,
+                          /dashboard/summary, /dashboard/decisions,
+                          /dashboard/fraud-trend, /dashboard/top-countries,
+                          /dashboard/top-shippers, /dashboard/top-hs-codes,
+                          /dashboard/recent-activity
   auth_routes.py          Auth endpoints — /auth/register, /auth/login,
                           /auth/logout, /auth/me
   document_parser.py      PDF and plain-text extraction (pdfplumber)
 
 docs/
   pattern_learning_architecture.md  Full LPL design spec
+  dashboard_architecture.md         Analytics dashboard technical plan
 
 main.py                   CLI runner: 3 test scenarios, prints results
 run_demo.py               Starts API server, opens demo in browser
@@ -207,7 +217,7 @@ Authentication uses JWT Bearer tokens (HS256, 24-hour expiry). Tokens live in Ja
 | POST | `/api/v1/auth/logout` | Yes | Revoke the current token server-side |
 | GET | `/api/v1/auth/me` | Yes | Return the authenticated organization's info |
 
-All other API endpoints (`/api/v1/analyze`, `/api/v1/feedback`, `/api/v1/pattern-history`, `/api/v1/pattern-history/reset`, `/api/v1/extract-text`, `/api/v1/analyze-files`) require a valid Bearer token. `GET /api/v1/health`, `GET /`, and `GET /demo` are public.
+All other API endpoints (`/api/v1/analyze`, `/api/v1/feedback`, `/api/v1/pattern-history`, `/api/v1/pattern-history/reset`, `/api/v1/extract-text`, `/api/v1/analyze-files`, and all `/api/v1/dashboard/*` endpoints) require a valid Bearer token. `GET /api/v1/health`, `GET /`, and `GET /demo` are public.
 
 **Register:**
 ```json
@@ -345,6 +355,84 @@ The browser demo (`GET /demo`) surfaces pattern learning in three panels:
 - **Pattern Intelligence** — shown after each analysis; displays history depth ("Based on 12 prior shipments"), animated pattern score gauge, and signal cards color-coded by severity (CRITICAL=red, HIGH=orange, MEDIUM=amber, LOW=blue).
 - **Officer Feedback** — shown after flagged results; two buttons ("✓ Confirmed Fraud" / "✗ Cleared") post to `/api/v1/feedback` and display a contextual confirmation message. Buttons are disabled after submission.
 - **Pattern Learning History** — always visible; loads aggregate stats from `GET /api/v1/pattern-history` on demand: total shipments, total confirmed fraud, top-5 riskiest shippers and routes.
+
+---
+
+## Analytics Dashboard
+
+PORTGUARD includes a full analytics dashboard that visualizes shipment history, fraud trends, and entity intelligence accumulated by the pattern learning system. It is built into the browser demo at `GET /demo` and backed by six read-only API endpoints.
+
+### Accessing the dashboard
+
+After logging in at `GET /demo`, click the **Dashboard** tab in the navigation bar below the header. The dashboard loads all data on first visit and auto-refreshes every 60 seconds. The activity feed refreshes independently every 30 seconds.
+
+### Summary KPI cards
+
+| Card | Value | Threshold coloring |
+|---|---|---|
+| Total Shipments | Count of all analyzed shipments for the org | — |
+| Fraud Rate | Confirmed fraud / total shipments (%) | Green < 5%, amber 5–15%, red > 15% |
+| Confirmed Fraud | Count of `CONFIRMED_FRAUD` outcomes | Red when > 0 |
+| Avg Risk Score | Mean `final_risk_score` × 100 (0–100) | Amber > 40, red > 65 |
+| Pattern History | Shipment count in the pattern learning DB | — |
+
+### Charts
+
+**Fraud Rate Trend (30 days)** — Dual-axis line chart. Left axis: fraud rate percentage (red fill). Right axis: total shipment count (blue dashed). X-axis always shows all 30 days; days with no data appear as zero rather than a gap.
+
+**Decision Breakdown** — Doughnut chart showing the split across all five decision types with an inline legend showing count and percentage per category. Decision type colors: green = APPROVE, purple = REVIEW RECOMMENDED, orange = FLAG FOR INSPECTION, amber = MORE INFO, red = REJECT.
+
+**Top Origin Countries by Fraud Rate** — Horizontal bar chart of up to 10 countries ranked by confirmed-fraud rate. Bar color: red ≥ 50%, orange 20–50%, blue < 20%.
+
+**Top Shippers by Flag Count** — Horizontal bar chart of up to 10 shipper profiles ranked by confirmed-fraud count. Red bars = untrusted, green bars = auto-trusted (≥20 cleared outcomes, zero confirmed fraud).
+
+### Recent Activity feed
+
+Table of the 20 most recent shipments, newest first. Columns: time, shipper, origin ISO-2, decision badge, risk score (0–100), officer outcome (Fraud / Cleared / — if no feedback yet), pattern signals. Auto-refreshes every 30 seconds without reloading charts.
+
+### Empty state
+
+When no shipments have been analyzed yet, the dashboard shows a single message — *"No shipments analyzed yet. Run your first analysis to see trends appear here."* — with a button that navigates back to the Analyze tab. No empty charts are rendered.
+
+### Dashboard API endpoints
+
+All six endpoints require a valid Bearer token and scope all data to the authenticated organization.
+
+| Method | Path | Query params | Description |
+|---|---|---|---|
+| GET | `/api/v1/dashboard/summary` | — | KPI totals: shipment count, confirmed fraud, cleared, unresolved, fraud rate, avg risk score, avg pattern score |
+| GET | `/api/v1/dashboard/decisions` | — | Count and percentage for each of the 5 decision types; always returns all 5 even if count is zero |
+| GET | `/api/v1/dashboard/fraud-trend` | `days` (1–365, default 30) | Daily series with total shipments and confirmed-fraud count; always returns exactly `days` entries with gap-filling |
+| GET | `/api/v1/dashboard/top-countries` | `limit` (1–50, default 10) | Countries ranked by confirmed-fraud count then avg risk score |
+| GET | `/api/v1/dashboard/top-shippers` | `limit` (1–50, default 10) | Shipper profiles ranked by confirmed-fraud count then reputation score |
+| GET | `/api/v1/dashboard/top-hs-codes` | `limit` (1–50, default 10) | HS chapters (2-digit) ranked by flagged-shipment count |
+| GET | `/api/v1/dashboard/recent-activity` | `limit` (1–100, default 20) | Latest shipments with decision, risk score, and officer outcome if submitted |
+
+All endpoints return zeros and empty arrays when no history exists — they never return errors for an empty database.
+
+**Example — summary response:**
+```json
+{
+  "total_shipments": 42,
+  "total_confirmed_fraud": 7,
+  "total_cleared": 12,
+  "total_unresolved": 23,
+  "fraud_rate": 0.1667,
+  "avg_risk_score": 0.4821,
+  "avg_pattern_score": 0.3104
+}
+```
+
+**Example — fraud-trend entry:**
+```json
+{ "day": "2026-04-11", "total": 8, "fraud_count": 2, "fraud_rate": 0.25 }
+```
+
+### Implementation
+
+The dashboard backend is `portguard/analytics.py` — a `DashboardAnalytics` class that opens its own read-only SQLite connection to `portguard_patterns.db` (separate from `PatternDB`'s write connection; WAL mode allows concurrent readers). All seven query methods return safe defaults on any error and check `self.available` before querying, so a missing or inaccessible database never crashes the API.
+
+The frontend uses **Chart.js 4.4** loaded via CDN (no build step). Charts are destroyed and rebuilt on each refresh to prevent canvas reuse errors. Skeleton pulse placeholders are shown while data loads so the layout never flashes blank.
 
 ---
 
