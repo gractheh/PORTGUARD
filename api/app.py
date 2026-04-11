@@ -13,10 +13,13 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException, UploadFile, File
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
+
+from portguard.auth import get_current_organization
+from api.auth_routes import router as auth_router
 
 from api.document_parser import (
     extract_text,
@@ -1140,13 +1143,16 @@ class FeedbackResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _build_scoring_request(sd: dict):
+def _build_scoring_request(sd: dict, organization_id: str = "__system__"):
     """Build a PatternEngine ScoringRequest from a shipment-data dict.
 
     Parameters
     ----------
     sd:
         The ``shipment_data`` dict returned by :func:`_analyze_documents`.
+    organization_id:
+        Tenant scope to embed in the request so PatternEngine queries are
+        correctly scoped to the authenticated organization.
 
     Returns
     -------
@@ -1165,6 +1171,7 @@ def _build_scoring_request(sd: dict):
         except (ValueError, TypeError):
             pass
         return ScoringRequest(
+            organization_id=organization_id,
             shipper_name=sd.get("exporter"),
             consignee_name=sd.get("importer") or sd.get("consignee"),
             origin_iso2=sd.get("origin_country_iso2"),
@@ -1188,6 +1195,7 @@ def _record_shipment_bg(
     final_score: float,
     final_decision: str,
     final_confidence: str,
+    organization_id: str = "__system__",
 ) -> Optional[str]:
     """Write a shipment analysis snapshot to PatternDB and return the analysis_id.
 
@@ -1200,6 +1208,7 @@ def _record_shipment_bg(
     try:
         from portguard.pattern_db import ShipmentFingerprint
         fp = ShipmentFingerprint(
+            organization_id=organization_id,
             shipper_name=sd.get("exporter"),
             consignee_name=sd.get("importer") or sd.get("consignee"),
             origin_iso2=sd.get("origin_country_iso2"),
@@ -1259,10 +1268,12 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["POST", "GET", "OPTIONS"],
+    allow_methods=["POST", "GET", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["Content-Type"],
 )
+
+app.include_router(auth_router)
 
 
 @app.get("/", include_in_schema=False)
@@ -1290,8 +1301,13 @@ def health():
 
 
 @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
-def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks):
+def analyze(
+    request: AnalyzeRequest,
+    background_tasks: BackgroundTasks,
+    current_org: dict = Depends(get_current_organization),
+):
     start = time.monotonic()
+    org_id: str = current_org["organization_id"]
     try:
         result = _analyze_documents(request.documents)
     except Exception as e:
@@ -1314,7 +1330,7 @@ def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks):
 
     if _pattern_engine is not None:
         try:
-            scoring_req = _build_scoring_request(sd)
+            scoring_req = _build_scoring_request(sd, organization_id=org_id)
             if scoring_req is not None:
                 pattern_result = _pattern_engine.score(scoring_req)
                 pattern_score_val = pattern_result.pattern_score
@@ -1359,6 +1375,7 @@ def analyze(request: AnalyzeRequest, background_tasks: BackgroundTasks):
         final_score=final_score,
         final_decision=final_decision,
         final_confidence=rule_confidence,
+        organization_id=org_id,
     )
 
     return AnalyzeResponse(
@@ -1416,7 +1433,10 @@ def _parser_error_to_http(exc: DocumentParserError) -> HTTPException:
 
 
 @app.post("/api/v1/extract-text", response_model=ExtractTextResponse)
-async def extract_text_endpoint(file: UploadFile = File(...)):
+async def extract_text_endpoint(
+    file: UploadFile = File(...),
+    current_org: dict = Depends(get_current_organization),
+):
     """Extract plain text from an uploaded PDF or text file.
 
     Returns the extracted text so the caller can review or edit it before
@@ -1447,7 +1467,10 @@ async def extract_text_endpoint(file: UploadFile = File(...)):
 
 
 @app.post("/api/v1/analyze-files", response_model=AnalyzeResponse)
-async def analyze_files(files: list[UploadFile] = File(...)):
+async def analyze_files(
+    files: list[UploadFile] = File(...),
+    current_org: dict = Depends(get_current_organization),
+):
     """Run full compliance analysis directly from uploaded files.
 
     Accepts 1–10 PDF or text files in a single multipart request.  Each
@@ -1514,9 +1537,11 @@ async def analyze_files(files: list[UploadFile] = File(...)):
     final_score: float = rule_score
     final_decision: str = rule_decision
 
+    org_id: str = current_org["organization_id"]
+
     if _pattern_engine is not None:
         try:
-            scoring_req = _build_scoring_request(sd)
+            scoring_req = _build_scoring_request(sd, organization_id=org_id)
             if scoring_req is not None:
                 pattern_result = _pattern_engine.score(scoring_req)
                 pattern_score_val = pattern_result.pattern_score
@@ -1554,6 +1579,7 @@ async def analyze_files(files: list[UploadFile] = File(...)):
         final_score=final_score,
         final_decision=final_decision,
         final_confidence=rule_confidence,
+        organization_id=org_id,
     )
 
     return AnalyzeResponse(
@@ -1581,7 +1607,10 @@ async def analyze_files(files: list[UploadFile] = File(...)):
 
 
 @app.post("/api/v1/feedback", response_model=FeedbackResponse)
-def feedback(request: FeedbackRequest):
+def feedback(
+    request: FeedbackRequest,
+    current_org: dict = Depends(get_current_organization),
+):
     """Record an officer's verdict for a previously analyzed shipment.
 
     This is the feedback loop that teaches the pattern learning system.
@@ -1710,7 +1739,10 @@ class ResetResponse(BaseModel):
 
 
 @app.delete("/api/v1/pattern-history/reset", response_model=ResetResponse)
-def reset_pattern_history(request: ResetRequest):
+def reset_pattern_history(
+    request: ResetRequest,
+    current_org: dict = Depends(get_current_organization),
+):
     """Permanently delete all pattern learning data.
 
     Clears ``shipment_history``, ``pattern_outcomes``,
@@ -1749,7 +1781,7 @@ def reset_pattern_history(request: ResetRequest):
         )
 
     try:
-        deleted = _pattern_db.reset()
+        deleted = _pattern_db.reset(organization_id=current_org["organization_id"])
     except Exception as exc:
         logger.error("pattern_db.reset() failed: %s", exc, exc_info=True)
         raise HTTPException(
@@ -1758,8 +1790,9 @@ def reset_pattern_history(request: ResetRequest):
         )
 
     logger.warning(
-        "PATTERN HISTORY RESET at %s — %d shipment record(s) deleted",
+        "PATTERN HISTORY RESET at %s — org=%s — %d shipment record(s) deleted",
         __import__("datetime").datetime.utcnow().isoformat(timespec="seconds"),
+        current_org["organization_id"],
         deleted,
     )
 
@@ -1771,7 +1804,7 @@ def reset_pattern_history(request: ResetRequest):
 
 
 @app.get("/api/v1/pattern-history")
-def pattern_history():
+def pattern_history(current_org: dict = Depends(get_current_organization)):
     """Return aggregate pattern learning statistics for the dashboard.
 
     Returns total shipments analyzed, total confirmed fraud events, and
@@ -1788,7 +1821,7 @@ def pattern_history():
             },
         )
     try:
-        return _pattern_db.get_summary_stats()
+        return _pattern_db.get_summary_stats(organization_id=current_org["organization_id"])
     except Exception as exc:
         logger.warning("get_summary_stats() failed: %s", exc)
         raise HTTPException(

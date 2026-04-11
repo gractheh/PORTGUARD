@@ -480,11 +480,15 @@ def _welford_stddev(n: int, m2: float) -> Optional[float]:
 # Schema — DDL and migrations
 # ---------------------------------------------------------------------------
 
-# Each migration is a (name, sql) tuple.  Migrations are applied in order and
-# each is recorded by name in schema_migrations to ensure idempotency.
-# NEVER modify a migration that has already been applied — add a new one instead.
+# Each migration is a (name, sql_or_stmts) tuple.
+#   - str  → executed via executescript() (implicit transaction per statement)
+#   - list[str] → each statement executed individually inside one explicit BEGIN/COMMIT
+#     (needed for table-rebuild sequences that must be atomic)
+#
+# Migrations are applied in order and recorded by name in schema_migrations for
+# idempotency.  NEVER modify a migration that has already been applied — add new ones.
 
-_MIGRATIONS: list[tuple[str, str]] = [
+_MIGRATIONS: list[tuple[str, str | list[str]]] = [
     (
         "001_initial_schema",
         """
@@ -671,6 +675,155 @@ _MIGRATIONS: list[tuple[str, str]] = [
         );
         """,
     ),
+    (
+        "002_add_organization_id_columns",
+        # ALTER TABLE ADD COLUMN is safe in SQLite; existing rows get the DEFAULT.
+        """
+        ALTER TABLE shipment_history ADD COLUMN organization_id TEXT NOT NULL DEFAULT '__system__';
+        ALTER TABLE pattern_outcomes ADD COLUMN organization_id TEXT NOT NULL DEFAULT '__system__';
+        CREATE INDEX IF NOT EXISTS idx_history_org_id ON shipment_history(organization_id);
+        CREATE INDEX IF NOT EXISTS idx_outcomes_org_id ON pattern_outcomes(organization_id);
+        """,
+    ),
+    (
+        "003_rebuild_profile_tables_composite_pk",
+        # SQLite does not support ALTER TABLE for PK changes, so we rebuild each
+        # profile table: CREATE new → INSERT from old (prepend '__system__') → DROP →
+        # RENAME.  This migration uses list[str] so each statement runs in a single
+        # explicit transaction for atomicity.
+        [
+            # ---- shipper_profiles ----
+            """CREATE TABLE IF NOT EXISTS shipper_profiles_new (
+                organization_id             TEXT NOT NULL DEFAULT '__system__',
+                shipper_key                 TEXT NOT NULL,
+                shipper_name                TEXT,
+                first_seen_at               TEXT NOT NULL,
+                last_seen_at                TEXT NOT NULL,
+                total_analyses              INTEGER NOT NULL DEFAULT 0,
+                total_flagged               INTEGER NOT NULL DEFAULT 0,
+                total_confirmed_fraud       INTEGER NOT NULL DEFAULT 0,
+                total_cleared               INTEGER NOT NULL DEFAULT 0,
+                total_unresolved            INTEGER NOT NULL DEFAULT 0,
+                weighted_analyses           REAL NOT NULL DEFAULT 0.0,
+                weighted_flagged            REAL NOT NULL DEFAULT 0.0,
+                weighted_confirmed_fraud    REAL NOT NULL DEFAULT 0.0,
+                weighted_cleared            REAL NOT NULL DEFAULT 0.0,
+                reputation_score            REAL NOT NULL DEFAULT 0.16666666666,
+                last_score_update           TEXT NOT NULL,
+                is_trusted                  INTEGER NOT NULL DEFAULT 0,
+                trust_set_at                TEXT,
+                trust_set_by                TEXT,
+                PRIMARY KEY (organization_id, shipper_key)
+            )""",
+            """INSERT OR IGNORE INTO shipper_profiles_new
+               SELECT '__system__', shipper_key, shipper_name,
+                      first_seen_at, last_seen_at,
+                      total_analyses, total_flagged,
+                      total_confirmed_fraud, total_cleared, total_unresolved,
+                      weighted_analyses, weighted_flagged,
+                      weighted_confirmed_fraud, weighted_cleared,
+                      reputation_score, last_score_update,
+                      is_trusted, trust_set_at, trust_set_by
+               FROM shipper_profiles""",
+            "DROP TABLE shipper_profiles",
+            "ALTER TABLE shipper_profiles_new RENAME TO shipper_profiles",
+
+            # ---- consignee_profiles ----
+            """CREATE TABLE IF NOT EXISTS consignee_profiles_new (
+                organization_id             TEXT NOT NULL DEFAULT '__system__',
+                consignee_key               TEXT NOT NULL,
+                consignee_name              TEXT,
+                first_seen_at               TEXT NOT NULL,
+                last_seen_at                TEXT NOT NULL,
+                total_analyses              INTEGER NOT NULL DEFAULT 0,
+                total_flagged               INTEGER NOT NULL DEFAULT 0,
+                total_confirmed_fraud       INTEGER NOT NULL DEFAULT 0,
+                total_cleared               INTEGER NOT NULL DEFAULT 0,
+                total_unresolved            INTEGER NOT NULL DEFAULT 0,
+                weighted_analyses           REAL NOT NULL DEFAULT 0.0,
+                weighted_flagged            REAL NOT NULL DEFAULT 0.0,
+                weighted_confirmed_fraud    REAL NOT NULL DEFAULT 0.0,
+                weighted_cleared            REAL NOT NULL DEFAULT 0.0,
+                reputation_score            REAL NOT NULL DEFAULT 0.16666666666,
+                last_score_update           TEXT NOT NULL,
+                is_trusted                  INTEGER NOT NULL DEFAULT 0,
+                trust_set_at                TEXT,
+                trust_set_by                TEXT,
+                PRIMARY KEY (organization_id, consignee_key)
+            )""",
+            """INSERT OR IGNORE INTO consignee_profiles_new
+               SELECT '__system__', consignee_key, consignee_name,
+                      first_seen_at, last_seen_at,
+                      total_analyses, total_flagged,
+                      total_confirmed_fraud, total_cleared, total_unresolved,
+                      weighted_analyses, weighted_flagged,
+                      weighted_confirmed_fraud, weighted_cleared,
+                      reputation_score, last_score_update,
+                      is_trusted, trust_set_at, trust_set_by
+               FROM consignee_profiles""",
+            "DROP TABLE consignee_profiles",
+            "ALTER TABLE consignee_profiles_new RENAME TO consignee_profiles",
+
+            # ---- route_risk_profiles ----
+            """CREATE TABLE IF NOT EXISTS route_risk_profiles_new (
+                organization_id         TEXT NOT NULL DEFAULT '__system__',
+                route_key               TEXT NOT NULL,
+                origin_iso2             TEXT NOT NULL,
+                port_of_entry           TEXT NOT NULL,
+                first_seen_at           TEXT NOT NULL,
+                last_seen_at            TEXT NOT NULL,
+                total_analyses          INTEGER NOT NULL DEFAULT 0,
+                total_flagged           INTEGER NOT NULL DEFAULT 0,
+                total_confirmed_fraud   INTEGER NOT NULL DEFAULT 0,
+                total_cleared           INTEGER NOT NULL DEFAULT 0,
+                weighted_analyses       REAL NOT NULL DEFAULT 0.0,
+                weighted_flagged        REAL NOT NULL DEFAULT 0.0,
+                weighted_confirmed_fraud REAL NOT NULL DEFAULT 0.0,
+                weighted_cleared        REAL NOT NULL DEFAULT 0.0,
+                fraud_rate              REAL NOT NULL DEFAULT 0.5,
+                last_score_update       TEXT NOT NULL,
+                PRIMARY KEY (organization_id, route_key)
+            )""",
+            """INSERT OR IGNORE INTO route_risk_profiles_new
+               SELECT '__system__', route_key, origin_iso2, port_of_entry,
+                      first_seen_at, last_seen_at,
+                      total_analyses, total_flagged,
+                      total_confirmed_fraud, total_cleared,
+                      weighted_analyses, weighted_flagged,
+                      weighted_confirmed_fraud, weighted_cleared,
+                      fraud_rate, last_score_update
+               FROM route_risk_profiles""",
+            "DROP TABLE route_risk_profiles",
+            "ALTER TABLE route_risk_profiles_new RENAME TO route_risk_profiles",
+
+            # ---- hs_code_baselines ----
+            """CREATE TABLE IF NOT EXISTS hs_code_baselines_new (
+                organization_id TEXT NOT NULL DEFAULT '__system__',
+                hs_prefix       TEXT NOT NULL,
+                sample_count    INTEGER NOT NULL DEFAULT 0,
+                running_mean    REAL NOT NULL DEFAULT 0.0,
+                running_m2      REAL NOT NULL DEFAULT 0.0,
+                running_min     REAL,
+                running_max     REAL,
+                cached_stddev   REAL,
+                last_updated    TEXT NOT NULL,
+                PRIMARY KEY (organization_id, hs_prefix)
+            )""",
+            """INSERT OR IGNORE INTO hs_code_baselines_new
+               SELECT '__system__', hs_prefix, sample_count,
+                      running_mean, running_m2,
+                      running_min, running_max, cached_stddev, last_updated
+               FROM hs_code_baselines""",
+            "DROP TABLE hs_code_baselines",
+            "ALTER TABLE hs_code_baselines_new RENAME TO hs_code_baselines",
+
+            # Recreate indexes on rebuilt tables
+            "CREATE INDEX IF NOT EXISTS idx_shipper_profiles_org ON shipper_profiles(organization_id)",
+            "CREATE INDEX IF NOT EXISTS idx_consignee_profiles_org ON consignee_profiles(organization_id)",
+            "CREATE INDEX IF NOT EXISTS idx_route_profiles_org ON route_risk_profiles(organization_id)",
+            "CREATE INDEX IF NOT EXISTS idx_hs_baselines_org ON hs_code_baselines(organization_id)",
+        ],
+    ),
 ]
 
 
@@ -737,6 +890,11 @@ class ShipmentFingerprint:
     final_confidence:
         Confidence string (``"HIGH"`` | ``"MEDIUM"`` | ``"LOW"``).
     """
+
+    # Multi-tenant isolation — set to the authenticated org's UUID.
+    # Defaults to '__system__' to preserve backward compatibility with
+    # callers that pre-date authentication.
+    organization_id: str = "__system__"
 
     # Shipment identity
     shipper_name: Optional[str] = None
@@ -893,20 +1051,39 @@ class PatternDB:
             for row in self._conn.execute("SELECT migration_name FROM schema_migrations")
         }
 
-        for name, sql in _MIGRATIONS:
+        for name, sql_or_stmts in _MIGRATIONS:
             if name in applied:
                 continue
             logger.info("Applying migration: %s", name)
             try:
-                self._conn.executescript(sql)
-                self._conn.execute(
-                    "INSERT INTO schema_migrations(migration_name, applied_at) VALUES (?,?)",
-                    (name, _utcnow()),
-                )
-                self._conn.commit()
+                if isinstance(sql_or_stmts, list):
+                    # Atomic multi-statement migration — each statement runs with
+                    # execute() inside a single explicit transaction so the whole
+                    # set either succeeds or rolls back together.
+                    self._conn.execute("BEGIN")
+                    for stmt in sql_or_stmts:
+                        stmt = stmt.strip()
+                        if stmt:
+                            self._conn.execute(stmt)
+                    self._conn.execute(
+                        "INSERT INTO schema_migrations(migration_name, applied_at) VALUES (?,?)",
+                        (name, _utcnow()),
+                    )
+                    self._conn.execute("COMMIT")
+                else:
+                    # Legacy string migration — use executescript() for compatibility.
+                    self._conn.executescript(sql_or_stmts)
+                    self._conn.execute(
+                        "INSERT INTO schema_migrations(migration_name, applied_at) VALUES (?,?)",
+                        (name, _utcnow()),
+                    )
+                    self._conn.commit()
                 logger.info("Migration applied: %s", name)
             except sqlite3.Error as exc:
-                self._conn.rollback()
+                try:
+                    self._conn.execute("ROLLBACK")
+                except Exception:
+                    pass
                 raise PatternDBError(f"Failed to apply migration '{name}': {exc}") from exc
 
     # ------------------------------------------------------------------
@@ -993,7 +1170,7 @@ class PatternDB:
                 self._conn.execute(
                     """
                     INSERT INTO shipment_history (
-                        analysis_id, analyzed_at,
+                        analysis_id, analyzed_at, organization_id,
                         shipper_name, shipper_key,
                         consignee_name, consignee_key,
                         origin_iso2, destination_iso2, port_of_entry, route_key,
@@ -1007,13 +1184,13 @@ class PatternDB:
                         pattern_flag_frequency, pattern_history_depth, pattern_cold_start,
                         final_risk_score, final_decision, final_confidence
                     ) VALUES (
-                        ?,?,  ?,?,  ?,?,  ?,?,?,?,  ?,?,?,  ?,?,?,  ?,?,
+                        ?,?,?,  ?,?,  ?,?,  ?,?,?,?,  ?,?,?,  ?,?,?,  ?,?,
                         ?,?,?,  ?,?,?,
                         ?,?,?,  ?,?,  ?,?,?,  ?,?,?
                     )
                     """,
                     (
-                        analysis_id, now,
+                        analysis_id, now, fingerprint.organization_id,
                         fingerprint.shipper_name, shipper_key,
                         fingerprint.consignee_name, consignee_key,
                         fingerprint.origin_iso2, fingerprint.destination_iso2,
@@ -1035,6 +1212,8 @@ class PatternDB:
                     ),
                 )
 
+                org_id = fingerprint.organization_id
+
                 # Upsert shipper profile
                 if shipper_key and fingerprint.shipper_name:
                     self._upsert_entity_profile(
@@ -1045,6 +1224,7 @@ class PatternDB:
                         name_val=fingerprint.shipper_name,
                         is_flagged=is_flagged,
                         now=now,
+                        organization_id=org_id,
                     )
 
                 # Upsert consignee profile
@@ -1057,6 +1237,7 @@ class PatternDB:
                         name_val=fingerprint.consignee_name,
                         is_flagged=is_flagged,
                         now=now,
+                        organization_id=org_id,
                     )
 
                 # Upsert route profile
@@ -1067,6 +1248,7 @@ class PatternDB:
                         port_of_entry=fingerprint.port_of_entry,
                         is_flagged=is_flagged,
                         now=now,
+                        organization_id=org_id,
                     )
 
                 # Update HS value baselines
@@ -1074,7 +1256,7 @@ class PatternDB:
                     for hs_code in fingerprint.hs_codes:
                         hs_prefix = hs_code[:7].rstrip(".")  # 6-digit prefix, e.g. "8471.30"
                         if hs_prefix:
-                            self._update_hs_baseline(hs_prefix, unit_value_usd, now)
+                            self._update_hs_baseline(hs_prefix, unit_value_usd, now, organization_id=org_id)
 
                 self._conn.execute("COMMIT")
                 logger.debug("Recorded analysis %s (decision=%s)", analysis_id, decision)
@@ -1141,7 +1323,8 @@ class PatternDB:
             # --- Pre-condition checks ---
             row = self._conn.execute(
                 "SELECT analysis_id, shipper_key, consignee_key, route_key, "
-                "       hs_codes, unit_value_usd, analyzed_at, final_decision "
+                "       hs_codes, unit_value_usd, analyzed_at, final_decision, "
+                "       organization_id "
                 "FROM shipment_history WHERE analysis_id = ?",
                 (analysis_id,),
             ).fetchone()
@@ -1185,10 +1368,10 @@ class PatternDB:
                 else:
                     self._conn.execute(
                         """INSERT INTO pattern_outcomes
-                           (analysis_id, recorded_at, officer_id, outcome,
+                           (analysis_id, organization_id, recorded_at, officer_id, outcome,
                             outcome_notes, case_reference)
-                           VALUES (?,?,?,?,?,?)""",
-                        (analysis_id, now, officer_id, outcome, notes, case_reference),
+                           VALUES (?,?,?,?,?,?,?)""",
+                        (analysis_id, row["organization_id"], now, officer_id, outcome, notes, case_reference),
                     )
 
                 # Apply profile updates for non-UNRESOLVED outcomes
@@ -1218,13 +1401,18 @@ class PatternDB:
     # Public API — read
     # ------------------------------------------------------------------
 
-    def get_shipper_profile(self, shipper_name: str) -> ShipperProfile:
+    def get_shipper_profile(
+        self, shipper_name: str, organization_id: str = "__system__"
+    ) -> ShipperProfile:
         """Retrieve the pattern profile for a shipper entity.
 
         Parameters
         ----------
         shipper_name:
             Raw shipper name (normalized internally before lookup).
+        organization_id:
+            Tenant scope.  Defaults to ``'__system__'`` for backward
+            compatibility with pre-auth callers.
 
         Returns
         -------
@@ -1242,7 +1430,8 @@ class PatternDB:
         """
         key = _entity_key(shipper_name)
         row = self._conn.execute(
-            "SELECT * FROM shipper_profiles WHERE shipper_key = ?", (key,)
+            "SELECT * FROM shipper_profiles WHERE organization_id = ? AND shipper_key = ?",
+            (organization_id, key),
         ).fetchone()
 
         if row is None:
@@ -1270,13 +1459,17 @@ class PatternDB:
             exists=True,
         )
 
-    def get_consignee_profile(self, consignee_name: str) -> ConsigneeProfile:
+    def get_consignee_profile(
+        self, consignee_name: str, organization_id: str = "__system__"
+    ) -> ConsigneeProfile:
         """Retrieve the pattern profile for a consignee entity.
 
         Parameters
         ----------
         consignee_name:
             Raw consignee name (normalized internally before lookup).
+        organization_id:
+            Tenant scope.  Defaults to ``'__system__'``.
 
         Returns
         -------
@@ -1286,7 +1479,8 @@ class PatternDB:
         """
         key = _entity_key(consignee_name)
         row = self._conn.execute(
-            "SELECT * FROM consignee_profiles WHERE consignee_key = ?", (key,)
+            "SELECT * FROM consignee_profiles WHERE organization_id = ? AND consignee_key = ?",
+            (organization_id, key),
         ).fetchone()
 
         if row is None:
@@ -1314,7 +1508,9 @@ class PatternDB:
             exists=True,
         )
 
-    def get_route_risk(self, origin: str, destination: str) -> RouteRisk:
+    def get_route_risk(
+        self, origin: str, destination: str, organization_id: str = "__system__"
+    ) -> RouteRisk:
         """Retrieve the historical fraud rate for a route corridor.
 
         Parameters
@@ -1325,6 +1521,8 @@ class PatternDB:
             Port of entry name (e.g. ``"Los Angeles"``).  Note: this is the
             port name, not a country code, matching the ``route_key`` format
             ``<origin_iso2>|<port_of_entry>``.
+        organization_id:
+            Tenant scope.  Defaults to ``'__system__'``.
 
         Returns
         -------
@@ -1335,7 +1533,8 @@ class PatternDB:
         """
         route_key = f"{origin}|{destination}"
         row = self._conn.execute(
-            "SELECT * FROM route_risk_profiles WHERE route_key = ?", (route_key,)
+            "SELECT * FROM route_risk_profiles WHERE organization_id = ? AND route_key = ?",
+            (organization_id, route_key),
         ).fetchone()
 
         if row is None:
@@ -1359,7 +1558,9 @@ class PatternDB:
             exists=True,
         )
 
-    def get_hs_baseline(self, hs_code_prefix: str) -> HSBaseline:
+    def get_hs_baseline(
+        self, hs_code_prefix: str, organization_id: str = "__system__"
+    ) -> HSBaseline:
         """Retrieve the running value distribution for an HS code prefix.
 
         Parameters
@@ -1367,6 +1568,8 @@ class PatternDB:
         hs_code_prefix:
             The 6-digit HS prefix to query (e.g. ``"8471.30"``).  Longer codes
             are accepted and truncated to the first 7 characters.
+        organization_id:
+            Tenant scope.  Defaults to ``'__system__'``.
 
         Returns
         -------
@@ -1384,7 +1587,8 @@ class PatternDB:
         prefix = hs_code_prefix[:7].rstrip(".")
 
         row = self._conn.execute(
-            "SELECT * FROM hs_code_baselines WHERE hs_prefix = ?", (prefix,)
+            "SELECT * FROM hs_code_baselines WHERE organization_id = ? AND hs_prefix = ?",
+            (organization_id, prefix),
         ).fetchone()
 
         if row is None or row["sample_count"] == 0:
@@ -1408,13 +1612,19 @@ class PatternDB:
             exists=True,
         )
 
-    def reset(self) -> int:
-        """Delete all learned data from every pattern learning table.
+    def reset(self, organization_id: str = "__system__") -> int:
+        """Delete all learned data for one organization from every pattern table.
 
-        Clears shipment_history, pattern_outcomes (via ON DELETE CASCADE),
-        shipper_profiles, consignee_profiles, route_risk_profiles, and
-        hs_code_baselines.  The schema_migrations table is intentionally
-        preserved so that re-initialisation is safe and idempotent.
+        Clears all rows scoped to *organization_id* from shipment_history,
+        pattern_outcomes, shipper_profiles, consignee_profiles,
+        route_risk_profiles, and hs_code_baselines.  The schema_migrations
+        table is intentionally preserved.
+
+        Parameters
+        ----------
+        organization_id:
+            Tenant scope.  Only rows belonging to this org are deleted.
+            Defaults to ``'__system__'`` for backward compatibility.
 
         Returns
         -------
@@ -1433,22 +1643,36 @@ class PatternDB:
             # Count before clearing so the audit entry and API response
             # reflect the actual number of records destroyed.
             count: int = self._conn.execute(
-                "SELECT COUNT(*) FROM shipment_history"
+                "SELECT COUNT(*) FROM shipment_history WHERE organization_id = ?",
+                (organization_id,),
             ).fetchone()[0]
 
-            # Delete in dependency order inside a single explicit transaction.
-            # pattern_outcomes has ON DELETE CASCADE from shipment_history, but
-            # we delete it explicitly first to be safe with any FK constraint
-            # enforcement state.  isolation_level=None (autocommit) means we
-            # must issue BEGIN/COMMIT ourselves.
             self._conn.execute("BEGIN")
             try:
-                self._conn.execute("DELETE FROM pattern_outcomes")
-                self._conn.execute("DELETE FROM shipment_history")
-                self._conn.execute("DELETE FROM shipper_profiles")
-                self._conn.execute("DELETE FROM consignee_profiles")
-                self._conn.execute("DELETE FROM route_risk_profiles")
-                self._conn.execute("DELETE FROM hs_code_baselines")
+                self._conn.execute(
+                    "DELETE FROM pattern_outcomes WHERE organization_id = ?",
+                    (organization_id,),
+                )
+                self._conn.execute(
+                    "DELETE FROM shipment_history WHERE organization_id = ?",
+                    (organization_id,),
+                )
+                self._conn.execute(
+                    "DELETE FROM shipper_profiles WHERE organization_id = ?",
+                    (organization_id,),
+                )
+                self._conn.execute(
+                    "DELETE FROM consignee_profiles WHERE organization_id = ?",
+                    (organization_id,),
+                )
+                self._conn.execute(
+                    "DELETE FROM route_risk_profiles WHERE organization_id = ?",
+                    (organization_id,),
+                )
+                self._conn.execute(
+                    "DELETE FROM hs_code_baselines WHERE organization_id = ?",
+                    (organization_id,),
+                )
                 self._conn.execute("COMMIT")
             except Exception:
                 self._conn.execute("ROLLBACK")
@@ -1459,8 +1683,14 @@ class PatternDB:
 
         return count
 
-    def get_summary_stats(self) -> dict:
+    def get_summary_stats(self, organization_id: str = "__system__") -> dict:
         """Return aggregate statistics for the Pattern History panel.
+
+        Parameters
+        ----------
+        organization_id:
+            Tenant scope.  Only data belonging to this org is included.
+            Defaults to ``'__system__'``.
 
         Returns
         -------
@@ -1473,21 +1703,24 @@ class PatternDB:
                 each dict has: origin_iso2, port_of_entry, fraud_rate, total_analyses
         """
         total_shipments: int = self._conn.execute(
-            "SELECT COUNT(*) FROM shipment_history"
+            "SELECT COUNT(*) FROM shipment_history WHERE organization_id = ?",
+            (organization_id,),
         ).fetchone()[0]
 
         total_confirmed_fraud: int = self._conn.execute(
-            "SELECT COUNT(*) FROM pattern_outcomes WHERE outcome = 'CONFIRMED_FRAUD'"
+            "SELECT COUNT(*) FROM pattern_outcomes WHERE organization_id = ? AND outcome = 'CONFIRMED_FRAUD'",
+            (organization_id,),
         ).fetchone()[0]
 
         shipper_rows = self._conn.execute(
             """
             SELECT shipper_name, reputation_score, total_analyses, total_confirmed_fraud
             FROM shipper_profiles
-            WHERE total_analyses > 0
+            WHERE organization_id = ? AND total_analyses > 0
             ORDER BY reputation_score DESC
             LIMIT 5
-            """
+            """,
+            (organization_id,),
         ).fetchall()
         top_riskiest_shippers = [
             {
@@ -1503,10 +1736,11 @@ class PatternDB:
             """
             SELECT origin_iso2, port_of_entry, fraud_rate, total_analyses
             FROM route_risk_profiles
-            WHERE total_analyses > 0
+            WHERE organization_id = ? AND total_analyses > 0
             ORDER BY fraud_rate DESC
             LIMIT 5
-            """
+            """,
+            (organization_id,),
         ).fetchall()
         top_riskiest_routes = [
             {
@@ -1538,6 +1772,7 @@ class PatternDB:
         name_val: str,
         is_flagged: bool,
         now: str,
+        organization_id: str = "__system__",
     ) -> None:
         """Create or update a shipper/consignee profile row.
 
@@ -1550,7 +1785,7 @@ class PatternDB:
         table:
             ``"shipper_profiles"`` or ``"consignee_profiles"``.
         key_col:
-            Primary-key column name (``"shipper_key"`` or ``"consignee_key"``).
+            Entity-key column name (``"shipper_key"`` or ``"consignee_key"``).
         name_col:
             Display-name column name.
         key_val:
@@ -1561,22 +1796,25 @@ class PatternDB:
             True if the decision for this analysis was anything other than APPROVE.
         now:
             ISO-8601 timestamp string for this operation.
+        organization_id:
+            Tenant scope for this profile.
         """
         existing = self._conn.execute(
-            f"SELECT * FROM {table} WHERE {key_col} = ?", (key_val,)
+            f"SELECT * FROM {table} WHERE organization_id = ? AND {key_col} = ?",
+            (organization_id, key_val),
         ).fetchone()
 
         if existing is None:
             initial_score = _compute_shipper_reputation(0.0, 0.0)
             self._conn.execute(
                 f"""INSERT INTO {table} (
-                    {key_col}, {name_col}, first_seen_at, last_seen_at,
+                    organization_id, {key_col}, {name_col}, first_seen_at, last_seen_at,
                     total_analyses, total_flagged,
                     weighted_analyses, weighted_flagged,
                     reputation_score, last_score_update
-                ) VALUES (?,?,?,?,  ?,?,  ?,?,  ?,?)""",
+                ) VALUES (?,?,?,?,?,  ?,?,  ?,?,  ?,?)""",
                 (
-                    key_val, name_val, now, now,
+                    organization_id, key_val, name_val, now, now,
                     1, int(is_flagged),
                     1.0, float(is_flagged),
                     initial_score, now,
@@ -1608,13 +1846,13 @@ class PatternDB:
                     weighted_cleared = ?,
                     reputation_score = ?,
                     last_score_update = ?
-                WHERE {key_col} = ?""",
+                WHERE organization_id = ? AND {key_col} = ?""",
                 (
                     name_val, now,
                     int(is_flagged),
                     w_analyses, w_flagged, w_fraud, w_cleared,
                     rep_score, now,
-                    key_val,
+                    organization_id, key_val,
                 ),
             )
 
@@ -1625,6 +1863,7 @@ class PatternDB:
         port_of_entry: str,
         is_flagged: bool,
         now: str,
+        organization_id: str = "__system__",
     ) -> None:
         """Create or update a route risk profile row.
 
@@ -1642,23 +1881,26 @@ class PatternDB:
             True if the decision was anything other than APPROVE.
         now:
             ISO-8601 timestamp string for this operation.
+        organization_id:
+            Tenant scope for this profile.
         """
         existing = self._conn.execute(
-            "SELECT * FROM route_risk_profiles WHERE route_key = ?", (route_key,)
+            "SELECT * FROM route_risk_profiles WHERE organization_id = ? AND route_key = ?",
+            (organization_id, route_key),
         ).fetchone()
 
         if existing is None:
             initial_rate = _compute_route_fraud_rate(0.0, 1.0)
             self._conn.execute(
                 """INSERT INTO route_risk_profiles (
-                    route_key, origin_iso2, port_of_entry,
+                    organization_id, route_key, origin_iso2, port_of_entry,
                     first_seen_at, last_seen_at,
                     total_analyses, total_flagged,
                     weighted_analyses, weighted_flagged,
                     fraud_rate, last_score_update
-                ) VALUES (?,?,?,?,?,  ?,?,  ?,?,  ?,?)""",
+                ) VALUES (?,?,?,?,?,?,  ?,?,  ?,?,  ?,?)""",
                 (
-                    route_key, origin_iso2, port_of_entry,
+                    organization_id, route_key, origin_iso2, port_of_entry,
                     now, now,
                     1, int(is_flagged),
                     1.0, float(is_flagged),
@@ -1687,18 +1929,22 @@ class PatternDB:
                     weighted_cleared = ?,
                     fraud_rate = ?,
                     last_score_update = ?
-                WHERE route_key = ?""",
+                WHERE organization_id = ? AND route_key = ?""",
                 (
                     now,
                     int(is_flagged),
                     w_analyses, w_flagged, w_fraud, w_cleared,
                     fraud_rate, now,
-                    route_key,
+                    organization_id, route_key,
                 ),
             )
 
     def _update_hs_baseline(
-        self, hs_prefix: str, unit_value_usd: float, now: str
+        self,
+        hs_prefix: str,
+        unit_value_usd: float,
+        now: str,
+        organization_id: str = "__system__",
     ) -> None:
         """Incorporate a new unit value into the Welford running statistics.
 
@@ -1710,18 +1956,21 @@ class PatternDB:
             Declared unit value in USD to add to the running statistics.
         now:
             ISO-8601 timestamp string.
+        organization_id:
+            Tenant scope for this baseline.
         """
         existing = self._conn.execute(
-            "SELECT * FROM hs_code_baselines WHERE hs_prefix = ?", (hs_prefix,)
+            "SELECT * FROM hs_code_baselines WHERE organization_id = ? AND hs_prefix = ?",
+            (organization_id, hs_prefix),
         ).fetchone()
 
         if existing is None:
             self._conn.execute(
                 """INSERT INTO hs_code_baselines
-                   (hs_prefix, sample_count, running_mean, running_m2,
+                   (organization_id, hs_prefix, sample_count, running_mean, running_m2,
                     running_min, running_max, cached_stddev, last_updated)
-                   VALUES (?,1,?,0.0,?,?,NULL,?)""",
-                (hs_prefix, unit_value_usd, unit_value_usd, unit_value_usd, now),
+                   VALUES (?,?,1,?,0.0,?,?,NULL,?)""",
+                (organization_id, hs_prefix, unit_value_usd, unit_value_usd, unit_value_usd, now),
             )
         else:
             n, mean, m2 = _welford_update(
@@ -1738,8 +1987,8 @@ class PatternDB:
                 """UPDATE hs_code_baselines SET
                    sample_count=?, running_mean=?, running_m2=?,
                    running_min=?, running_max=?, cached_stddev=?, last_updated=?
-                   WHERE hs_prefix=?""",
-                (n, mean, m2, new_min, new_max, stddev, now, hs_prefix),
+                   WHERE organization_id=? AND hs_prefix=?""",
+                (n, mean, m2, new_min, new_max, stddev, now, organization_id, hs_prefix),
             )
 
     # ------------------------------------------------------------------
@@ -1765,6 +2014,7 @@ class PatternDB:
         shipper_key = analysis_row["shipper_key"]
         consignee_key = analysis_row["consignee_key"]
         route_key = analysis_row["route_key"]
+        org_id = analysis_row["organization_id"]
 
         if shipper_key:
             self._apply_entity_fraud(
@@ -1773,6 +2023,7 @@ class PatternDB:
                 key_val=shipper_key,
                 decay_weight=decay_weight,
                 now=now,
+                organization_id=org_id,
             )
 
         if consignee_key:
@@ -1782,10 +2033,11 @@ class PatternDB:
                 key_val=consignee_key,
                 decay_weight=decay_weight,
                 now=now,
+                organization_id=org_id,
             )
 
         if route_key:
-            self._apply_route_fraud(route_key, decay_weight, now)
+            self._apply_route_fraud(route_key, decay_weight, now, organization_id=org_id)
 
     def _apply_cleared_outcome(
         self, analysis_row: sqlite3.Row, decay_weight: float, now: str
@@ -1809,6 +2061,7 @@ class PatternDB:
         """
         shipper_key = analysis_row["shipper_key"]
         consignee_key = analysis_row["consignee_key"]
+        org_id = analysis_row["organization_id"]
 
         if shipper_key:
             self._apply_entity_cleared(
@@ -1817,6 +2070,7 @@ class PatternDB:
                 key_val=shipper_key,
                 decay_weight=decay_weight,
                 now=now,
+                organization_id=org_id,
             )
 
         if consignee_key:
@@ -1826,6 +2080,7 @@ class PatternDB:
                 key_val=consignee_key,
                 decay_weight=decay_weight,
                 now=now,
+                organization_id=org_id,
             )
 
     def _apply_entity_fraud(
@@ -1835,6 +2090,7 @@ class PatternDB:
         key_val: str,
         decay_weight: float,
         now: str,
+        organization_id: str = "__system__",
     ) -> None:
         """Increment fraud weight on an entity profile and recompute reputation score.
 
@@ -1843,16 +2099,19 @@ class PatternDB:
         table:
             ``"shipper_profiles"`` or ``"consignee_profiles"``.
         key_col:
-            Primary key column name.
+            Entity key column name.
         key_val:
             Entity key value.
         decay_weight:
             Decay-weighted contribution of this fraud event.
         now:
             ISO-8601 timestamp for the score update.
+        organization_id:
+            Tenant scope.
         """
         existing = self._conn.execute(
-            f"SELECT * FROM {table} WHERE {key_col} = ?", (key_val,)
+            f"SELECT * FROM {table} WHERE organization_id = ? AND {key_col} = ?",
+            (organization_id, key_val),
         ).fetchone()
         if existing is None:
             return  # Profile may have been deleted; skip silently
@@ -1876,8 +2135,8 @@ class PatternDB:
                 weighted_cleared = ?,
                 reputation_score = ?,
                 last_score_update = ?
-            WHERE {key_col} = ?""",
-            (w_fraud, w_analyses, w_flagged, w_cleared, rep_score, now, key_val),
+            WHERE organization_id = ? AND {key_col} = ?""",
+            (w_fraud, w_analyses, w_flagged, w_cleared, rep_score, now, organization_id, key_val),
         )
 
     def _apply_entity_cleared(
@@ -1887,6 +2146,7 @@ class PatternDB:
         key_val: str,
         decay_weight: float,
         now: str,
+        organization_id: str = "__system__",
     ) -> None:
         """Increment cleared weight on an entity profile and check auto-trust threshold.
 
@@ -1895,16 +2155,19 @@ class PatternDB:
         table:
             ``"shipper_profiles"`` or ``"consignee_profiles"``.
         key_col:
-            Primary key column name.
+            Entity key column name.
         key_val:
             Entity key value.
         decay_weight:
             Decay-weighted contribution of this cleared event.
         now:
             ISO-8601 timestamp for the score update.
+        organization_id:
+            Tenant scope.
         """
         existing = self._conn.execute(
-            f"SELECT * FROM {table} WHERE {key_col} = ?", (key_val,)
+            f"SELECT * FROM {table} WHERE organization_id = ? AND {key_col} = ?",
+            (organization_id, key_val),
         ).fetchone()
         if existing is None:
             return
@@ -1946,17 +2209,21 @@ class PatternDB:
                 trust_set_at = CASE WHEN ? THEN ? ELSE trust_set_at END,
                 trust_set_by = CASE WHEN ? THEN 'system_auto' ELSE trust_set_by END,
                 last_score_update = ?
-            WHERE {key_col} = ?""",
+            WHERE organization_id = ? AND {key_col} = ?""",
             (
                 w_cleared, w_fraud, w_analyses, w_flagged,
                 rep_score,
                 int(auto_trust), int(auto_trust), now, int(auto_trust),
-                now, key_val,
+                now, organization_id, key_val,
             ),
         )
 
     def _apply_route_fraud(
-        self, route_key: str, decay_weight: float, now: str
+        self,
+        route_key: str,
+        decay_weight: float,
+        now: str,
+        organization_id: str = "__system__",
     ) -> None:
         """Increment confirmed fraud weight on a route profile and recompute fraud rate.
 
@@ -1968,9 +2235,12 @@ class PatternDB:
             Decay-weighted contribution of this fraud event.
         now:
             ISO-8601 timestamp for the score update.
+        organization_id:
+            Tenant scope.
         """
         existing = self._conn.execute(
-            "SELECT * FROM route_risk_profiles WHERE route_key = ?", (route_key,)
+            "SELECT * FROM route_risk_profiles WHERE organization_id = ? AND route_key = ?",
+            (organization_id, route_key),
         ).fetchone()
         if existing is None:
             return
@@ -1994,6 +2264,6 @@ class PatternDB:
                weighted_cleared = ?,
                fraud_rate = ?,
                last_score_update = ?
-            WHERE route_key = ?""",
-            (w_fraud, w_analyses, w_flagged, w_cleared, fraud_rate, now, route_key),
+            WHERE organization_id = ? AND route_key = ?""",
+            (w_fraud, w_analyses, w_flagged, w_cleared, fraud_rate, now, organization_id, route_key),
         )

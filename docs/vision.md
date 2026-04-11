@@ -23,11 +23,13 @@ Each of these checks requires regulatory data (HTS tables, sanctions lists, AD/C
 
 **PORTGUARD** is a fully local US import compliance screening system. It ingests raw shipping documents or structured shipment data and returns, in under one second, a risk score, a compliance decision, a list of specific findings, and prioritized remediation steps — with no external API calls, no paid services, and no network dependency.
 
-The system has two complementary layers:
+The system has three complementary layers:
 
 1. **Rule-based compliance engine** — static regulatory knowledge encoded directly in Python: OFAC sanctions, Section 301 tariffs, AD/CVD orders, UFLPA, ISF, PGA requirements, document inconsistency detection, and undervaluation benchmarks. Deterministic and fully auditable.
 
 2. **Localized Pattern Learning (LPL)** — an adaptive layer that accumulates institutional knowledge from officer feedback and improves accuracy over time. Runs entirely on-device using SQLite. When officers mark a shipment as confirmed fraud or cleared, that verdict updates entity and route risk profiles; future screenings of the same shipper, consignee, or corridor reflect the accumulated history.
+
+3. **Multi-tenant authentication** — JWT-based authentication with complete per-organization data isolation. Multiple customs brokerages, ports, or compliance teams can share a single PORTGUARD deployment; each organization builds its own independent pattern history that no other organization can read or influence.
 
 Every compliance check is implemented directly in code:
 
@@ -475,14 +477,37 @@ Both buttons disable after submission and display a contextual confirmation mess
 
 ---
 
+## Multi-Tenancy and Authentication
+
+PORTGUARD supports multiple independent organizations on a single deployment. Each organization registers with a company name and email address; all screening data and pattern history is completely isolated per organization. No cross-organization data leakage is possible — isolation is enforced at three independent layers.
+
+### Authentication
+
+All protected API endpoints require a JWT Bearer token obtained via `POST /api/v1/auth/login`. Tokens are signed with HS256, expire after 24 hours, and carry a unique JTI. On logout, the JTI is written to a server-side revocation table so tokens cannot be reused even before expiry.
+
+Passwords are hashed with bcrypt at work factor 12. Logins against non-existent accounts still run a bcrypt operation against a pre-generated dummy hash to prevent timing-based user enumeration. Failed logins are rate-limited at 5 per IP per 60 seconds.
+
+The signing key is set via `PORTGUARD_JWT_SECRET`. In the browser demo, tokens are stored in a JavaScript variable only — never in `localStorage`, `sessionStorage`, or cookies.
+
+### Data isolation
+
+The `organization_id` (JWT `sub` claim) flows through every database write and read. Profile tables use composite primary keys `(organization_id, entity_key)`. Every SQL query carries a `WHERE organization_id = ?` predicate. Three independent layers enforce isolation:
+
+1. **JWT layer** — `sub` claim is the organization UUID, verified on every request
+2. **Application layer** — `org_id` passed explicitly to every PatternDB and PatternEngine call
+3. **SQL layer** — every query is parameterized with the organization predicate
+
+End-to-end tested: Company A's pattern history (shippers, routes, outcomes) is completely invisible to Company B even on a shared database.
+
+---
+
 ## Limitations
 
 - **Static regulatory data.** Section 301 prefix tables, AD/CVD orders, and OFAC program lists are embedded at build time. They do not update automatically when regulations change.
 - **Document parsing is regex-based.** Field extraction works on well-structured document text. Heavily formatted, scanned, or unusual document layouts may not extract correctly.
-- **No authentication.** Neither API endpoint has access control.
 - **In-memory report storage.** The structured pipeline stores reports in a Python dict. Reports are lost on process restart. Not suitable for multi-worker deployments.
 - **Classification is preliminary.** HTS classifications and duty rate estimates are for screening purposes only. A licensed customs broker must file the actual entry. These outputs are not legally binding.
 - **ISF checks are partial.** Only four of the ten ISF importer-provided data elements can be verified from document text. Elements 2 (buyer), 6 (ship-to party), 9 (consolidator), and 10 (container stuffing location) are not checked.
 - **Pattern learning requires feedback volume.** The LPL layer is conservative by design — meaningful score adjustments require at least 3 prior analyses (cold start threshold) and confirmed outcomes. A new deployment starts in rule-only mode and builds accuracy gradually.
-- **Pattern DB is single-node.** The SQLite PatternDB uses WAL mode for concurrent reads but serializes all writes through a threading.Lock. It is not designed for multi-process or distributed deployments.
+- **Single-node storage.** Both SQLite databases (auth and pattern learning) use WAL mode for concurrent reads but serialize writes through a threading.Lock. Not designed for multi-process or distributed deployments. Horizontal scaling requires externalizing storage and the JWT secret.
 - **Pattern scores are auxiliary.** Pattern learning outputs are advisory signals that blend with the rule engine (35% weight). They do not override or suppress compliance rule findings. All rule-based findings remain fully visible regardless of pattern history.

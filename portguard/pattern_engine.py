@@ -451,6 +451,10 @@ class ScoringRequest:
         Number of units (used to compute unit_value_usd for anomaly detection).
     """
 
+    # Multi-tenant scope — set to the authenticated org's UUID.
+    # Defaults to '__system__' for backward compatibility.
+    organization_id: str = "__system__"
+
     shipper_name: Optional[str] = None
     consignee_name: Optional[str] = None
     origin_iso2: Optional[str] = None
@@ -847,7 +851,8 @@ class PatternEngine:
             return _null_shipper_signal("(no shipper name provided)")
 
         try:
-            profile = self._db.get_shipper_profile(request.shipper_name)
+            org_id = request.organization_id
+            profile = self._db.get_shipper_profile(request.shipper_name, organization_id=org_id)
             shipper_key = profile.shipper_key
 
             # Retrieve 90-day flag history from shipment_history
@@ -855,11 +860,11 @@ class PatternEngine:
                 """
                 SELECT analyzed_at, final_decision, outcome_cleared
                 FROM shipment_history
-                WHERE shipper_key = ?
+                WHERE organization_id = ? AND shipper_key = ?
                   AND analyzed_at >= datetime('now', '-90 days')
                 ORDER BY analyzed_at DESC
                 """,
-                (shipper_key,),
+                (org_id, shipper_key),
             ).fetchall()
 
             # Decay-weighted counts and threshold triggers
@@ -978,18 +983,19 @@ class PatternEngine:
             return _null_consignee_signal("(no consignee name provided)")
 
         try:
-            profile = self._db.get_consignee_profile(request.consignee_name)
+            org_id = request.organization_id
+            profile = self._db.get_consignee_profile(request.consignee_name, organization_id=org_id)
             consignee_key = profile.consignee_key
 
             rows = self._db._conn.execute(
                 """
                 SELECT analyzed_at, final_decision, outcome_cleared
                 FROM shipment_history
-                WHERE consignee_key = ?
+                WHERE organization_id = ? AND consignee_key = ?
                   AND analyzed_at >= datetime('now', '-90 days')
                 ORDER BY analyzed_at DESC
                 """,
-                (consignee_key,),
+                (org_id, consignee_key),
             ).fetchall()
 
             w_total = 0.0
@@ -1089,7 +1095,8 @@ class PatternEngine:
             return _null_route_signal("(missing origin or port)")
 
         try:
-            route = self._db.get_route_risk(request.origin_iso2, request.port_of_entry)
+            org_id = request.organization_id
+            route = self._db.get_route_risk(request.origin_iso2, request.port_of_entry, organization_id=org_id)
             route_key = f"{request.origin_iso2}|{request.port_of_entry}"
 
             # Re-compute from live weighted values for accuracy
@@ -1098,8 +1105,8 @@ class PatternEngine:
                 row = self._db._conn.execute(
                     "SELECT weighted_confirmed_fraud, weighted_analyses, "
                     "       total_analyses, total_confirmed_fraud "
-                    "FROM route_risk_profiles WHERE route_key = ?",
-                    (route_key,),
+                    "FROM route_risk_profiles WHERE organization_id = ? AND route_key = ?",
+                    (org_id, route_key),
                 ).fetchone()
                 if row:
                     wf = row["weighted_confirmed_fraud"]
@@ -1197,7 +1204,7 @@ class PatternEngine:
         hs_prefix = request.hs_codes[0][:7].rstrip(".")
 
         try:
-            baseline = self._db.get_hs_baseline(hs_prefix)
+            baseline = self._db.get_hs_baseline(hs_prefix, organization_id=request.organization_id)
 
             if (
                 not baseline.exists
@@ -1295,6 +1302,7 @@ class PatternEngine:
             )
 
         try:
+            org_id = request.organization_id
             shipper_key = _entity_key(request.shipper_name)
             consignee_key = _entity_key(request.consignee_name)
 
@@ -1302,11 +1310,11 @@ class PatternEngine:
             rows_7d = self._db._conn.execute(
                 """
                 SELECT analyzed_at FROM shipment_history
-                WHERE shipper_key = ? AND consignee_key = ?
+                WHERE organization_id = ? AND shipper_key = ? AND consignee_key = ?
                   AND analyzed_at >= datetime('now', '-7 days')
                 ORDER BY analyzed_at DESC
                 """,
-                (shipper_key, consignee_key),
+                (org_id, shipper_key, consignee_key),
             ).fetchall()
 
             observed_w = sum(
@@ -1319,11 +1327,11 @@ class PatternEngine:
             rows_90d = self._db._conn.execute(
                 """
                 SELECT analyzed_at FROM shipment_history
-                WHERE shipper_key = ? AND consignee_key = ?
+                WHERE organization_id = ? AND shipper_key = ? AND consignee_key = ?
                   AND analyzed_at >= datetime('now', '-90 days')
                 ORDER BY analyzed_at DESC
                 """,
-                (shipper_key, consignee_key),
+                (org_id, shipper_key, consignee_key),
             ).fetchall()
 
             # Total decay-weighted count over 90 days / 90 * 7 = avg per 7-day window

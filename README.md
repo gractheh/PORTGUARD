@@ -168,9 +168,16 @@ portguard/
     test_pattern_db.py    59 tests — PatternDB data layer
     test_pattern_engine.py  71 tests — PatternEngine scoring logic
 
+portguard/
+  auth.py                 Authentication module — bcrypt password hashing, JWT
+                          creation/verification, AuthDB (SQLite), rate limiting,
+                          get_current_organization FastAPI dependency
+
 api/
   app.py                  FastAPI app (document analysis + pattern learning overlay)
                           /analyze, /feedback, /pattern-history
+  auth_routes.py          Auth endpoints — /auth/register, /auth/login,
+                          /auth/logout, /auth/me
   document_parser.py      PDF and plain-text extraction (pdfplumber)
 
 docs/
@@ -180,6 +187,84 @@ main.py                   CLI runner: 3 test scenarios, prints results
 run_demo.py               Starts API server, opens demo in browser
 test_e2e_pattern_learning.py  End-to-end pipeline test (36 checks)
 ```
+
+---
+
+## Authentication and Multi-Tenancy
+
+PORTGUARD supports multiple independent organizations on a single deployment. Each organization registers with a company name and email, and all shipment data — pattern history, entity profiles, route risk, and HS baselines — is completely isolated per organization. One organization cannot read or influence another's screening history.
+
+### How it works
+
+Authentication uses JWT Bearer tokens (HS256, 24-hour expiry). Tokens live in JavaScript memory only — never written to `localStorage`, `sessionStorage`, or cookies. On logout, the token's JTI is written to a server-side revocation table so it cannot be reused even before it expires.
+
+**Auth endpoints (`/api/v1/auth/`):**
+
+| Method | Path | Auth required | Description |
+|---|---|---|---|
+| POST | `/api/v1/auth/register` | No | Create a new organization account |
+| POST | `/api/v1/auth/login` | No | Authenticate; returns JWT access token |
+| POST | `/api/v1/auth/logout` | Yes | Revoke the current token server-side |
+| GET | `/api/v1/auth/me` | Yes | Return the authenticated organization's info |
+
+All other API endpoints (`/api/v1/analyze`, `/api/v1/feedback`, `/api/v1/pattern-history`, `/api/v1/pattern-history/reset`, `/api/v1/extract-text`, `/api/v1/analyze-files`) require a valid Bearer token. `GET /api/v1/health`, `GET /`, and `GET /demo` are public.
+
+**Register:**
+```json
+POST /api/v1/auth/register
+{
+  "org_name": "Acme Customs LLC",
+  "email": "ops@acme.io",
+  "password": "s3cur3pass!"
+}
+```
+Returns `201 Created` with `{ "organization_id": "<uuid>", "org_name": "...", "email": "..." }`.
+
+**Login:**
+```json
+POST /api/v1/auth/login
+{ "email": "ops@acme.io", "password": "s3cur3pass!" }
+```
+Returns `{ "access_token": "<jwt>", "token_type": "bearer" }`.
+
+**Protected request:**
+```
+Authorization: Bearer <access_token>
+```
+
+### Security design
+
+| Property | Implementation |
+|---|---|
+| Password hashing | bcrypt, work factor 12 |
+| Token format | HS256 JWT, 24h expiry, unique JTI per token |
+| Logout | JTI stored in SQLite revocation table; checked on every request |
+| User enumeration protection | Non-existent user logins run bcrypt against a pre-generated dummy hash to normalize timing |
+| Rate limiting | 5 failed logins per IP per 60 seconds; requests beyond the threshold are rejected with HTTP 429 |
+| Credential storage | `PORTGUARD_JWT_SECRET` env var for production key rotation; random fallback for development |
+
+### Data isolation
+
+The `organization_id` from the JWT `sub` claim is threaded through every database operation. All four profile tables (`shipper_profiles`, `consignee_profiles`, `route_risk_profiles`, `hs_code_baselines`) use composite primary keys `(organization_id, entity_key)`. Every SQL query is filtered by `WHERE organization_id = ?`. Three independent isolation layers prevent cross-organization data leakage:
+
+1. JWT claim — `sub` field is the organization UUID
+2. Application layer — org_id passed explicitly to every PatternDB and PatternEngine call
+3. SQL layer — every query has an `organization_id` predicate
+
+Pre-authentication data (if any exists from before the auth system was deployed) is attributed to the sentinel `'__system__'` organization, which is unreachable to any authenticated user.
+
+### Auth storage
+
+Auth data is kept in a separate SQLite file (`portguard_auth.db`) from pattern learning data (`portguard_patterns.db`), so they can be backed up or migrated independently.
+
+| Env var | Default | Description |
+|---|---|---|
+| `PORTGUARD_JWT_SECRET` | Random 32-byte hex | JWT signing key — must be set in production |
+| `PORTGUARD_AUTH_DB_PATH` | `portguard_auth.db` | Path to the auth SQLite database |
+
+### Browser demo
+
+The demo UI (`GET /demo`) opens with a login screen. New users click "Create account" to register. After login, the organization name appears in the top-right header and a Logout button is available. All existing demo functionality (document analysis, pattern intelligence, officer feedback, pattern history) works exactly as before — all API calls automatically include the Bearer token in the `Authorization` header. A 401 response on any call redirects immediately to the login screen.
 
 ---
 
@@ -276,7 +361,7 @@ cd PORTGUARD
 pip install -r requirements.txt
 ```
 
-Dependencies: `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `python-dotenv`, `httpx`, `pdfplumber`, `python-multipart`, `pytest`, `pytest-asyncio`, `pytest-mock`.
+Dependencies: `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `python-dotenv`, `httpx`, `pdfplumber`, `python-multipart`, `python-jose[cryptography]`, `bcrypt`, `pytest`, `pytest-asyncio`, `pytest-mock`.
 
 ---
 
@@ -397,17 +482,33 @@ uvicorn api.app:app --reload --port 8000
 ```
 
 ```bash
-# Health check
+# Health check (no auth required)
 curl http://localhost:8000/api/v1/health
+
+# Register an organization
+curl -X POST http://localhost:8000/api/v1/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"org_name": "Acme Customs LLC", "email": "ops@acme.io", "password": "s3cur3pass!"}'
+
+# Log in and capture the token
+TOKEN=$(curl -s -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email": "ops@acme.io", "password": "s3cur3pass!"}' | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
 
 # Upload a document and extract its text
 curl -X POST http://localhost:8000/api/v1/extract-text \
+  -H "Authorization: Bearer $TOKEN" \
   -F "file=@bill_of_lading.pdf"
 
 # Analyze a shipment
 curl -X POST http://localhost:8000/api/v1/analyze \
+  -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d @tests/sample_documents/02_suspicious_shipment.json
+
+# Log out (revokes the token server-side)
+curl -X POST http://localhost:8000/api/v1/auth/logout \
+  -H "Authorization: Bearer $TOKEN"
 ```
 
 **`POST /api/v1/extract-text` — file upload**
@@ -613,5 +714,5 @@ Three sample request payloads in `tests/sample_documents/`:
 - **PDF support is text-layer only.** `POST /api/v1/extract-text` uses pdfplumber to extract machine-readable text from PDFs (up to 50 pages, 10 MB). Scanned PDFs with no text layer, password-protected PDFs, and corrupt PDFs are rejected with descriptive error codes. For scanned documents, run OCR before uploading.
 - **ISF checks are partial.** Only 4 of the 10 ISF importer-provided data elements can be verified from document text. Elements 2 (buyer), 6 (ship-to party), 9 (consolidator), and 10 (container stuffing location) are not checked.
 - **In-memory report storage.** The structured pipeline stores reports in a Python dict. Reports are lost on process restart. Not suitable for multi-worker deployments.
-- **No authentication.** Neither API endpoint has access control.
+- **Single-node auth storage.** The auth SQLite database uses WAL mode and a threading.Lock for writes. It is not designed for multi-process or distributed deployments. For horizontally scaled deployments, replace the SQLite AuthDB with a shared store (PostgreSQL, Redis) and externalize the JWT secret.
 - **Classification is not legally binding.** HTS classifications and duty rate estimates are for preliminary screening only. A licensed customs broker must file the actual entry.

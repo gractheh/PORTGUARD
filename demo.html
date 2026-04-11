@@ -64,6 +64,109 @@
     }
     .logo-text { font-size: 1.1rem; font-weight: 800; letter-spacing: .06em; color: #e8f0f8; }
     .logo-sub  { font-size: .7rem; font-weight: 500; color: var(--muted); letter-spacing: .08em; text-transform: uppercase; }
+    /* ---- Auth overlay ---- */
+    #auth-overlay {
+      position: fixed; inset: 0; z-index: 9000;
+      background: var(--bg);
+      display: flex; align-items: center; justify-content: center;
+      padding: 1.5rem;
+    }
+    #auth-overlay.hidden { display: none; }
+    .auth-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2.5rem 2rem;
+      width: 100%; max-width: 420px;
+      box-shadow: 0 24px 80px rgba(0,0,0,.5);
+    }
+    .auth-logo {
+      display: flex; align-items: center; gap: .7rem;
+      margin-bottom: 2rem;
+    }
+    .auth-title {
+      font-size: 1.4rem; font-weight: 700; margin-bottom: .4rem;
+      color: #e8f0f8;
+    }
+    .auth-sub {
+      font-size: .85rem; color: var(--muted); margin-bottom: 1.8rem;
+    }
+    .auth-tabs {
+      display: flex; gap: 0;
+      border: 1px solid var(--border);
+      border-radius: 8px; overflow: hidden;
+      margin-bottom: 1.8rem;
+    }
+    .auth-tab {
+      flex: 1; padding: .55rem; text-align: center;
+      font-size: .85rem; font-weight: 600; cursor: pointer;
+      background: none; border: none; color: var(--muted);
+      transition: all .18s;
+    }
+    .auth-tab.active {
+      background: var(--blue); color: #fff;
+    }
+    .auth-form { display: flex; flex-direction: column; gap: 1rem; }
+    .auth-field { display: flex; flex-direction: column; gap: .35rem; }
+    .auth-label {
+      font-size: .78rem; font-weight: 600; color: var(--muted);
+      letter-spacing: .04em; text-transform: uppercase;
+    }
+    .auth-input {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 8px; padding: .65rem .9rem;
+      color: var(--text); font-family: 'Inter', sans-serif; font-size: .9rem;
+      outline: none; transition: border-color .18s;
+      width: 100%;
+    }
+    .auth-input:focus { border-color: var(--blue); }
+    .auth-input.error { border-color: var(--red); }
+    .auth-error {
+      background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.3);
+      color: #fca5a5; font-size: .82rem; padding: .6rem .9rem;
+      border-radius: 8px; display: none;
+    }
+    .auth-error.visible { display: block; }
+    .auth-btn {
+      background: var(--blue); color: #fff;
+      border: none; border-radius: 8px;
+      padding: .75rem 1.5rem; font-size: .95rem; font-weight: 600;
+      cursor: pointer; transition: background .18s;
+      width: 100%; margin-top: .3rem;
+    }
+    .auth-btn:hover { background: #2563eb; }
+    .auth-btn:disabled { opacity: .5; cursor: not-allowed; }
+    .auth-switch {
+      text-align: center; font-size: .82rem; color: var(--muted);
+      margin-top: 1rem;
+    }
+    .auth-switch a { color: #93c5fd; cursor: pointer; text-decoration: underline; }
+    .pw-strength {
+      height: 3px; border-radius: 99px; margin-top: .25rem;
+      background: var(--border); overflow: hidden;
+    }
+    .pw-strength-bar {
+      height: 100%; width: 0; border-radius: 99px;
+      transition: width .25s, background .25s;
+    }
+
+    /* ---- Header user area ---- */
+    .header-user {
+      display: flex; align-items: center; gap: .75rem;
+    }
+    .header-org {
+      font-size: .8rem; font-weight: 600; color: var(--muted);
+      display: flex; align-items: center; gap: .4rem;
+    }
+    .header-org-name { color: #93c5fd; }
+    .logout-btn {
+      background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.25);
+      color: #fca5a5; font-size: .75rem; font-weight: 600;
+      padding: .3rem .75rem; border-radius: 6px; cursor: pointer;
+      transition: all .18s;
+    }
+    .logout-btn:hover { background: rgba(239,68,68,.22); }
+
     .header-api {
       display: flex; align-items: center; gap: .5rem;
       font-size: .75rem; color: var(--muted);
@@ -646,6 +749,72 @@
 </head>
 <body>
 
+<!-- ===================== AUTH OVERLAY ===================== -->
+<div id="auth-overlay">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <div class="logo-icon">PG</div>
+      <div>
+        <div class="logo-text">PORTGUARD</div>
+        <div class="logo-sub">Trade Compliance Screening</div>
+      </div>
+    </div>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" id="tab-login-btn" onclick="switchAuthTab('login')">Sign In</button>
+      <button class="auth-tab" id="tab-register-btn" onclick="switchAuthTab('register')">Create Account</button>
+    </div>
+
+    <!-- Login form -->
+    <div id="auth-login-form">
+      <div class="auth-title">Welcome back</div>
+      <div class="auth-sub">Sign in to access your compliance screening dashboard.</div>
+      <div id="login-error" class="auth-error"></div>
+      <form class="auth-form" onsubmit="handleLogin(event)">
+        <div class="auth-field">
+          <label class="auth-label" for="login-email">Email</label>
+          <input class="auth-input" id="login-email" type="email" placeholder="you@company.com" required autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label class="auth-label" for="login-password">Password</label>
+          <input class="auth-input" id="login-password" type="password" placeholder="Your password" required autocomplete="current-password">
+        </div>
+        <button class="auth-btn" id="login-btn" type="submit">Sign In</button>
+      </form>
+      <div class="auth-switch">Don't have an account? <a onclick="switchAuthTab('register')">Create one</a></div>
+    </div>
+
+    <!-- Register form -->
+    <div id="auth-register-form" style="display:none">
+      <div class="auth-title">Create your account</div>
+      <div class="auth-sub">Your pattern learning data stays completely private to your organization.</div>
+      <div id="register-error" class="auth-error"></div>
+      <form class="auth-form" onsubmit="handleRegister(event)">
+        <div class="auth-field">
+          <label class="auth-label" for="reg-orgname">Company Name</label>
+          <input class="auth-input" id="reg-orgname" type="text" placeholder="Acme Logistics Inc." required minlength="2">
+        </div>
+        <div class="auth-field">
+          <label class="auth-label" for="reg-email">Email</label>
+          <input class="auth-input" id="reg-email" type="email" placeholder="you@company.com" required autocomplete="email">
+        </div>
+        <div class="auth-field">
+          <label class="auth-label" for="reg-password">Password</label>
+          <input class="auth-input" id="reg-password" type="password" placeholder="Min 8 characters" required minlength="8"
+                 oninput="updatePasswordStrength(this.value)">
+          <div class="pw-strength"><div class="pw-strength-bar" id="pw-strength-bar"></div></div>
+        </div>
+        <div class="auth-field">
+          <label class="auth-label" for="reg-confirm">Confirm Password</label>
+          <input class="auth-input" id="reg-confirm" type="password" placeholder="Repeat password" required autocomplete="new-password">
+        </div>
+        <button class="auth-btn" id="register-btn" type="submit">Create Account</button>
+      </form>
+      <div class="auth-switch">Already have an account? <a onclick="switchAuthTab('login')">Sign in</a></div>
+    </div>
+  </div>
+</div>
+
 <!-- ===================== HEADER ===================== -->
 <header>
   <a class="logo" href="#">
@@ -655,10 +824,17 @@
       <div class="logo-sub">Trade Compliance Screening</div>
     </div>
   </a>
-  <div class="header-api">
-    <div class="api-dot" id="api-dot"></div>
-    <span>API:</span>
-    <input id="api-url-input" type="text" value="" spellcheck="false">
+  <div class="header-user">
+    <div class="header-org" id="header-org" style="display:none">
+      <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      <span class="header-org-name" id="header-org-name"></span>
+    </div>
+    <button class="logout-btn" id="logout-btn" onclick="handleLogout()" style="display:none">Sign Out</button>
+    <div class="header-api">
+      <div class="api-dot" id="api-dot"></div>
+      <span>API:</span>
+      <input id="api-url-input" type="text" value="" spellcheck="false">
+    </div>
   </div>
 </header>
 
@@ -914,6 +1090,209 @@
 // Config
 // ---------------------------------------------------------------------------
 const apiUrl = () => document.getElementById('api-url-input').value.replace(/\/$/, '');
+
+// ---------------------------------------------------------------------------
+// Auth state — token lives ONLY in this variable; never written to storage.
+// ---------------------------------------------------------------------------
+let _authToken   = null;   // JWT string or null
+let _authOrgName = null;   // display name for header
+
+/** Return headers with Authorization if logged in. */
+function authHeaders(extra) {
+  const h = { 'Content-Type': 'application/json', ...extra };
+  if (_authToken) h['Authorization'] = 'Bearer ' + _authToken;
+  return h;
+}
+
+/** Return fetch options pre-populated with the auth header (for JSON requests). */
+function authedJson(method, body) {
+  return { method, headers: authHeaders(), body: body ? JSON.stringify(body) : undefined };
+}
+
+/** Return fetch options for multipart form-data uploads (no Content-Type — browser sets boundary). */
+function authedForm(formData) {
+  const h = {};
+  if (_authToken) h['Authorization'] = 'Bearer ' + _authToken;
+  return { method: 'POST', headers: h, body: formData };
+}
+
+/** Called when any API returns 401 — show login screen. */
+function handle401() {
+  _authToken   = null;
+  _authOrgName = null;
+  showAuthOverlay();
+}
+
+// ---------------------------------------------------------------------------
+// Auth overlay — show / hide
+// ---------------------------------------------------------------------------
+
+function showAuthOverlay() {
+  document.getElementById('auth-overlay').classList.remove('hidden');
+  document.getElementById('header-org').style.display   = 'none';
+  document.getElementById('logout-btn').style.display   = 'none';
+}
+
+function hideAuthOverlay() {
+  document.getElementById('auth-overlay').classList.add('hidden');
+  document.getElementById('header-org').style.display   = 'flex';
+  document.getElementById('logout-btn').style.display   = 'block';
+  document.getElementById('header-org-name').textContent = _authOrgName || '';
+}
+
+// ---------------------------------------------------------------------------
+// Auth tab switcher
+// ---------------------------------------------------------------------------
+
+function switchAuthTab(tab) {
+  const isLogin = tab === 'login';
+  document.getElementById('auth-login-form').style.display    = isLogin ? 'block' : 'none';
+  document.getElementById('auth-register-form').style.display = isLogin ? 'none' : 'block';
+  document.getElementById('tab-login-btn').classList.toggle('active', isLogin);
+  document.getElementById('tab-register-btn').classList.toggle('active', !isLogin);
+  document.getElementById('login-error').classList.remove('visible');
+  document.getElementById('register-error').classList.remove('visible');
+}
+
+// ---------------------------------------------------------------------------
+// Login
+// ---------------------------------------------------------------------------
+
+async function handleLogin(e) {
+  e.preventDefault();
+  const email    = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const btn      = document.getElementById('login-btn');
+  const errEl    = document.getElementById('login-error');
+
+  errEl.classList.remove('visible');
+  btn.disabled = true;
+  btn.textContent = 'Signing in…';
+
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      const msg = (data.detail && data.detail.message) || data.detail || `Error ${res.status}`;
+      errEl.textContent = msg;
+      errEl.classList.add('visible');
+      return;
+    }
+
+    _authToken   = data.access_token;
+    _authOrgName = data.org_name;
+    hideAuthOverlay();
+  } catch (err) {
+    errEl.textContent = 'Network error — is the API server running?';
+    errEl.classList.add('visible');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Sign In';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Register
+// ---------------------------------------------------------------------------
+
+function updatePasswordStrength(pw) {
+  const bar = document.getElementById('pw-strength-bar');
+  let score = 0;
+  if (pw.length >= 8)  score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  const pct = (score / 5) * 100;
+  const color = score <= 1 ? '#ef4444' : score <= 3 ? '#f59e0b' : '#22c55e';
+  bar.style.width = pct + '%';
+  bar.style.background = color;
+}
+
+async function handleRegister(e) {
+  e.preventDefault();
+  const orgName  = document.getElementById('reg-orgname').value.trim();
+  const email    = document.getElementById('reg-email').value.trim();
+  const password = document.getElementById('reg-password').value;
+  const confirm  = document.getElementById('reg-confirm').value;
+  const btn      = document.getElementById('register-btn');
+  const errEl    = document.getElementById('register-error');
+
+  errEl.classList.remove('visible');
+
+  if (password !== confirm) {
+    errEl.textContent = 'Passwords do not match.';
+    errEl.classList.add('visible');
+    return;
+  }
+  if (password.length < 8) {
+    errEl.textContent = 'Password must be at least 8 characters.';
+    errEl.classList.add('visible');
+    return;
+  }
+
+  btn.disabled = true;
+  btn.textContent = 'Creating account…';
+
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ org_name: orgName, email, password }),
+    });
+    const data = await res.json();
+
+    if (!res.ok) {
+      const detail = data.detail || {};
+      const msg = (typeof detail === 'object' ? detail.message : detail) || `Error ${res.status}`;
+      errEl.textContent = msg;
+      errEl.classList.add('visible');
+      return;
+    }
+
+    // Auto-login after successful registration
+    document.getElementById('login-email').value = email;
+    document.getElementById('login-password').value = '';
+    switchAuthTab('login');
+    const successEl = document.getElementById('login-error');
+    successEl.style.background = 'rgba(34,197,94,.1)';
+    successEl.style.border     = '1px solid rgba(34,197,94,.3)';
+    successEl.style.color      = '#86efac';
+    successEl.textContent      = 'Account created! Sign in to continue.';
+    successEl.classList.add('visible');
+    setTimeout(() => {
+      successEl.style.background = '';
+      successEl.style.border     = '';
+      successEl.style.color      = '';
+      successEl.classList.remove('visible');
+    }, 4000);
+  } catch (err) {
+    errEl.textContent = 'Network error — is the API server running?';
+    errEl.classList.add('visible');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Create Account';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Logout
+// ---------------------------------------------------------------------------
+
+async function handleLogout() {
+  if (!_authToken) { showAuthOverlay(); return; }
+  try {
+    await fetch(apiUrl() + '/api/v1/auth/logout', authedJson('POST'));
+  } catch (_) { /* best-effort */ }
+  _authToken   = null;
+  _authOrgName = null;
+  showAuthOverlay();
+}
 
 // ---------------------------------------------------------------------------
 // Tab state
@@ -1423,15 +1802,12 @@ async function analyze() {
   document.getElementById('results').classList.remove('visible');
 
   try {
-    const res = await fetch(apiUrl() + '/api/v1/analyze', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ documents })
-    });
+    const res = await fetch(apiUrl() + '/api/v1/analyze', authedJson('POST', { documents }));
 
+    if (res.status === 401) { handle401(); return; }
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(err.detail || `HTTP ${res.status}`);
+      throw new Error((err.detail && err.detail.message) || err.detail || `HTTP ${res.status}`);
     }
 
     const data = await res.json();
@@ -1631,10 +2007,8 @@ async function handleFileUpload(tabId, file) {
   formData.append('file', file);
 
   try {
-    const res = await fetch(apiUrl() + '/api/v1/extract-text', {
-      method: 'POST',
-      body: formData
-    });
+    const res = await fetch(apiUrl() + '/api/v1/extract-text', authedForm(formData));
+    if (res.status === 401) { handle401(); return; }
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -1819,11 +2193,8 @@ async function submitFeedback(outcome) {
   clearBtn.disabled = true;
 
   try {
-    const res = await fetch(apiUrl() + '/api/v1/feedback', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ shipment_id: _lastShipmentId, outcome })
-    });
+    const res = await fetch(apiUrl() + '/api/v1/feedback', authedJson('POST', { shipment_id: _lastShipmentId, outcome }));
+    if (res.status === 401) { handle401(); return; }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       const msg = (err.detail && err.detail.message) || `HTTP ${res.status}`;
@@ -1858,7 +2229,8 @@ async function loadPatternHistory() {
   tablesEl.style.display = 'none';
 
   try {
-    const res = await fetch(apiUrl() + '/api/v1/pattern-history');
+    const res = await fetch(apiUrl() + '/api/v1/pattern-history', { headers: _authToken ? { 'Authorization': 'Bearer ' + _authToken } : {} });
+    if (res.status === 401) { handle401(); return; }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       const msg = (err.detail && err.detail.message) || `HTTP ${res.status}`;
@@ -1935,7 +2307,7 @@ async function openResetModal() {
   confirmBtn.disabled = false;
 
   try {
-    const res = await fetch(apiUrl() + '/api/v1/pattern-history');
+    const res = await fetch(apiUrl() + '/api/v1/pattern-history', { headers: _authToken ? { 'Authorization': 'Bearer ' + _authToken } : {} });
     if (res.ok) {
       const data = await res.json();
       _resetShipmentCount = data.total_shipments ?? 0;
@@ -1970,11 +2342,8 @@ async function confirmReset() {
   confirmBtn.textContent = 'Resetting…';
 
   try {
-    const res = await fetch(apiUrl() + '/api/v1/pattern-history/reset', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ confirm: true }),
-    });
+    const res = await fetch(apiUrl() + '/api/v1/pattern-history/reset', authedJson('DELETE', { confirm: true }));
+    if (res.status === 401) { handle401(); return; }
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
@@ -2020,6 +2389,9 @@ document.addEventListener('keydown', e => {
 // Init
 // ---------------------------------------------------------------------------
 renderTabs();
+
+// Show auth overlay immediately on page load — app requires authentication.
+showAuthOverlay();
 </script>
 </body>
 </html>
