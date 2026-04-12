@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PortGuard Favicon — 32 × 32 simplified icon
+  Designed to be recognizable at 16×16 and above.
+  Key decisions at this scale:
+    • No container rib lines (would vanish or create noise)
+    • No funnel detail — represented by a coral block
+    • 2 main container columns + 1 partial (bridge) column
+    • Hull, waterline, and glow are the primary legibility cues
+  Key reference lines:
+    Container top  y = 9
+    Deck           y = 19
+    Waterline      y = 24
+    Keel           y = 29
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none"
+     role="img" aria-label="PortGuard">
+
+  <defs>
+    <linearGradient id="fv-hull" x1="0" y1="19" x2="0" y2="29"
+                    gradientUnits="userSpaceOnUse">
+      <stop offset="0%"   stop-color="#1B9AAA"/>
+      <stop offset="55%"  stop-color="#0D7A8A"/>
+      <stop offset="100%" stop-color="#072B30"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Water glow beneath hull -->
+  <ellipse cx="15" cy="31" rx="12" ry="3" fill="#1B9AAA" opacity="0.25"/>
+
+  <!-- Wake line -->
+  <line x1="4"  y1="30" x2="27" y2="30"
+        stroke="#4DCFDF" stroke-width="0.85" stroke-linecap="round" opacity="0.22"/>
+
+  <!-- ── HULL ── -->
+  <!-- Bow (left) is angled forward; stern (right) has a slight step -->
+  <!-- Deck at y=19, waterline at y=24, keel at y=29 -->
+  <path d="M 4,19 L 1,24 L 2,29 L 28,29 L 30,24 L 27,19 Z"
+        fill="url(#fv-hull)"/>
+
+  <!-- Keel accent: darkest strip near waterline bottom -->
+  <path d="M 2,27 L 1,24 L 2,29 L 28,29 L 30,27 Z"
+        fill="#041520" opacity="0.55"/>
+
+  <!-- Waterline accent line -->
+  <line x1="1"  y1="24" x2="30" y2="24"
+        stroke="#4DCFDF" stroke-width="1" stroke-linecap="round" opacity="0.70"/>
+
+  <!-- Deck top edge (subtle) -->
+  <line x1="4"  y1="19" x2="27" y2="19"
+        stroke="#22B5C8" stroke-width="0.7" opacity="0.30"/>
+
+  <!-- ── CONTAINERS ── -->
+  <!-- Sit on deck (y=19), rising upward -->
+  <!-- Container A — coral red — x=3 to x=13 -->
+  <rect x="3" y="9" width="11" height="10" rx="1" fill="#C0392B"/>
+
+  <!-- Container B — amber / sunset gold — x=15 to x=25 -->
+  <rect x="15" y="9" width="10" height="10" rx="1" fill="#E8A838"/>
+
+  <!-- ── BRIDGE / SUPERSTRUCTURE ── -->
+  <!-- Stern, right side — small dark block -->
+  <rect x="23" y="13" width="5" height="6" rx="1" fill="#162845"/>
+  <!-- Bridge nav strip -->
+  <rect x="23" y="13" width="5" height="1.5" rx="0.5" fill="#22B5C8" opacity="0.40"/>
+  <!-- Single bridge window -->
+  <rect x="24" y="16" width="3" height="2" rx="0.5" fill="#4DCFDF" opacity="0.55"/>
+
+  <!-- ── FUNNEL ── -->
+  <!-- Tiny coral block above bridge — gives color cue at small sizes -->
+  <rect x="25" y="9"  width="3" height="5" rx="0.75" fill="#C0392B"/>
+
+</svg>

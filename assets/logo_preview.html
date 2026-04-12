@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>PortGuard Logo Preview</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: #060e1a;
+      color: #EDF2F8;
+      padding: 3rem 2rem;
+    }
+    .section {
+      margin-bottom: 3.5rem;
+    }
+    .section-label {
+      font-size: .68rem;
+      font-weight: 700;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: #4A6880;
+      margin-bottom: 1.2rem;
+      border-bottom: 1px solid #1A3259;
+      padding-bottom: .5rem;
+    }
+    .swatch {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .swatch-dark {
+      background: #0A1628;
+      border: 1px solid #1A3259;
+      padding: 2rem 2.5rem;
+    }
+    .swatch-mid {
+      background: #162845;
+      border: 1px solid #254778;
+      padding: 2rem 2.5rem;
+    }
+    .swatch-light {
+      background: #f0f4f8;
+      border: 1px solid #c8d8e8;
+      padding: 2rem 2.5rem;
+    }
+    .swatch-row {
+      display: flex;
+      gap: 1.5rem;
+      align-items: flex-start;
+      flex-wrap: wrap;
+    }
+    .size-label {
+      font-size: .72rem;
+      color: #4A6880;
+      margin-top: .6rem;
+      text-align: center;
+    }
+
+    /* ── Sizes grid ── */
+    .sizes-grid {
+      display: flex;
+      gap: 1.5rem;
+      align-items: flex-end;
+      background: #0A1628;
+      border: 1px solid #1A3259;
+      padding: 2rem;
+      border-radius: 12px;
+      flex-wrap: wrap;
+    }
+    .size-slot {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: .5rem;
+    }
+
+    /* ── Palette strip ── */
+    .palette {
+      display: flex;
+      gap: .5rem;
+      flex-wrap: wrap;
+    }
+    .chip {
+      width: 48px;
+      height: 48px;
+      border-radius: 8px;
+      position: relative;
+    }
+    .chip::after {
+      content: attr(data-label);
+      position: absolute;
+      bottom: -1.4rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: .6rem;
+      color: #4A6880;
+      white-space: nowrap;
+    }
+    .palette-row { margin-bottom: 2.5rem; }
+  </style>
+</head>
+<body>
+
+  <div style="margin-bottom:2.5rem">
+    <div style="font-size:1.4rem;font-weight:800;color:#EDF2F8;margin-bottom:.3rem">PortGuard — Logo System Preview</div>
+    <div style="font-size:.85rem;color:#4A6880">All versions — dark, card, and light backgrounds</div>
+  </div>
+
+  <!-- ════════════════════════════════════ -->
+  <!-- FULL ICON — multiple sizes           -->
+  <!-- ════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">Icon — size scale</div>
+    <div class="sizes-grid">
+      <div class="size-slot">
+        <img src="portguard_logo.svg" width="180" height="108" alt="PortGuard icon 180px">
+        <span class="size-label">180 × 108</span>
+      </div>
+      <div class="size-slot">
+        <img src="portguard_logo.svg" width="120" height="72" alt="PortGuard icon 120px">
+        <span class="size-label">120 × 72</span>
+      </div>
+      <div class="size-slot">
+        <img src="portguard_logo.svg" width="80" height="48" alt="PortGuard icon 80px">
+        <span class="size-label">80 × 48</span>
+      </div>
+      <div class="size-slot">
+        <img src="portguard_logo.svg" width="48" height="29" alt="PortGuard icon 48px">
+        <span class="size-label">48 × 29</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════ -->
+  <!-- LOCKUP — dark, card, light          -->
+  <!-- ════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">Horizontal Lockup — background variants</div>
+    <div class="swatch-row">
+
+      <div>
+        <div class="swatch swatch-dark">
+          <img src="portguard_lockup.svg" width="310" height="62" alt="PortGuard lockup dark">
+        </div>
+        <div class="size-label">Dark navy (#0A1628)</div>
+      </div>
+
+      <div>
+        <div class="swatch swatch-mid">
+          <img src="portguard_lockup.svg" width="310" height="62" alt="PortGuard lockup card">
+        </div>
+        <div class="size-label">Card surface (#162845)</div>
+      </div>
+
+      <div>
+        <div class="swatch swatch-light">
+          <img src="portguard_lockup.svg" width="310" height="62" alt="PortGuard lockup light">
+        </div>
+        <div class="size-label">Light surface (#f0f4f8)</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════ -->
+  <!-- FAVICON ICON                        -->
+  <!-- ════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">Favicon icon — small sizes</div>
+    <div class="sizes-grid">
+      <div class="size-slot">
+        <img src="portguard_favicon.svg" width="64" height="64" alt="favicon 64px">
+        <span class="size-label">64 × 64</span>
+      </div>
+      <div class="size-slot">
+        <img src="portguard_favicon.svg" width="48" height="48" alt="favicon 48px">
+        <span class="size-label">48 × 48</span>
+      </div>
+      <div class="size-slot">
+        <img src="portguard_favicon.svg" width="32" height="32" alt="favicon 32px">
+        <span class="size-label">32 × 32</span>
+      </div>
+      <div class="size-slot">
+        <img src="portguard_favicon.svg" width="20" height="20" alt="favicon 20px">
+        <span class="size-label">20 × 20</span>
+      </div>
+      <div class="size-slot">
+        <img src="portguard_favicon.svg" width="16" height="16" alt="favicon 16px">
+        <span class="size-label">16 × 16</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ════════════════════════════════════ -->
+  <!-- COLOR PALETTE                       -->
+  <!-- ════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-label">Design system color palette</div>
+    <div class="palette palette-row">
+      <div class="chip" style="background:#0A1628" data-label="bg-deep"></div>
+      <div class="chip" style="background:#0F2040" data-label="bg-surface"></div>
+      <div class="chip" style="background:#162845" data-label="bg-card"></div>
+      <div class="chip" style="background:#1A3259" data-label="border"></div>
+      <div class="chip" style="background:#254778" data-label="border-hi"></div>
+    </div>
+    <div style="margin-bottom:2rem"></div>
+    <div class="palette palette-row">
+      <div class="chip" style="background:#072B30" data-label="teal-900"></div>
+      <div class="chip" style="background:#0D6B7A" data-label="teal-700"></div>
+      <div class="chip" style="background:#1B9AAA" data-label="teal-500"></div>
+      <div class="chip" style="background:#22B5C8" data-label="teal-400"></div>
+      <div class="chip" style="background:#4DCFDF" data-label="teal-300"></div>
+    </div>
+    <div style="margin-bottom:2rem"></div>
+    <div class="palette palette-row">
+      <div class="chip" style="background:#8B1A1A" data-label="coral-700"></div>
+      <div class="chip" style="background:#C0392B" data-label="coral-500"></div>
+      <div class="chip" style="background:#E87D74" data-label="coral-300"></div>
+    </div>
+    <div style="margin-bottom:2rem"></div>
+    <div class="palette palette-row">
+      <div class="chip" style="background:#7A4F0A" data-label="amber-700"></div>
+      <div class="chip" style="background:#E8A838" data-label="amber-500"></div>
+      <div class="chip" style="background:#F5D07A" data-label="amber-300"></div>
+    </div>
+    <div style="margin-bottom:2rem"></div>
+    <div class="palette palette-row">
+      <div class="chip" style="background:#1DB87A" data-label="success"></div>
+      <div class="chip" style="background:#E8A838" data-label="warning"></div>
+      <div class="chip" style="background:#D4773A" data-label="flag"></div>
+      <div class="chip" style="background:#E05050" data-label="danger"></div>
+      <div class="chip" style="background:#9B6CD6" data-label="purple"></div>
+    </div>
+  </div>
+
+</body>
+</html>
