@@ -223,7 +223,8 @@ class TestSchemaAndMigrations:
             count = db2._conn.execute(
                 "SELECT COUNT(*) FROM schema_migrations"
             ).fetchone()[0]
-            assert count == 1  # migration applied once
+            from portguard.pattern_db import _MIGRATIONS
+            assert count == len(_MIGRATIONS)  # each migration applied exactly once
             db2.close()
         finally:
             os.unlink(path)

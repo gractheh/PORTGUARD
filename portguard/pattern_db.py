@@ -824,6 +824,14 @@ _MIGRATIONS: list[tuple[str, str | list[str]]] = [
             "CREATE INDEX IF NOT EXISTS idx_hs_baselines_org ON hs_code_baselines(organization_id)",
         ],
     ),
+    (
+        "004_add_report_payload",
+        # Store the full serialised AnalyzeResponse JSON alongside each
+        # shipment so that POST /api/v1/report/generate can reconstruct
+        # the complete PDF without needing the client to re-send data.
+        # NULL for pre-migration rows (report unavailable for those shipments).
+        "ALTER TABLE shipment_history ADD COLUMN report_payload TEXT;",
+    ),
 ]
 
 
@@ -1758,6 +1766,104 @@ class PatternDB:
             "top_riskiest_shippers": top_riskiest_shippers,
             "top_riskiest_routes": top_riskiest_routes,
         }
+
+    # ------------------------------------------------------------------
+    # Report payload storage and retrieval
+    # ------------------------------------------------------------------
+
+    def store_report_payload(
+        self,
+        analysis_id: str,
+        payload_json: str,
+        organization_id: str = "__system__",
+    ) -> None:
+        """Persist a serialised AnalyzeResponse JSON blob for later PDF generation.
+
+        Writes the full analysis result JSON to the ``report_payload`` column of
+        the ``shipment_history`` row identified by *analysis_id*.  This must be
+        called immediately after :meth:`record_shipment` so the payload is present
+        before any report request arrives.
+
+        The row is only updated when *organization_id* matches the stored value,
+        enforcing multi-tenant isolation — a token from one org cannot overwrite
+        another org's payload.
+
+        Parameters
+        ----------
+        analysis_id:
+            UUID returned by :meth:`record_shipment`.
+        payload_json:
+            Full JSON string of the serialised ``AnalyzeResponse`` model.
+        organization_id:
+            Tenant scope.  Defaults to ``"__system__"`` for backward compat.
+
+        Raises
+        ------
+        PatternDBError
+            If the UPDATE fails for any database reason.
+        """
+        with self._lock:
+            try:
+                self._conn.execute("BEGIN")
+                self._conn.execute(
+                    """
+                    UPDATE shipment_history
+                       SET report_payload = ?
+                     WHERE analysis_id = ?
+                       AND organization_id = ?
+                    """,
+                    (payload_json, analysis_id, organization_id),
+                )
+                self._conn.execute("COMMIT")
+            except sqlite3.Error as exc:
+                self._conn.execute("ROLLBACK")
+                raise PatternDBError(f"Failed to store report payload: {exc}") from exc
+
+    def get_report_payload(
+        self,
+        analysis_id: str,
+        organization_id: str = "__system__",
+    ) -> Optional[str]:
+        """Retrieve the stored AnalyzeResponse JSON for a shipment.
+
+        Returns the ``report_payload`` JSON string if the shipment exists and the
+        payload was stored at analysis time, or ``None`` if the row does not exist,
+        belongs to a different organization, or was analyzed before migration 004
+        was applied (pre-migration rows have ``NULL`` payloads).
+
+        This method opens a short-lived read connection so it never blocks the
+        write lock held by :meth:`record_shipment` and :meth:`store_report_payload`.
+
+        Parameters
+        ----------
+        analysis_id:
+            UUID of the shipment to fetch.
+        organization_id:
+            Tenant scope.  Used to enforce org isolation — only rows with a
+            matching ``organization_id`` are returned.
+
+        Returns
+        -------
+        str or None
+            The raw JSON string (pass to ``json.loads()`` or directly to the PDF
+            generator), or ``None`` when unavailable.
+        """
+        try:
+            row = self._conn.execute(
+                """
+                SELECT report_payload
+                  FROM shipment_history
+                 WHERE analysis_id = ?
+                   AND organization_id = ?
+                """,
+                (analysis_id, organization_id),
+            ).fetchone()
+            if row is None:
+                return None
+            return row["report_payload"]  # may be None for pre-migration rows
+        except sqlite3.Error as exc:
+            logger.warning("get_report_payload(%s) failed: %s", analysis_id, exc)
+            return None
 
     # ------------------------------------------------------------------
     # Internal helpers — profile upsert

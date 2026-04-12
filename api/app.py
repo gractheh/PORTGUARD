@@ -15,7 +15,7 @@ from typing import Optional
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from portguard.auth import get_current_organization
@@ -35,6 +35,11 @@ from api.document_parser import (
 from portguard.data.sanctions import get_sanctions_programs
 from portguard.data.section301 import get_section_301
 from portguard.data.adcvd import get_adcvd_orders
+from portguard.report_generator import (
+    generate_report_from_dict,
+    generate_report_from_payload,
+    ReportGenerationError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1214,12 +1219,36 @@ def _record_shipment_bg(
     final_decision: str,
     final_confidence: str,
     organization_id: str = "__system__",
+    report_payload_json: Optional[str] = None,
 ) -> Optional[str]:
     """Write a shipment analysis snapshot to PatternDB and return the analysis_id.
 
-    This is designed to be called from a FastAPI BackgroundTask.  All errors
-    are caught and logged; the function always returns either an ID string or
-    None.
+    Records the analysis fingerprint, upserts entity/route profiles, and — when
+    *report_payload_json* is supplied — stores the full AnalyzeResponse JSON so
+    that POST /api/v1/report/generate can reconstruct the PDF from a shipment_id
+    alone without requiring the client to re-send analysis data.
+
+    All errors are caught and logged; the function always returns either an ID
+    string or None so the analyze endpoint never fails due to DB issues.
+
+    Parameters
+    ----------
+    sd:
+        Shipment data dict from ``_extract_shipment_data``.
+    rule_score, rule_decision, rule_confidence:
+        Pre-pattern rule engine outputs.
+    risk_factors:
+        List of rule-firing dicts for the rules_fired column.
+    pattern_result:
+        PatternEngine result object (or None when pattern learning is off).
+    final_score, final_decision, final_confidence:
+        Blended outputs after the pattern overlay.
+    organization_id:
+        Authenticated tenant UUID.
+    report_payload_json:
+        Serialised AnalyzeResponse JSON to persist for PDF generation.
+        When None, the report_payload column is left NULL and report
+        generation will return 404 for this shipment.
     """
     if _pattern_db is None:
         return None
@@ -1267,7 +1296,15 @@ def _record_shipment_bg(
             final_decision=final_decision,
             final_confidence=final_confidence,
         )
-        return _pattern_db.record_shipment(fp, final_decision, risk_factors, final_confidence)
+        analysis_id = _pattern_db.record_shipment(fp, final_decision, risk_factors, final_confidence)
+        if analysis_id and report_payload_json:
+            try:
+                _pattern_db.store_report_payload(analysis_id, report_payload_json, organization_id)
+            except Exception as payload_exc:
+                logger.warning(
+                    "store_report_payload(%s) failed (non-fatal): %s", analysis_id, payload_exc
+                )
+        return analysis_id
     except Exception as exc:
         logger.warning("PatternDB.record_shipment() failed (non-fatal): %s", exc)
         return None
@@ -1381,22 +1418,8 @@ def analyze(
     else:
         final_risk_level = "CRITICAL"
 
-    # Record analysis to PatternDB inline (fast — < 10 ms); shipment_id is
-    # needed in the response so we cannot defer it to a true background task.
-    shipment_id: Optional[str] = _record_shipment_bg(
-        sd=sd,
-        rule_score=rule_score,
-        rule_decision=rule_decision,
-        rule_confidence=rule_confidence,
-        risk_factors=result.get("_risk_factors", []),
-        pattern_result=pattern_result,
-        final_score=final_score,
-        final_decision=final_decision,
-        final_confidence=rule_confidence,
-        organization_id=org_id,
-    )
-
-    return AnalyzeResponse(
+    # Build the response object first so we can serialise it for PDF storage.
+    analyze_response = AnalyzeResponse(
         status="completed",
         shipment_data=ShipmentData(**sd),
         risk_score=final_score,
@@ -1408,11 +1431,38 @@ def analyze(
         inconsistencies_found=result["inconsistencies_found"],
         documents_analyzed=len(request.documents),
         processing_time_seconds=elapsed,
-        shipment_id=shipment_id,
+        shipment_id=None,  # filled in below after DB write
         pattern_score=pattern_score_val,
         history_available=history_available,
         pattern_signals=pattern_signals,
     )
+
+    # Record analysis to PatternDB inline (fast — < 10 ms); shipment_id is
+    # needed in the response so we cannot defer it to a true background task.
+    # Serialise the response for report_payload — shipment_id will be None in
+    # the JSON but that is fine; the PDF generator uses the stored payload only
+    # for narrative content, not the ID.
+    try:
+        _report_payload_json: Optional[str] = analyze_response.model_dump_json()
+    except Exception:
+        _report_payload_json = None
+
+    shipment_id: Optional[str] = _record_shipment_bg(
+        sd=sd,
+        rule_score=rule_score,
+        rule_decision=rule_decision,
+        rule_confidence=rule_confidence,
+        risk_factors=result.get("_risk_factors", []),
+        pattern_result=pattern_result,
+        final_score=final_score,
+        final_decision=final_decision,
+        final_confidence=rule_confidence,
+        organization_id=org_id,
+        report_payload_json=_report_payload_json,
+    )
+
+    analyze_response.shipment_id = shipment_id
+    return analyze_response
 
 
 # ---------------------------------------------------------------------------
@@ -1587,20 +1637,7 @@ async def analyze_files(
     else:
         final_risk_level = "CRITICAL"
 
-    shipment_id: Optional[str] = _record_shipment_bg(
-        sd=sd,
-        rule_score=rule_score,
-        rule_decision=rule_decision,
-        rule_confidence=rule_confidence,
-        risk_factors=result_data.get("_risk_factors", []),
-        pattern_result=pattern_result,
-        final_score=final_score,
-        final_decision=final_decision,
-        final_confidence=rule_confidence,
-        organization_id=org_id,
-    )
-
-    return AnalyzeResponse(
+    analyze_response_files = AnalyzeResponse(
         status="completed",
         shipment_data=ShipmentData(**sd),
         risk_score=final_score,
@@ -1612,11 +1649,33 @@ async def analyze_files(
         inconsistencies_found=result_data["inconsistencies_found"],
         documents_analyzed=len(documents),
         processing_time_seconds=elapsed,
-        shipment_id=shipment_id,
+        shipment_id=None,
         pattern_score=pattern_score_val,
         history_available=history_available,
         pattern_signals=pattern_signals,
     )
+
+    try:
+        _report_payload_json_files: Optional[str] = analyze_response_files.model_dump_json()
+    except Exception:
+        _report_payload_json_files = None
+
+    shipment_id: Optional[str] = _record_shipment_bg(
+        sd=sd,
+        rule_score=rule_score,
+        rule_decision=rule_decision,
+        rule_confidence=rule_confidence,
+        risk_factors=result_data.get("_risk_factors", []),
+        pattern_result=pattern_result,
+        final_score=final_score,
+        final_decision=final_decision,
+        final_confidence=rule_confidence,
+        organization_id=org_id,
+        report_payload_json=_report_payload_json_files,
+    )
+
+    analyze_response_files.shipment_id = shipment_id
+    return analyze_response_files
 
 
 # ---------------------------------------------------------------------------
@@ -2119,3 +2178,261 @@ def dashboard_recent_activity(
         organization_id=current_org["organization_id"],
         limit=limit,
     )
+
+
+# ---------------------------------------------------------------------------
+# PDF report generation endpoints
+# ---------------------------------------------------------------------------
+# Two complementary paths:
+#
+#   POST /api/v1/report/generate
+#     → Retrieves the stored report_payload from shipment_history by
+#       shipment_id and generates the PDF server-side.  Used when the
+#       officer downloads the report at any point after analysis.
+#
+#   POST /api/v1/report/generate-direct
+#     → Accepts a full AnalyzeResponse JSON body (as returned by
+#       /api/v1/analyze) and generates the PDF immediately.  Used for
+#       the instant-download button shown right after analysis completes,
+#       before the user navigates away or refreshes.
+# ---------------------------------------------------------------------------
+
+
+class ReportRequest(BaseModel):
+    """Body for POST /api/v1/report/generate."""
+
+    shipment_id: str = Field(
+        ...,
+        description=(
+            "The shipment_id returned by POST /api/v1/analyze.  "
+            "The stored report_payload for this shipment is fetched from the "
+            "database and used to render the PDF."
+        ),
+    )
+
+
+def _pdf_response(pdf_bytes: bytes, shipment_id: str) -> Response:
+    """Wrap PDF bytes in a streaming Response with correct headers.
+
+    Sets ``Content-Type: application/pdf`` and a ``Content-Disposition``
+    header that causes browsers to trigger a file-save dialog with a
+    human-readable filename derived from the shipment ID and today's date.
+
+    Parameters
+    ----------
+    pdf_bytes:
+        Raw PDF binary content from :func:`generate_report_from_payload`
+        or :func:`generate_report_from_dict`.
+    shipment_id:
+        Used in the suggested filename.  Only the first 8 characters are
+        included to keep the filename short.
+
+    Returns
+    -------
+    fastapi.responses.Response
+        HTTP 200 with the PDF as the body and appropriate headers.
+    """
+    import datetime
+    date_str     = datetime.date.today().strftime("%Y%m%d")
+    short_id     = (shipment_id or "unknown")[:8]
+    filename     = f"PortGuard_Report_{short_id}_{date_str}.pdf"
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Report-Shipment-Id": shipment_id or "",
+        },
+    )
+
+
+@app.post("/api/v1/report/generate")
+def report_generate(
+    request: ReportRequest,
+    current_org: dict = Depends(get_current_organization),
+):
+    """Generate and download a PDF compliance report for a stored shipment.
+
+    Fetches the serialised analysis payload from ``shipment_history`` using
+    the supplied *shipment_id* and renders a complete multi-page PDF report.
+
+    The report includes:
+    - Report metadata (unique report ID, generation timestamp, classification)
+    - Full shipment summary table
+    - Colour-coded final decision banner
+    - Risk score with visual progress bar
+    - All rule violations with severity classification
+    - Compliance screening grid (OFAC / Section 301 / AD/CVD / UFLPA / ISF / PGA)
+    - Pattern intelligence findings (when history is available)
+    - Recommended next steps
+    - Officer review / signature section
+    - Legal disclaimer
+
+    Prerequisites
+    -------------
+    The shipment must have been analyzed **after** migration 004 was applied
+    (i.e. the ``report_payload`` column was backfilled at analysis time).
+    Shipments analyzed before the migration return HTTP 404 — re-analyze to
+    generate a fresh record.
+
+    Parameters
+    ----------
+    request.shipment_id:
+        The ``shipment_id`` value returned by ``POST /api/v1/analyze``.
+
+    Returns
+    -------
+    application/pdf
+        Binary PDF file.
+        ``Content-Disposition: attachment; filename="PortGuard_Report_<id>_<date>.pdf"``
+
+    Raises
+    ------
+    HTTP 404:
+        Shipment not found, belongs to a different organization, or was
+        analyzed before the report payload feature was introduced.
+    HTTP 503:
+        Pattern learning / database is not available on this instance.
+    HTTP 500:
+        PDF generation failed (caught ``ReportGenerationError``).
+    """
+    if _pattern_db is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "PATTERN_LEARNING_DISABLED",
+                "message": (
+                    "Report generation requires the pattern learning database. "
+                    "Set PORTGUARD_PATTERN_LEARNING_ENABLED=true and restart."
+                ),
+            },
+        )
+
+    org_id = current_org["organization_id"]
+
+    # Fetch stored payload
+    try:
+        payload_json = _pattern_db.get_report_payload(
+            analysis_id=request.shipment_id,
+            organization_id=org_id,
+        )
+    except Exception as exc:
+        logger.error(
+            "get_report_payload(%s) raised unexpectedly: %s",
+            request.shipment_id, exc, exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "DB_ERROR",
+                "message": "Failed to retrieve report data from the database.",
+            },
+        )
+
+    if payload_json is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "REPORT_NOT_AVAILABLE",
+                "message": (
+                    f"No report payload found for shipment '{request.shipment_id}'. "
+                    "The shipment may not exist, belong to a different organization, "
+                    "or have been analyzed before the PDF report feature was introduced. "
+                    "Re-analyze the shipment to generate a storable report."
+                ),
+            },
+        )
+
+    # Generate PDF — inject shipment_id if the stored payload was captured before it was assigned
+    import json as _json
+    payload_dict = _json.loads(payload_json)
+    if not payload_dict.get("shipment_id"):
+        payload_dict["shipment_id"] = request.shipment_id
+    try:
+        pdf_bytes = generate_report_from_dict(payload_dict)
+    except (ValueError, ReportGenerationError) as exc:
+        logger.error(
+            "PDF generation failed for shipment %s: %s",
+            request.shipment_id, exc, exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "PDF_GENERATION_FAILED",
+                "message": f"Failed to generate PDF report: {exc}",
+            },
+        )
+
+    return _pdf_response(pdf_bytes, request.shipment_id)
+
+
+@app.post("/api/v1/report/generate-direct")
+def report_generate_direct(
+    payload: dict,
+    current_org: dict = Depends(get_current_organization),
+):
+    """Generate and download a PDF report directly from an analysis result payload.
+
+    This endpoint accepts the full ``AnalyzeResponse`` dict (as returned by
+    ``POST /api/v1/analyze`` and serialised to JSON) in the request body and
+    renders a PDF without any database lookup.
+
+    Use this endpoint for the **immediate-download** flow: when the officer
+    clicks "Download PDF Report" directly after viewing an analysis result in
+    the browser, the frontend already has the full analysis payload in memory
+    and can POST it here without needing a stored ``shipment_id``.
+
+    This endpoint is also useful for:
+    - Generating reports for analyses that pre-date the ``report_payload``
+      storage feature (migration 004), as long as the caller has retained the
+      original response payload.
+    - Integration testing without database state.
+    - Programmatic API clients that analyze → immediately download without a
+      second round-trip.
+
+    Parameters
+    ----------
+    payload:
+        Full ``AnalyzeResponse`` JSON object (any subset of fields works —
+        missing fields render as "—" in the report rather than causing errors).
+
+    Returns
+    -------
+    application/pdf
+        Binary PDF file.
+        ``Content-Disposition: attachment; filename="PortGuard_Report_<id>_<date>.pdf"``
+
+    Raises
+    ------
+    HTTP 422:
+        Request body is not a valid JSON object.
+    HTTP 500:
+        PDF generation failed (caught ``ReportGenerationError``).
+    """
+    if not isinstance(payload, dict):
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "INVALID_PAYLOAD",
+                "message": "Request body must be a JSON object (AnalyzeResponse).",
+            },
+        )
+
+    shipment_id: str = payload.get("shipment_id") or "unknown"
+
+    try:
+        pdf_bytes = generate_report_from_dict(payload)
+    except ReportGenerationError as exc:
+        logger.error(
+            "Direct PDF generation failed for shipment %s: %s",
+            shipment_id, exc, exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "PDF_GENERATION_FAILED",
+                "message": f"Failed to generate PDF report: {exc}",
+            },
+        )
+
+    return _pdf_response(pdf_bytes, shipment_id)

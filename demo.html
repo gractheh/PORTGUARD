@@ -377,6 +377,43 @@
       opacity: 1; transform: translateY(0); pointer-events: all;
     }
 
+    /* Download report button */
+    #download-report-btn {
+      display: none;
+      align-items: center; gap: .5rem;
+      padding: .5rem 1rem;
+      background: transparent;
+      border: 1px solid var(--border-hi);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-size: .8rem; font-weight: 600; letter-spacing: .03em;
+      cursor: pointer;
+      transition: border-color .15s, background .15s, color .15s;
+      white-space: nowrap;
+    }
+    #download-report-btn:hover { border-color: var(--blue); color: var(--blue); background: rgba(59,130,246,.08); }
+    #download-report-btn.loading { opacity: .65; cursor: not-allowed; }
+    #download-report-btn svg { flex-shrink: 0; }
+    .report-btn-row {
+      display: flex; justify-content: flex-end;
+      margin-bottom: .75rem;
+    }
+    #report-status {
+      font-size: .75rem; margin-left: .6rem; align-self: center;
+    }
+    #report-status.success { color: var(--green); }
+    #report-status.error   { color: var(--red); }
+
+    /* Activity table download icon */
+    .act-dl-btn {
+      background: none; border: none; cursor: pointer;
+      color: var(--faint); padding: .25rem .3rem; border-radius: 4px;
+      transition: color .15s, background .15s;
+      line-height: 1;
+    }
+    .act-dl-btn:hover { color: var(--blue); background: rgba(59,130,246,.1); }
+    .act-dl-btn svg { display: block; }
+
     /* Decision banner */
     .decision-banner {
       border-radius: var(--radius); padding: 1.5rem 1.8rem;
@@ -1137,6 +1174,17 @@
   <!-- ===================== RESULTS ===================== -->
   <div id="results">
 
+    <!-- PDF download button row -->
+    <div class="report-btn-row">
+      <button id="download-report-btn" onclick="downloadReport()">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M8 2v8M5 7l3 3 3-3"/><rect x="2" y="11" width="12" height="3" rx="1"/>
+        </svg>
+        <span id="download-report-label">Download Compliance Report</span>
+      </button>
+      <span id="report-status"></span>
+    </div>
+
     <!-- Decision banner -->
     <div id="decision-banner" class="decision-banner">
       <div class="decision-left">
@@ -1411,13 +1459,14 @@
               <th>Risk</th>
               <th>Outcome</th>
               <th>Signals</th>
+              <th></th>
             </tr>
           </thead>
           <tbody id="activity-tbody">
             <!-- skeleton rows -->
-            <tr class="skel-row"><td><div class="skel-cell skel" style="width:80px"></div></td><td><div class="skel-cell skel" style="width:120px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:100px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:60px"></div></td><td><div class="skel-cell skel" style="width:140px"></div></td></tr>
-            <tr class="skel-row"><td><div class="skel-cell skel" style="width:80px"></div></td><td><div class="skel-cell skel" style="width:100px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:110px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:60px"></div></td><td><div class="skel-cell skel" style="width:160px"></div></td></tr>
-            <tr class="skel-row"><td><div class="skel-cell skel" style="width:80px"></div></td><td><div class="skel-cell skel" style="width:140px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:90px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:60px"></div></td><td><div class="skel-cell skel" style="width:120px"></div></td></tr>
+            <tr class="skel-row"><td><div class="skel-cell skel" style="width:80px"></div></td><td><div class="skel-cell skel" style="width:120px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:100px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:60px"></div></td><td><div class="skel-cell skel" style="width:140px"></div></td><td></td></tr>
+            <tr class="skel-row"><td><div class="skel-cell skel" style="width:80px"></div></td><td><div class="skel-cell skel" style="width:100px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:110px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:60px"></div></td><td><div class="skel-cell skel" style="width:160px"></div></td><td></td></tr>
+            <tr class="skel-row"><td><div class="skel-cell skel" style="width:80px"></div></td><td><div class="skel-cell skel" style="width:140px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:90px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:60px"></div></td><td><div class="skel-cell skel" style="width:120px"></div></td><td></td></tr>
           </tbody>
         </table>
       </div>
@@ -2087,8 +2136,11 @@ function loadScenario(key) {
   // Scroll to input
   document.querySelector('.tabs-bar').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-  // Hide previous results
+  // Hide previous results and download button
   document.getElementById('results').classList.remove('visible');
+  document.getElementById('download-report-btn').style.display = 'none';
+  document.getElementById('report-status').textContent = '';
+  document.getElementById('report-status').className = '';
   hideError();
 }
 
@@ -2161,6 +2213,9 @@ async function analyze() {
   setLoading(true);
   hideError();
   document.getElementById('results').classList.remove('visible');
+  document.getElementById('download-report-btn').style.display = 'none';
+  document.getElementById('report-status').textContent = '';
+  document.getElementById('report-status').className = '';
 
   try {
     const res = await fetch(apiUrl() + '/api/v1/analyze', authedJson('POST', { documents }));
@@ -2329,6 +2384,19 @@ function renderResults(data) {
   renderPatternIntelligence(data);
   renderFeedbackUI(data);
 
+  // Show download button only when we have a shipment_id
+  const dlBtn = document.getElementById('download-report-btn');
+  const reportStatus = document.getElementById('report-status');
+  if (data.shipment_id) {
+    dlBtn.style.display = 'flex';
+    dlBtn.dataset.shipmentId = data.shipment_id;
+  } else {
+    dlBtn.style.display = 'none';
+  }
+  // Reset any previous status message
+  reportStatus.textContent = '';
+  reportStatus.className = '';
+
   // Show results
   const resultsEl = document.getElementById('results');
   resultsEl.classList.add('visible');
@@ -2342,6 +2410,81 @@ function toggleShipmentData() {
   const arrow = document.getElementById('toggle-arrow');
   const open = grid.classList.toggle('open');
   arrow.classList.toggle('open', open);
+}
+
+// ---------------------------------------------------------------------------
+// PDF Report download
+// ---------------------------------------------------------------------------
+
+let _reportDlTimer = null;
+
+async function downloadReport() {
+  const btn = document.getElementById('download-report-btn');
+  const label = document.getElementById('download-report-label');
+  const statusEl = document.getElementById('report-status');
+  const shipmentId = btn.dataset.shipmentId;
+  if (!shipmentId || btn.classList.contains('loading')) return;
+
+  btn.classList.add('loading');
+  label.textContent = 'Generating report\u2026';
+  statusEl.textContent = '';
+  statusEl.className = '';
+
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/report/generate', authedJson('POST', { shipment_id: shipmentId }));
+    if (res.status === 401) { handle401(); return; }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err.detail && (err.detail.message || err.detail)) || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    a.href = url;
+    a.download = `PortGuard_Report_${today}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+
+    statusEl.textContent = 'Report downloaded';
+    statusEl.className = 'success';
+    if (_reportDlTimer) clearTimeout(_reportDlTimer);
+    _reportDlTimer = setTimeout(() => {
+      statusEl.textContent = '';
+      statusEl.className = '';
+    }, 3000);
+  } catch (e) {
+    statusEl.textContent = e.message || 'Failed to generate report';
+    statusEl.className = 'error';
+  } finally {
+    btn.classList.remove('loading');
+    label.textContent = 'Download Compliance Report';
+  }
+}
+
+async function downloadActivityReport(analysisId) {
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/report/generate', authedJson('POST', { shipment_id: analysisId }));
+    if (res.status === 401) { handle401(); return; }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error((err.detail && (err.detail.message || err.detail)) || `HTTP ${res.status}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    a.href = url;
+    a.download = `PortGuard_Report_${today}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error('Report download failed:', e.message);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3282,7 +3425,7 @@ function _renderActivityFeed(data) {
   const rows = data.activity || [];
 
   if (rows.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--faint)">No activity yet</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--faint)">No activity yet</td></tr>`;
     return;
   }
 
@@ -3307,6 +3450,11 @@ function _renderActivityFeed(data) {
 
     const sigs = r.pattern_cold_start ? 'cold start' : '—';
 
+    const dlIcon = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M5 7l3 3 3-3"/><rect x="2" y="11" width="12" height="3" rx="1"/></svg>`;
+    const dlCell = r.analysis_id
+      ? `<td style="text-align:center"><button class="act-dl-btn" title="Download report" onclick="downloadActivityReport(${JSON.stringify(r.analysis_id)})">${dlIcon}</button></td>`
+      : '<td></td>';
+
     return `<tr>
       <td class="act-time">${ts}</td>
       <td class="act-shipper" title="${ship}">${ship}</td>
@@ -3315,6 +3463,7 @@ function _renderActivityFeed(data) {
       <td class="act-score ${scoreCls}">${scoreTxt}</td>
       <td class="act-outcome ${outcomeCls}">${outcomeTxt}</td>
       <td class="act-signals">${sigs}</td>
+      ${dlCell}
     </tr>`;
   }).join('');
 }
