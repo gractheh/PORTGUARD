@@ -137,7 +137,7 @@ Additional pipeline endpoints:
 ```
 portguard/
   config.py               pydantic-settings configuration (no API keys)
-  pattern_db.py           SQLite data layer — shipment history, entity profiles,
+  pattern_db.py           SQLAlchemy data layer — shipment history, entity profiles,
                           route risk, HS baselines, migrations, PatternDB class
   pattern_engine.py       Read-only scoring engine — 5 typed signals, Bayesian
                           Beta scoring, Welford z-score, Poisson frequency,
@@ -172,11 +172,13 @@ portguard/
 
 portguard/
   auth.py                 Authentication module — bcrypt password hashing, JWT
-                          creation/verification, AuthDB (SQLite), rate limiting,
-                          get_current_organization FastAPI dependency
+                          creation/verification, AuthDB (PostgreSQL/SQLite), rate
+                          limiting, get_current_organization FastAPI dependency
+  db.py                   Engine factory — resolves DATABASE_URL to SQLAlchemy
+                          engine (PostgreSQL in prod, SQLite fallback for local dev)
 
 portguard/
-  analytics.py            DashboardAnalytics — read-only SQLite connection, 7 query
+  analytics.py            DashboardAnalytics — read-only SQLAlchemy connection, 7 query
                           methods for summary stats, decision breakdown, fraud trend
                           (gap-filled), top countries/shippers/HS codes, recent activity
 
@@ -267,12 +269,13 @@ Pre-authentication data (if any exists from before the auth system was deployed)
 
 ### Auth storage
 
-Auth data is kept in a separate SQLite file (`portguard_auth.db`) from pattern learning data (`portguard_patterns.db`), so they can be backed up or migrated independently.
+In production (when `DATABASE_URL` is set) auth and pattern data share one PostgreSQL database — tables are distinguished by name. Locally, auth data falls back to a SQLite file (`portguard_auth.db`) separate from pattern learning data (`portguard_patterns.db`).
 
 | Env var | Default | Description |
 |---|---|---|
 | `PORTGUARD_JWT_SECRET` | Random 32-byte hex | JWT signing key — must be set in production |
-| `PORTGUARD_AUTH_DB_PATH` | `portguard_auth.db` | Path to the auth SQLite database |
+| `DATABASE_URL` | *(not set)* | PostgreSQL connection string — when set, SQLite files are ignored |
+| `PORTGUARD_AUTH_DB_PATH` | `portguard_auth.db` | SQLite auth DB path (local dev only) |
 
 ### Browser demo
 
@@ -346,9 +349,9 @@ Every `POST /api/v1/analyze` response includes:
 | Env var | Default | Description |
 |---|---|---|
 | `PORTGUARD_PATTERN_LEARNING_ENABLED` | `true` | Set to `false`, `0`, or `no` to disable entirely. |
-| `PORTGUARD_PATTERN_DB_PATH` | `portguard_patterns.db` | Path to the SQLite database file. |
+| `PORTGUARD_PATTERN_DB_PATH` | `portguard_patterns.db` | SQLite DB path (local dev only — ignored when `DATABASE_URL` is set). |
 
-The app starts and operates rule-only if the DB file is inaccessible — pattern learning failures are never fatal.
+The app starts and operates rule-only if the database is inaccessible — pattern learning failures are never fatal.
 
 ### Demo UI
 
@@ -516,7 +519,74 @@ cd PORTGUARD
 pip install -r requirements.txt
 ```
 
-Dependencies: `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `python-dotenv`, `httpx`, `pdfplumber`, `fpdf2`, `python-multipart`, `python-jose[cryptography]`, `bcrypt`, `pytest`, `pytest-asyncio`, `pytest-mock`.
+Dependencies: `fastapi`, `uvicorn[standard]`, `pydantic`, `pydantic-settings`, `python-dotenv`, `httpx`, `pdfplumber`, `fpdf2`, `python-multipart`, `python-jose[cryptography]`, `bcrypt`, `sqlalchemy`, `psycopg2-binary`, `pytest`, `pytest-asyncio`, `pytest-mock`.
+
+---
+
+## Deploying to Render
+
+PortGuard ships with a `render.yaml` Blueprint that defines the web service and PostgreSQL database together. All tables are created automatically on first startup — no manual migration step required.
+
+### Option A — Blueprint deploy (recommended)
+
+1. Push the repo to GitHub (already done).
+2. In the Render dashboard → **New** → **Blueprint** → select the `PORTGUARD` repository.
+3. Render reads `render.yaml` and creates:
+   - `portguard-db` — a PostgreSQL database (Starter plan, ~$7/month)
+   - `portguard` — a free Python web service with `DATABASE_URL` automatically wired from the database
+4. After both resources are created, open the **portguard** web service → **Environment** tab.
+5. Set `PORTGUARD_JWT_SECRET` to a secure 64-character hex string:
+   ```bash
+   python -c "import secrets; print(secrets.token_hex(32))"
+   ```
+   Paste the output as the value. Without this, all sessions are lost on every redeploy.
+6. Click **Save Changes** — Render redeploys automatically.
+7. Visit `https://your-service.onrender.com/api/v1/health` to confirm the service is live.
+
+### Option B — Manual setup
+
+If you prefer to create resources individually:
+
+**Step 1 — Create the PostgreSQL database**
+
+1. In the Render dashboard → **New** → **PostgreSQL**
+2. Name: `portguard-db`, Database: `portguard`, User: `portguard`
+3. Select a plan (Starter recommended) → **Create Database**
+4. Once created, open the database → **Info** tab → copy the **Internal Database URL**
+
+**Step 2 — Create the web service**
+
+1. **New** → **Web Service** → connect the `PORTGUARD` GitHub repository
+2. Runtime: **Python 3**, Build command: `pip install -r requirements.txt`
+3. Start command: `python -m uvicorn api.app:app --host 0.0.0.0 --port $PORT`
+4. Under **Environment Variables**, add:
+
+   | Key | Value |
+   |---|---|
+   | `DATABASE_URL` | Paste the Internal Database URL from Step 1 |
+   | `PORTGUARD_JWT_SECRET` | Output of `python -c "import secrets; print(secrets.token_hex(32))"` |
+   | `PORTGUARD_PATTERN_LEARNING_ENABLED` | `true` |
+
+5. Click **Create Web Service** → Render builds and deploys.
+
+### What happens on first deploy
+
+When the app starts against an empty PostgreSQL database it automatically runs all schema migrations:
+
+- Auth tables: `organizations`, `auth_token_revocations`, `auth_login_attempts`
+- Pattern tables: `shipment_history`, `pattern_outcomes`, `shipper_profiles`, `consignee_profiles`, `route_risk_profiles`, `hs_code_baselines`, `schema_migrations`
+
+No manual `CREATE TABLE` or `psql` commands are needed.
+
+### Environment variables reference
+
+| Variable | Required | Description |
+|---|---|---|
+| `DATABASE_URL` | Yes (production) | PostgreSQL connection string. When absent the app falls back to SQLite files (local dev only). |
+| `PORTGUARD_JWT_SECRET` | Yes (production) | 64-char hex JWT signing key. Random fallback invalidates sessions on every restart. |
+| `PORTGUARD_PATTERN_LEARNING_ENABLED` | No | Set to `false` to disable pattern learning entirely. Default: `true`. |
+| `PORTGUARD_AUTH_DB_PATH` | No | SQLite auth DB path (local dev only, ignored when `DATABASE_URL` is set). Default: `portguard_auth.db`. |
+| `PORTGUARD_PATTERN_DB_PATH` | No | SQLite pattern DB path (local dev only, ignored when `DATABASE_URL` is set). Default: `portguard_patterns.db`. |
 
 ---
 
@@ -869,5 +939,5 @@ Three sample request payloads in `tests/sample_documents/`:
 - **PDF support is text-layer only.** `POST /api/v1/extract-text` uses pdfplumber to extract machine-readable text from PDFs (up to 50 pages, 10 MB). Scanned PDFs with no text layer, password-protected PDFs, and corrupt PDFs are rejected with descriptive error codes. For scanned documents, run OCR before uploading.
 - **ISF checks are partial.** Only 4 of the 10 ISF importer-provided data elements can be verified from document text. Elements 2 (buyer), 6 (ship-to party), 9 (consolidator), and 10 (container stuffing location) are not checked.
 - **In-memory report storage.** The structured pipeline stores reports in a Python dict. Reports are lost on process restart. Not suitable for multi-worker deployments.
-- **Single-node auth storage.** The auth SQLite database uses WAL mode and a threading.Lock for writes. It is not designed for multi-process or distributed deployments. For horizontally scaled deployments, replace the SQLite AuthDB with a shared store (PostgreSQL, Redis) and externalize the JWT secret.
+- **Single-node auth storage.** When running against PostgreSQL the auth and pattern databases share one connection pool — suitable for single-instance Render deployments. For multi-instance horizontal scaling, configure a connection pooler (e.g., PgBouncer) and ensure `PORTGUARD_JWT_SECRET` is set identically on all instances.
 - **Classification is not legally binding.** HTS classifications and duty rate estimates are for preliminary screening only. A licensed customs broker must file the actual entry.
