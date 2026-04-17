@@ -34,7 +34,13 @@ logger = logging.getLogger(__name__)
 # random fallback is acceptable for development only.
 # ---------------------------------------------------------------------------
 
-_SECRET_KEY: str = os.getenv("PORTGUARD_JWT_SECRET", secrets.token_hex(32))
+_SECRET_KEY: str = os.getenv("PORTGUARD_JWT_SECRET") or secrets.token_hex(32)
+if not os.getenv("PORTGUARD_JWT_SECRET"):
+    logging.getLogger(__name__).warning(
+        "PORTGUARD_JWT_SECRET is not set — a random JWT signing key is being used. "
+        "All active sessions will be invalidated on every server restart. "
+        "Set PORTGUARD_JWT_SECRET in your environment for persistent authentication."
+    )
 _ALGORITHM: str = "HS256"
 _ACCESS_TOKEN_EXPIRE_HOURS: int = 24
 

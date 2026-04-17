@@ -167,16 +167,21 @@ def login(request: LoginRequest, req: Request) -> LoginResponse:
     further attempts are rejected with HTTP 429.
 
     Errors:
-    - 401 UNAUTHORIZED for invalid credentials
-    - 403 FORBIDDEN if the account is deactivated
-    - 429 TOO MANY REQUESTS if rate limit is exceeded
+    - 401 EMAIL_NOT_FOUND if no account exists for that email
+    - 401 WRONG_PASSWORD if the password does not match
+    - 403 ORGANIZATION_INACTIVE if the account is deactivated
+    - 429 RATE_LIMITED if rate limit is exceeded
+    - 500 TOKEN_ERROR if JWT creation fails unexpectedly
     """
     auth_db = get_auth_db()
     ip = (req.client.host if req.client else "unknown")
 
+    logger.info("Login attempt | email=%s ip=%s", request.email, ip)
+
     # Rate limit: block on too many recent failures from this IP.
     recent_failures = auth_db.count_recent_failures(ip, window_seconds=60)
     if recent_failures >= _MAX_FAILED_PER_MINUTE:
+        logger.info("Login rate-limited | ip=%s failures=%d", ip, recent_failures)
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={
@@ -188,22 +193,31 @@ def login(request: LoginRequest, req: Request) -> LoginResponse:
             },
         )
 
-    # Timing-safe lookup: always run bcrypt even if the email does not exist.
     org = auth_db.get_organization_by_email(request.email)
-    stored_hash = org["password_hash"] if org else None
 
-    if not verify_password_safe(request.password, stored_hash):
+    # Email not found — run a dummy bcrypt to normalize timing, then reject.
+    if org is None:
+        verify_password_safe(request.password, None)
         auth_db.record_login_attempt(ip, succeeded=False)
+        logger.info("Login failed: email not found | email=%s", request.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "INVALID_CREDENTIALS", "message": "Invalid email or password."},
+            detail={"code": "EMAIL_NOT_FOUND", "message": "No account found with that email address."},
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # Password matched — org is guaranteed not None past this point.
-    assert org is not None  # satisfy type checker
+    # Email found — verify password.
+    if not verify_password_safe(request.password, org["password_hash"]):
+        auth_db.record_login_attempt(ip, succeeded=False)
+        logger.info("Login failed: wrong password | email=%s", request.email)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"code": "WRONG_PASSWORD", "message": "Incorrect password. Please try again."},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
     if not org["is_active"]:
+        logger.info("Login failed: account inactive | email=%s", request.email)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
@@ -215,13 +229,22 @@ def login(request: LoginRequest, req: Request) -> LoginResponse:
     auth_db.record_login_attempt(ip, succeeded=True)
     auth_db.update_last_login(org["organization_id"])
 
-    token, _jti = create_access_token(
-        org_id=org["organization_id"],
-        org_name=org["org_name"],
-        email=org["email"],
-    )
+    try:
+        token, _jti = create_access_token(
+            org_id=org["organization_id"],
+            org_name=org["org_name"],
+            email=org["email"],
+        )
+    except Exception as exc:
+        logger.error(
+            "Token creation failed | email=%s error=%s", org["email"], exc, exc_info=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"code": "TOKEN_ERROR", "message": "Something went wrong. Please try again."},
+        )
 
-    logger.info("Login successful: %s", org["email"])
+    logger.info("Login successful | email=%s org_id=%s", org["email"], org["organization_id"])
     return LoginResponse(
         access_token=token,
         organization_id=org["organization_id"],
