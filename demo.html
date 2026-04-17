@@ -289,30 +289,17 @@
     }
     .header-org-name { color: var(--teal-300); }
     .logout-btn {
-      background: rgba(239,68,68,.12); border: 1px solid rgba(239,68,68,.25);
-      color: #fca5a5; font-size: .75rem; font-weight: 600;
-      padding: .3rem .75rem; border-radius: 6px; cursor: pointer;
-      transition: all .18s;
+      background: transparent;
+      border: 1px solid rgba(255,255,255,.11);
+      color: var(--muted); font-size: .75rem; font-weight: 600;
+      padding: .3rem .85rem; border-radius: 6px; cursor: pointer;
+      transition: all .2s; letter-spacing: .03em;
     }
-    .logout-btn:hover { background: rgba(239,68,68,.22); }
-
-    .header-api {
-      display: flex; align-items: center; gap: .5rem;
-      font-size: .75rem; color: var(--muted);
+    .logout-btn:hover {
+      background: rgba(255,255,255,.06);
+      border-color: rgba(255,255,255,.22);
+      color: var(--text);
     }
-    .api-dot {
-      width: 6px; height: 6px; border-radius: 50%;
-      background: var(--green);
-      box-shadow: 0 0 6px var(--green);
-      animation: teal-pulse 2s ease-in-out infinite;
-    }
-    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
-    #api-url-input {
-      background: transparent; border: none; outline: none;
-      color: var(--muted); font-family: 'JetBrains Mono', monospace;
-      font-size: .75rem; width: 22ch;
-    }
-    #api-url-input:focus { color: var(--text); }
 
     /* ---- Hero ---- */
     .hero {
@@ -1222,8 +1209,7 @@
       .cards-row { grid-template-columns: 1fr; }
       .kpi-row { grid-template-columns: repeat(2, 1fr); }
       .dash-container { padding: 1.5rem 1rem 3rem; }
-      .header-api span { display: none; }
-      #api-url-input { width: 14ch; }
+
     }
     @media (max-width: 380px) {
       header .logo svg { height: 26px; }
@@ -1408,11 +1394,6 @@
       <span class="header-org-name" id="header-org-name"></span>
     </div>
     <button class="logout-btn" id="logout-btn" onclick="handleLogout()" style="display:none">Sign Out</button>
-    <div class="header-api">
-      <div class="api-dot" id="api-dot"></div>
-      <span>API:</span>
-      <input id="api-url-input" type="text" value="" spellcheck="false">
-    </div>
   </div>
 </header>
 
@@ -1823,7 +1804,7 @@
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-const apiUrl = () => document.getElementById('api-url-input').value.replace(/\/$/, '');
+const apiUrl = () => '';
 
 // ---------------------------------------------------------------------------
 // Auth state — token lives ONLY in this variable; never written to storage.
