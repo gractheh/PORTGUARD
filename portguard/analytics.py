@@ -2,28 +2,22 @@
 portguard/analytics.py — Read-only analytics layer for the PortGuard dashboard.
 
 Provides DashboardAnalytics, a lightweight query class that opens its own
-SQLite read connection against portguard_patterns.db and returns structured
-metrics consumed by the dashboard API endpoints.
+read connection against the pattern database and returns structured metrics
+consumed by the dashboard API endpoints.
 
 Design principles
 -----------------
-- **Read-only, no locks.** WAL mode allows unlimited concurrent readers.
-  DashboardAnalytics never writes; it never acquires PatternDB's write lock.
+- **Read-only, no locks.** DashboardAnalytics never writes.
 - **Tenant-isolated.** Every public method accepts ``organization_id`` and
   filters all queries accordingly.  No cross-org data can leak.
 - **Never crashes the API.** Every public method catches all exceptions,
-  logs a warning, and returns a safe empty/zero response.  A broken analytics
-  query must never take down the analysis or feedback endpoints.
+  logs a warning, and returns a safe empty/zero response.
 - **Self-contained.** This module has no imports from pattern_db or
-  pattern_engine — it queries the SQLite schema directly.  The schema is
-  stable and documented in the migration list.
+  pattern_engine — it queries the schema directly.
 
 Thread safety
 -------------
-SQLite with WAL mode supports concurrent reads without any locking. The
-connection is opened with ``check_same_thread=False`` because FastAPI may
-dispatch requests from different threads in the same process.  Reads are
-inherently safe to execute concurrently.
+SQLAlchemy's connection pool handles concurrency for both SQLite and PostgreSQL.
 
 Usage
 -----
@@ -42,10 +36,15 @@ Usage
 from __future__ import annotations
 
 import logging
-import sqlite3
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
+
+from portguard.db import get_engine
 
 logger = logging.getLogger(__name__)
 
@@ -108,17 +107,15 @@ _ALL_DECISIONS: tuple[str, ...] = (
 class DashboardAnalytics:
     """Read-only analytics query engine for the PortGuard dashboard.
 
-    Opens a dedicated SQLite connection against *db_path* in read-only WAL
-    mode.  All public methods are safe to call even when the database is
-    empty — each returns a well-defined zero/empty response in that case.
+    Uses SQLAlchemy so it works with both SQLite (local dev) and PostgreSQL
+    (Render production).  All public methods are safe to call even when the
+    database is empty — each returns a well-defined zero/empty response.
 
     Parameters
     ----------
     db_path:
-        Filesystem path to ``portguard_patterns.db``.  The file must already
-        exist (it is created by PatternDB on first use).  If the file is not
-        found, ``__init__`` logs a warning and marks the instance unavailable;
-        all subsequent queries return empty responses without raising.
+        Filesystem path to ``portguard_patterns.db``.  Ignored when
+        DATABASE_URL points to PostgreSQL.
 
     Raises
     ------
@@ -136,23 +133,15 @@ class DashboardAnalytics:
 
     def __init__(self, db_path: str | Path = "portguard_patterns.db") -> None:
         self._db_path = str(db_path)
-        self._conn: sqlite3.Connection | None = None
+        self._engine: Engine | None = None
         self.available: bool = False
 
         try:
-            self._conn = sqlite3.connect(
-                self._db_path,
-                check_same_thread=False,
-                isolation_level=None,   # autocommit — reads only
-            )
-            self._conn.row_factory = sqlite3.Row
-            # Enable WAL and enforce foreign keys for consistency with PatternDB.
-            self._conn.execute("PRAGMA journal_mode=WAL")
-            self._conn.execute("PRAGMA foreign_keys=ON")
-            # Validate the connection by checking the schema exists.
-            self._conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='shipment_history'"
-            ).fetchone()
+            engine, _ = get_engine(self._db_path)
+            self._engine = engine
+            # Validate the connection by confirming the schema table exists.
+            with self._engine.connect() as conn:
+                conn.execute(text("SELECT 1 FROM shipment_history LIMIT 1"))
             self.available = True
             logger.info("DashboardAnalytics connected to %s", self._db_path)
         except Exception as exc:
@@ -211,49 +200,41 @@ class DashboardAnalytics:
             for i in range(days)
         ]
 
-    def _query(self, sql: str, params: tuple = ()) -> list[sqlite3.Row]:
+    def _query(self, sql: str, params: tuple = ()) -> list:
         """Execute a SELECT query and return all rows.
 
-        Parameters
-        ----------
-        sql:
-            Parameterized SQL string.
-        params:
-            Positional parameters for the query.
+        Converts positional ``?`` placeholders to SQLAlchemy ``:p0, :p1, …``
+        named params so the same query strings work with both SQLite and
+        PostgreSQL engines.
 
-        Returns
-        -------
-        list[sqlite3.Row]
-            Empty list if the connection is unavailable or the query fails.
+        Returns an empty list if the engine is unavailable or the query fails.
         """
-        if not self.available or self._conn is None:
+        if not self.available or self._engine is None:
             return []
+        # Convert positional ? → :p0, :p1, … for SQLAlchemy text()
+        named_sql = sql
+        named_params: dict[str, Any] = {}
+        for i, val in enumerate(params):
+            named_sql = named_sql.replace("?", f":p{i}", 1)
+            named_params[f"p{i}"] = val
         try:
-            return self._conn.execute(sql, params).fetchall()
-        except sqlite3.Error as exc:
+            with self._engine.connect() as conn:
+                result = conn.execute(text(named_sql), named_params)
+                return result.mappings().fetchall()
+        except Exception as exc:
             logger.warning("DashboardAnalytics query failed: %s | SQL: %.120s", exc, sql)
             return []
 
     def _scalar(self, sql: str, params: tuple = (), default: Any = 0) -> Any:
         """Execute a scalar SELECT (single value) and return the result.
 
-        Parameters
-        ----------
-        sql:
-            Parameterized SQL string that SELECTs a single value.
-        params:
-            Positional parameters.
-        default:
-            Value to return if the query returns no rows or fails.
-
-        Returns
-        -------
-        Any
-            The first column of the first row, or *default*.
+        Returns *default* if the query returns no rows or fails.
         """
         rows = self._query(sql, params)
-        if rows and rows[0][0] is not None:
-            return rows[0][0]
+        if rows:
+            val = next(iter(rows[0].values()), None)
+            if val is not None:
+                return val
         return default
 
     # ------------------------------------------------------------------
@@ -323,16 +304,16 @@ class DashboardAnalytics:
 
             avg_risk_row = self._query(
                 """
-                SELECT ROUND(AVG(final_risk_score), 4),
+                SELECT ROUND(AVG(final_risk_score), 4) AS avg_risk,
                        ROUND(AVG(CASE WHEN pattern_cold_start = 0
-                                     THEN pattern_score END), 4)
+                                     THEN pattern_score END), 4) AS avg_pattern
                 FROM   shipment_history
                 WHERE  organization_id = ?
                 """,
                 (organization_id,),
             )
-            avg_risk    = (avg_risk_row[0][0] or 0.0)    if avg_risk_row else 0.0
-            avg_pattern = (avg_risk_row[0][1])            if avg_risk_row else None
+            avg_risk    = (avg_risk_row[0]["avg_risk"] or 0.0)  if avg_risk_row else 0.0
+            avg_pattern = (avg_risk_row[0]["avg_pattern"])       if avg_risk_row else None
 
             return {
                 "total_shipments":      total_shipments,
@@ -466,7 +447,7 @@ class DashboardAnalytics:
 
             rows = self._query(
                 """
-                SELECT DATE(sh.analyzed_at)                          AS day,
+                SELECT SUBSTR(sh.analyzed_at, 1, 10)                 AS day,
                        COUNT(DISTINCT sh.analysis_id)                AS total_analyzed,
                        COUNT(DISTINCT po.analysis_id)                AS fraud_count
                 FROM   shipment_history sh
@@ -872,22 +853,19 @@ class DashboardAnalytics:
     # ------------------------------------------------------------------
 
     def close(self) -> None:
-        """Close the underlying SQLite connection.
+        """Dispose the engine connection pool.
 
         Safe to call multiple times.  After ``close()``, all query methods
         return empty responses (``available`` is set to ``False``).
         """
         self.available = False
-        if self._conn is not None:
+        if self._engine is not None:
             try:
-                self._conn.close()
+                self._engine.dispose()
             except Exception:
                 pass
-            self._conn = None
-        logger.debug("DashboardAnalytics connection closed")
+            self._engine = None
+        logger.debug("DashboardAnalytics engine disposed")
 
     def __repr__(self) -> str:
-        return (
-            f"DashboardAnalytics(db_path={self._db_path!r}, "
-            f"available={self.available})"
-        )
+        return f"DashboardAnalytics(db_path={self._db_path!r}, available={self.available})"

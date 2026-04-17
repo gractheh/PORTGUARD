@@ -4,7 +4,9 @@ portguard/auth.py — Authentication module for PortGuard multi-tenant system.
 Provides:
 - Password hashing via bcrypt (work factor 12)
 - JWT access token creation and verification (HS256, 24h expiry)
-- AuthDB: SQLite-backed storage for organizations, token revocations, login rate-limiting
+- AuthDB: SQLAlchemy-backed storage for organizations, token revocations,
+  and login rate-limiting.  Uses PostgreSQL when DATABASE_URL is set;
+  falls back to SQLite for local development.
 - get_current_organization: FastAPI dependency for protected routes
 """
 
@@ -13,18 +15,19 @@ from __future__ import annotations
 import logging
 import os
 import secrets
-import sqlite3
-import threading
 import uuid
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import bcrypt as _bcrypt_lib
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError as _IntegrityError, SQLAlchemyError as _SQLAlchemyError
+
+from portguard.db import adapt_stmt, get_engine, split_migration_sql
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +69,7 @@ def hash_password(plain: str) -> str:
     Returns
     -------
     str
-        bcrypt hash string (UTF-8 decoded) suitable for storage in SQLite.
+        bcrypt hash string (UTF-8 decoded) suitable for storage.
     """
     hashed = _bcrypt_lib.hashpw(plain.encode("utf-8"), _bcrypt_lib.gensalt(rounds=_BCRYPT_ROUNDS))
     return hashed.decode("utf-8")
@@ -97,7 +100,6 @@ def verify_password_safe(plain: str, hashed: Optional[str]) -> bool:
         True only if hashed is not None and the password matches.
     """
     if hashed is None:
-        # Burn the same CPU time as a real verify to frustrate timing attacks.
         _bcrypt_lib.checkpw(plain.encode("utf-8"), _DUMMY_HASH)
         return False
     return _bcrypt_lib.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
@@ -111,20 +113,10 @@ def verify_password_safe(plain: str, hashed: Optional[str]) -> bool:
 def create_access_token(org_id: str, org_name: str, email: str) -> tuple[str, str]:
     """Create a signed JWT access token for an organization.
 
-    Parameters
-    ----------
-    org_id:
-        The organization's UUID (becomes the ``sub`` claim).
-    org_name:
-        Display name stored in the token for UI convenience.
-    email:
-        Organization email address.
-
     Returns
     -------
     (token_str, jti)
-        The encoded JWT string and its unique identifier.  The jti is stored
-        in the revocation table on logout.
+        The encoded JWT string and its unique identifier.
     """
     jti = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
@@ -150,8 +142,7 @@ def decode_access_token(token: str) -> dict:
     Raises
     ------
     HTTPException (401)
-        If the token is expired, has an invalid signature, or is otherwise
-        malformed.
+        If the token is expired, has an invalid signature, or is malformed.
     """
     try:
         payload = jwt.decode(token, _SECRET_KEY, algorithms=[_ALGORITHM])
@@ -165,47 +156,37 @@ def decode_access_token(token: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# AuthDB schema
+# AuthDB schema — dialect-neutral DDL (adapted at init time)
 # ---------------------------------------------------------------------------
 
-_AUTH_SCHEMA = """
-PRAGMA journal_mode=WAL;
-PRAGMA foreign_keys=ON;
-
-CREATE TABLE IF NOT EXISTS organizations (
-    organization_id     TEXT PRIMARY KEY,
-    org_name            TEXT NOT NULL,
-    email               TEXT NOT NULL UNIQUE,
-    password_hash       TEXT NOT NULL,
-    is_active           INTEGER NOT NULL DEFAULT 1,
-    created_at          TEXT NOT NULL,
-    last_login_at       TEXT,
-    failed_login_count  INTEGER NOT NULL DEFAULT 0,
-    locked_until        TEXT
-);
-
-CREATE TABLE IF NOT EXISTS auth_token_revocations (
-    jti         TEXT PRIMARY KEY,
-    revoked_at  TEXT NOT NULL,
-    expires_at  TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS auth_login_attempts (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    ip_address      TEXT NOT NULL,
-    attempted_at    TEXT NOT NULL,
-    succeeded       INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE INDEX IF NOT EXISTS idx_revocations_jti
-    ON auth_token_revocations(jti);
-
-CREATE INDEX IF NOT EXISTS idx_login_attempts_ip_at
-    ON auth_login_attempts(ip_address, attempted_at);
-
-CREATE INDEX IF NOT EXISTS idx_orgs_email
-    ON organizations(email);
-"""
+_AUTH_SCHEMA_STMTS: list[str] = [
+    """CREATE TABLE IF NOT EXISTS organizations (
+        organization_id     TEXT PRIMARY KEY,
+        org_name            TEXT NOT NULL,
+        email               TEXT NOT NULL UNIQUE,
+        password_hash       TEXT NOT NULL,
+        is_active           INTEGER NOT NULL DEFAULT 1,
+        created_at          TEXT NOT NULL,
+        last_login_at       TEXT,
+        failed_login_count  INTEGER NOT NULL DEFAULT 0,
+        locked_until        TEXT
+    )""",
+    """CREATE TABLE IF NOT EXISTS auth_token_revocations (
+        jti         TEXT PRIMARY KEY,
+        revoked_at  TEXT NOT NULL,
+        expires_at  TEXT NOT NULL
+    )""",
+    # id uses AUTOINCREMENT for SQLite; adapt_stmt converts to BIGSERIAL for PG
+    """CREATE TABLE IF NOT EXISTS auth_login_attempts (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip_address      TEXT NOT NULL,
+        attempted_at    TEXT NOT NULL,
+        succeeded       INTEGER NOT NULL DEFAULT 0
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_revocations_jti ON auth_token_revocations(jti)",
+    "CREATE INDEX IF NOT EXISTS idx_login_attempts_ip_at ON auth_login_attempts(ip_address, attempted_at)",
+    "CREATE INDEX IF NOT EXISTS idx_orgs_email ON organizations(email)",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -214,36 +195,32 @@ CREATE INDEX IF NOT EXISTS idx_orgs_email
 
 
 class AuthDB:
-    """SQLite-backed storage for organizations and token management.
+    """SQLAlchemy-backed storage for organizations and token management.
 
-    Uses a separate database file (portguard_auth.db) from the pattern
-    learning data, so auth data can be backed up or replicated independently.
+    Uses PostgreSQL when DATABASE_URL is set; falls back to SQLite at
+    *db_path* for local development.
 
     Thread safety
     -------------
-    A threading.Lock serializes all writes.  Reads use the same connection
-    without the lock (WAL mode allows concurrent readers and one writer).
+    SQLAlchemy's connection pool handles concurrency.  Each write operation
+    uses ``engine.begin()`` for automatic commit/rollback semantics.
     """
 
-    def __init__(self, db_path: str | Path = "portguard_auth.db") -> None:
-        self._db_path = str(db_path)
-        self._lock = threading.Lock()
-        self._conn = self._open_connection()
+    def __init__(self, db_path: str = "portguard_auth.db") -> None:
+        self._engine, self._dialect = get_engine(db_path)
         self._init_schema()
-        logger.info("AuthDB initialized at %s", self._db_path)
-
-    def _open_connection(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(
-            self._db_path,
-            check_same_thread=False,
-            isolation_level=None,  # autocommit; we use explicit transactions
+        logger.info(
+            "AuthDB initialized (dialect=%s, path=%s)",
+            self._dialect,
+            db_path if self._dialect == "sqlite" else "postgresql",
         )
-        conn.row_factory = sqlite3.Row
-        return conn
 
     def _init_schema(self) -> None:
-        with self._lock:
-            self._conn.executescript(_AUTH_SCHEMA)
+        with self._engine.begin() as conn:
+            for stmt in _AUTH_SCHEMA_STMTS:
+                adapted = adapt_stmt(stmt, self._dialect)
+                if adapted:
+                    conn.execute(text(adapted))
 
     @staticmethod
     def _utcnow() -> str:
@@ -257,15 +234,6 @@ class AuthDB:
         self, org_name: str, email: str, password_hash: str
     ) -> str:
         """Create a new organization account.
-
-        Parameters
-        ----------
-        org_name:
-            Company/organization display name.
-        email:
-            Primary contact email (unique key).
-        password_hash:
-            bcrypt hash of the plaintext password.
 
         Returns
         -------
@@ -282,53 +250,59 @@ class AuthDB:
         org_id = str(uuid.uuid4())
         now = self._utcnow()
 
-        with self._lock:
-            try:
-                self._conn.execute("BEGIN")
-                self._conn.execute(
-                    """INSERT INTO organizations
-                       (organization_id, org_name, email, password_hash, created_at)
-                       VALUES (?,?,?,?,?)""",
-                    (org_id, org_name, email.lower().strip(), password_hash, now),
+        try:
+            with self._engine.begin() as conn:
+                conn.execute(
+                    text(
+                        """INSERT INTO organizations
+                           (organization_id, org_name, email, password_hash, created_at)
+                           VALUES (:org_id, :org_name, :email, :password_hash, :created_at)"""
+                    ),
+                    {
+                        "org_id": org_id,
+                        "org_name": org_name,
+                        "email": email.lower().strip(),
+                        "password_hash": password_hash,
+                        "created_at": now,
+                    },
                 )
-                self._conn.execute("COMMIT")
-                return org_id
-            except sqlite3.IntegrityError:
-                self._conn.execute("ROLLBACK")
-                raise ValueError(f"The email '{email}' is already registered.")
-            except sqlite3.Error as exc:
-                self._conn.execute("ROLLBACK")
-                raise RuntimeError(f"Failed to create organization: {exc}") from exc
+            return org_id
+        except _IntegrityError:
+            raise ValueError(f"The email '{email}' is already registered.")
+        except _SQLAlchemyError as exc:
+            raise RuntimeError(f"Failed to create organization: {exc}") from exc
 
-    def get_organization_by_email(self, email: str) -> Optional[sqlite3.Row]:
-        """Look up an organization by email address.
+    def get_organization_by_email(self, email: str) -> Optional[Any]:
+        """Look up an organization by email address.  Returns row or None."""
+        with self._engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT * FROM organizations WHERE email = :email"),
+                {"email": email.lower().strip()},
+            )
+            return result.mappings().fetchone()
 
-        Returns the Row or None if not found.
-        """
-        return self._conn.execute(
-            "SELECT * FROM organizations WHERE email = ?",
-            (email.lower().strip(),),
-        ).fetchone()
-
-    def get_organization_by_id(self, org_id: str) -> Optional[sqlite3.Row]:
-        """Look up an organization by its UUID.
-
-        Returns the Row or None if not found.
-        """
-        return self._conn.execute(
-            "SELECT * FROM organizations WHERE organization_id = ?",
-            (org_id,),
-        ).fetchone()
+    def get_organization_by_id(self, org_id: str) -> Optional[Any]:
+        """Look up an organization by its UUID.  Returns row or None."""
+        with self._engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT * FROM organizations WHERE organization_id = :org_id"),
+                {"org_id": org_id},
+            )
+            return result.mappings().fetchone()
 
     def update_last_login(self, org_id: str) -> None:
         """Record a successful login timestamp and reset the failed login counter."""
         now = self._utcnow()
-        with self._lock:
-            self._conn.execute(
-                """UPDATE organizations
-                   SET last_login_at=?, failed_login_count=0, locked_until=NULL
-                   WHERE organization_id=?""",
-                (now, org_id),
+        with self._engine.begin() as conn:
+            conn.execute(
+                text(
+                    """UPDATE organizations
+                       SET last_login_at = :now,
+                           failed_login_count = 0,
+                           locked_until = NULL
+                       WHERE organization_id = :org_id"""
+                ),
+                {"now": now, "org_id": org_id},
             )
 
     # ------------------------------------------------------------------
@@ -336,52 +310,40 @@ class AuthDB:
     # ------------------------------------------------------------------
 
     def revoke_token(self, jti: str, expires_at: str) -> None:
-        """Add a JTI to the revocation list (called on logout).
-
-        Idempotent — calling with a jti that is already revoked is a no-op.
-
-        Parameters
-        ----------
-        jti:
-            The unique token identifier from the JWT payload.
-        expires_at:
-            ISO-8601 timestamp when the token would naturally expire.
-            Used by prune_expired_revocations() to clean up stale entries.
-        """
+        """Add a JTI to the revocation list (called on logout).  Idempotent."""
         now = self._utcnow()
-        with self._lock:
-            try:
-                self._conn.execute(
-                    """INSERT OR IGNORE INTO auth_token_revocations
-                       (jti, revoked_at, expires_at) VALUES (?,?,?)""",
-                    (jti, now, expires_at),
+        # INSERT OR IGNORE for SQLite; INSERT … ON CONFLICT DO NOTHING for PG
+        raw_sql = (
+            "INSERT OR IGNORE INTO auth_token_revocations "
+            "(jti, revoked_at, expires_at) VALUES (:jti, :revoked_at, :expires_at)"
+        )
+        adapted = adapt_stmt(raw_sql, self._dialect)
+        try:
+            with self._engine.begin() as conn:
+                conn.execute(
+                    text(adapted),
+                    {"jti": jti, "revoked_at": now, "expires_at": expires_at},
                 )
-            except sqlite3.Error as exc:
-                logger.warning("revoke_token failed: %s", exc)
+        except _SQLAlchemyError as exc:
+            logger.warning("revoke_token failed: %s", exc)
 
     def is_token_revoked(self, jti: str) -> bool:
-        """Return True if the JTI has been revoked (i.e., the org logged out)."""
-        row = self._conn.execute(
-            "SELECT 1 FROM auth_token_revocations WHERE jti = ?", (jti,)
-        ).fetchone()
-        return row is not None
+        """Return True if the JTI has been revoked."""
+        with self._engine.connect() as conn:
+            result = conn.execute(
+                text("SELECT 1 FROM auth_token_revocations WHERE jti = :jti"),
+                {"jti": jti},
+            )
+            return result.fetchone() is not None
 
     def prune_expired_revocations(self) -> int:
-        """Remove revocation records whose tokens have already expired.
-
-        Safe to call periodically to prevent unbounded table growth.
-
-        Returns
-        -------
-        int
-            Number of records deleted.
-        """
+        """Remove revocation records whose tokens have already expired."""
         now = self._utcnow()
-        with self._lock:
-            self._conn.execute(
-                "DELETE FROM auth_token_revocations WHERE expires_at < ?", (now,)
+        with self._engine.begin() as conn:
+            conn.execute(
+                text("DELETE FROM auth_token_revocations WHERE expires_at < :now"),
+                {"now": now},
             )
-        # Return count is informational only; we don't track it here.
         return 0
 
     # ------------------------------------------------------------------
@@ -389,55 +351,42 @@ class AuthDB:
     # ------------------------------------------------------------------
 
     def record_login_attempt(self, ip_address: str, succeeded: bool) -> None:
-        """Record a login attempt for per-IP rate limiting.
-
-        Parameters
-        ----------
-        ip_address:
-            Client IP address from the request.
-        succeeded:
-            True if authentication succeeded, False if it failed.
-        """
+        """Record a login attempt for per-IP rate limiting."""
         now = self._utcnow()
-        with self._lock:
-            try:
-                self._conn.execute(
-                    """INSERT INTO auth_login_attempts
-                       (ip_address, attempted_at, succeeded) VALUES (?,?,?)""",
-                    (ip_address, now, int(succeeded)),
+        try:
+            with self._engine.begin() as conn:
+                conn.execute(
+                    text(
+                        """INSERT INTO auth_login_attempts
+                           (ip_address, attempted_at, succeeded) VALUES (:ip, :at, :ok)"""
+                    ),
+                    {"ip": ip_address, "at": now, "ok": int(succeeded)},
                 )
-            except sqlite3.Error as exc:
-                logger.warning("record_login_attempt failed: %s", exc)
+        except _SQLAlchemyError as exc:
+            logger.warning("record_login_attempt failed: %s", exc)
 
     def count_recent_failures(self, ip_address: str, window_seconds: int = 60) -> int:
-        """Count failed login attempts from an IP in the past window_seconds.
-
-        Parameters
-        ----------
-        ip_address:
-            Client IP to check.
-        window_seconds:
-            Rolling window size in seconds (default 60 = 1 minute).
-
-        Returns
-        -------
-        int
-            Number of failed attempts in the window.
-        """
+        """Count failed login attempts from an IP in the past window_seconds."""
         cutoff = (
             datetime.now(timezone.utc) - timedelta(seconds=window_seconds)
         ).isoformat()
-        row = self._conn.execute(
-            """SELECT COUNT(*) FROM auth_login_attempts
-               WHERE ip_address=? AND attempted_at >= ? AND succeeded=0""",
-            (ip_address, cutoff),
-        ).fetchone()
-        return row[0] if row else 0
+        with self._engine.connect() as conn:
+            result = conn.execute(
+                text(
+                    """SELECT COUNT(*) FROM auth_login_attempts
+                       WHERE ip_address = :ip
+                         AND attempted_at >= :cutoff
+                         AND succeeded = 0"""
+                ),
+                {"ip": ip_address, "cutoff": cutoff},
+            )
+            row = result.fetchone()
+            return row[0] if row else 0
 
     def close(self) -> None:
-        """Close the database connection."""
+        """Dispose the engine connection pool."""
         try:
-            self._conn.close()
+            self._engine.dispose()
         except Exception:
             pass
 
@@ -446,15 +395,18 @@ class AuthDB:
 # Module-level singleton
 # ---------------------------------------------------------------------------
 
+import threading as _threading
+
 _auth_db: Optional[AuthDB] = None
-_auth_db_lock = threading.Lock()
+_auth_db_lock = _threading.Lock()
 
 
 def get_auth_db() -> AuthDB:
     """Return the module-level AuthDB singleton, initializing on first call.
 
     The DB path is controlled by the PORTGUARD_AUTH_DB_PATH environment
-    variable (default: ``portguard_auth.db`` in the process working directory).
+    variable (default: ``portguard_auth.db``).  When DATABASE_URL is set to
+    a PostgreSQL URL, the path is ignored and PostgreSQL is used.
     """
     global _auth_db
     if _auth_db is None:

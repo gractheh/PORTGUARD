@@ -1127,6 +1127,12 @@ class AnalyzeResponse(BaseModel):
         description="Plain-English explanations from triggered pattern signals, "
                     "sorted by severity (CRITICAL first).",
     )
+    pattern_history_depth: Optional[int] = Field(
+        None,
+        description="Number of prior analyses found for the shipper entity in the "
+                    "pattern DB.  0 means this is the first time this shipper has "
+                    "been seen.  None when the pattern engine is disabled.",
+    )
 
 
 class FeedbackRequest(BaseModel):
@@ -1380,6 +1386,7 @@ def analyze(
     pattern_score_val: Optional[float] = None
     history_available: bool = False
     pattern_signals: list[str] = []
+    pattern_history_depth_val: Optional[int] = None
     final_score: float = rule_score
     final_decision: str = rule_decision
 
@@ -1391,6 +1398,7 @@ def analyze(
                 pattern_score_val = pattern_result.pattern_score
                 history_available = not pattern_result.is_cold_start
                 pattern_signals = pattern_result.explanations
+                pattern_history_depth_val = pattern_result.history_depth
 
                 if history_available:
                     # Weighted blend: rule 65%, pattern 35%
@@ -1435,6 +1443,7 @@ def analyze(
         pattern_score=pattern_score_val,
         history_available=history_available,
         pattern_signals=pattern_signals,
+        pattern_history_depth=pattern_history_depth_val,
     )
 
     # Record analysis to PatternDB inline (fast — < 10 ms); shipment_id is
@@ -1602,6 +1611,7 @@ async def analyze_files(
     pattern_score_val: Optional[float] = None
     history_available: bool = False
     pattern_signals: list[str] = []
+    pattern_history_depth_val: Optional[int] = None
     final_score: float = rule_score
     final_decision: str = rule_decision
 
@@ -1615,6 +1625,7 @@ async def analyze_files(
                 pattern_score_val = pattern_result.pattern_score
                 history_available = not pattern_result.is_cold_start
                 pattern_signals = pattern_result.explanations
+                pattern_history_depth_val = pattern_result.history_depth
                 if history_available:
                     blended = _RULE_WEIGHT * rule_score + _PATTERN_WEIGHT * pattern_score_val
                     final_score = round(min(1.0, blended), 4)
@@ -1653,6 +1664,7 @@ async def analyze_files(
         pattern_score=pattern_score_val,
         history_available=history_available,
         pattern_signals=pattern_signals,
+        pattern_history_depth=pattern_history_depth_val,
     )
 
     try:
