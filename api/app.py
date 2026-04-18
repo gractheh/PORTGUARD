@@ -32,6 +32,11 @@ from api.document_parser import (
     UnsupportedFormatError,
 )
 
+from portguard.document_validator import (
+    validate_documents as _validate_documents,
+    build_rejection_error,
+)
+
 from portguard.data.sanctions import get_sanctions_programs
 from portguard.data.section301 import get_section_301
 from portguard.data.adcvd import get_adcvd_orders
@@ -1133,6 +1138,18 @@ class AnalyzeResponse(BaseModel):
                     "pattern DB.  0 means this is the first time this shipper has "
                     "been seen.  None when the pattern engine is disabled.",
     )
+    # Document validation fields — always present, default to empty so existing
+    # callers that do not reference them are unaffected.
+    validation_warnings: list[str] = Field(
+        default_factory=list,
+        description="Per-document validation warnings for documents that passed "
+                    "with LOW confidence.  Analysis proceeded but results may be incomplete.",
+    )
+    document_validations: list[dict] = Field(
+        default_factory=list,
+        description="Validation metadata for each submitted document: detected type, "
+                    "confidence tier, signal count, and verdict.",
+    )
 
 
 class FeedbackRequest(BaseModel):
@@ -1369,6 +1386,29 @@ def analyze(
 ):
     start = time.monotonic()
     org_id: str = current_org["organization_id"]
+
+    # --- Document validation gate ---
+    _val_results = _validate_documents(request.documents)
+    _rejected = [r for r in _val_results if not r.is_valid]
+    if _rejected:
+        _filenames = [
+            (doc.filename or f"Document {i+1}")
+            for i, doc in enumerate(request.documents)
+        ]
+        _rej_filenames = [
+            _filenames[i] for i, r in enumerate(_val_results) if not r.is_valid
+        ]
+        raise HTTPException(
+            status_code=422,
+            detail=build_rejection_error(_rejected, _rej_filenames, len(request.documents)),
+        )
+    _val_warnings = [
+        f"{(doc.filename or f'Document {i+1}')}: {r.warning_message}"
+        for i, (doc, r) in enumerate(zip(request.documents, _val_results))
+        if r.warning_message
+    ]
+    _val_metadata = [r.to_dict() for r in _val_results]
+
     try:
         result = _analyze_documents(request.documents)
     except Exception as e:
@@ -1444,6 +1484,8 @@ def analyze(
         history_available=history_available,
         pattern_signals=pattern_signals,
         pattern_history_depth=pattern_history_depth_val,
+        validation_warnings=_val_warnings,
+        document_validations=_val_metadata,
     )
 
     # Record analysis to PatternDB inline (fast — < 10 ms); shipment_id is
@@ -1589,6 +1631,25 @@ async def analyze_files(
         for w in result.warnings:
             extraction_warnings.append(f"{filename}: {w}")
 
+    # --- Document validation gate ---
+    _val_results_f = _validate_documents(documents)
+    _rejected_f = [r for r in _val_results_f if not r.is_valid]
+    if _rejected_f:
+        _filenames_f = [doc.filename or f"Document {i+1}" for i, doc in enumerate(documents)]
+        _rej_filenames_f = [
+            _filenames_f[i] for i, r in enumerate(_val_results_f) if not r.is_valid
+        ]
+        raise HTTPException(
+            status_code=422,
+            detail=build_rejection_error(_rejected_f, _rej_filenames_f, len(documents)),
+        )
+    _val_warnings_f = [
+        f"{(doc.filename or f'Document {i+1}')}: {r.warning_message}"
+        for i, (doc, r) in enumerate(zip(documents, _val_results_f))
+        if r.warning_message
+    ]
+    _val_metadata_f = [r.to_dict() for r in _val_results_f]
+
     start = time.monotonic()
     try:
         result_data = _analyze_documents(documents)
@@ -1665,6 +1726,8 @@ async def analyze_files(
         history_available=history_available,
         pattern_signals=pattern_signals,
         pattern_history_depth=pattern_history_depth_val,
+        validation_warnings=_val_warnings_f,
+        document_validations=_val_metadata_f,
     )
 
     try:

@@ -1,5 +1,7 @@
 """ValidationAgent — rule-based ISF, PGA, and documentation compliance checks."""
 
+from __future__ import annotations
+
 from portguard.agents.base import BaseAgent
 from portguard.data.pga import get_pga_requirements
 from portguard.models.shipment import ParsedShipment

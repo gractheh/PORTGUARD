@@ -1,5 +1,7 @@
 """DecisionAgent — synthesize pipeline results into a final compliance decision (rule-based)."""
 
+from __future__ import annotations
+
 import re
 
 from portguard.agents.base import BaseAgent

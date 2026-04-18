@@ -1,5 +1,7 @@
 """Full screening report model."""
 
+from __future__ import annotations
+
 from pydantic import BaseModel
 from portguard.models.shipment import ShipmentInput, ParsedShipment
 from portguard.models.classification import ClassificationResult

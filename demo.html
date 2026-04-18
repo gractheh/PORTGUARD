@@ -894,6 +894,103 @@
     .ph-score-lo { color: var(--amber); }
     .ph-empty { color: var(--faint); font-size: .82rem; font-style: italic; }
 
+    /* ---- Document type badge (tab label) ---- */
+    .doc-type-badge {
+      display: inline-flex; align-items: center;
+      background: rgba(27,154,170,.14); border: 1px solid rgba(77,207,223,.3);
+      color: var(--teal-300);
+      font-size: .62rem; font-weight: 700; letter-spacing: .05em;
+      padding: .13rem .45rem; border-radius: 999px;
+      white-space: nowrap; flex-shrink: 0;
+      transition: opacity .2s;
+    }
+
+    /* ---- Short-doc soft warning ---- */
+    .short-doc-warning {
+      display: none; align-items: center; gap: .5rem;
+      font-size: .78rem; color: var(--amber);
+      padding: .35rem .6rem; margin-top: .4rem;
+      background: rgba(232,168,56,.07); border: 1px solid rgba(232,168,56,.2);
+      border-radius: 6px;
+    }
+    .short-doc-warning.visible { display: flex; }
+
+    /* ---- Validation warning banner (above results) ---- */
+    #validation-warning-banner {
+      display: none;
+      background: rgba(232,168,56,.08); border: 1px solid rgba(232,168,56,.28);
+      border-radius: var(--radius); padding: .8rem 1.1rem;
+      margin-bottom: 1rem;
+      flex-direction: column; gap: .45rem;
+    }
+    #validation-warning-banner.visible { display: flex; }
+    .val-warn-title {
+      display: flex; align-items: center; gap: .5rem;
+      font-size: .82rem; font-weight: 700; color: var(--amber);
+    }
+    .val-warn-item {
+      font-size: .8rem; color: #fbbf24; line-height: 1.5;
+      padding-left: 1.3rem;
+    }
+
+    /* ---- Rejection screen ---- */
+    #rejection-screen {
+      display: none; margin-top: 2rem;
+      background: rgba(80,20,20,.18); border: 1px solid rgba(224,80,80,.3);
+      border-radius: var(--radius-lg); padding: 2.5rem 2rem;
+      text-align: center;
+      animation: fade-up .4s var(--ease-out);
+    }
+    #rejection-screen.visible { display: block; }
+    .rej-icon {
+      font-size: 3rem; line-height: 1; margin-bottom: 1rem;
+      filter: drop-shadow(0 0 16px rgba(224,80,80,.4));
+    }
+    .rej-heading {
+      font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+      font-size: 1.4rem; font-weight: 800; color: #fca5a5;
+      margin-bottom: .6rem;
+    }
+    .rej-guidance {
+      font-size: .88rem; color: var(--muted); max-width: 520px;
+      margin: 0 auto 1.4rem; line-height: 1.65;
+    }
+    .rej-docs {
+      display: flex; flex-direction: column; gap: .55rem;
+      max-width: 520px; margin: 0 auto 1.8rem;
+    }
+    .rej-doc-item {
+      background: rgba(224,80,80,.08); border: 1px solid rgba(224,80,80,.22);
+      border-radius: var(--radius); padding: .65rem 1rem;
+      text-align: left;
+    }
+    .rej-doc-filename {
+      font-family: 'JetBrains Mono', monospace; font-size: .8rem;
+      color: var(--text); font-weight: 600; margin-bottom: .25rem;
+    }
+    .rej-doc-reason {
+      font-size: .8rem; color: #fca5a5; line-height: 1.5;
+    }
+    .rej-try-again {
+      background: linear-gradient(135deg, var(--teal-700), var(--teal-500));
+      border: none; border-radius: var(--radius);
+      color: #fff; font-family: 'Inter', sans-serif;
+      font-size: .9rem; font-weight: 700; letter-spacing: .04em;
+      padding: .75rem 2rem; cursor: pointer;
+      transition: all .2s; box-shadow: 0 4px 14px rgba(27,154,170,.3);
+    }
+    .rej-try-again:hover {
+      transform: translateY(-1px); box-shadow: 0 6px 20px rgba(27,154,170,.45);
+    }
+
+    /* ---- Loading step messages ---- */
+    .loading-step {
+      font-size: .78rem; color: var(--teal-300);
+      opacity: 0; transition: opacity .3s;
+      margin-left: .3rem;
+    }
+    .loading-step.visible { opacity: 1; }
+
     /* ---- Reset button ---- */
     .ph-reset-btn {
       background: transparent;
@@ -1471,6 +1568,7 @@
     <button id="analyze-btn" onclick="analyze()">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" id="btn-icon" class="btn-icon"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>
       <span id="btn-text">Analyze Shipment</span>
+      <span class="loading-step" id="loading-step"></span>
     </button>
   </div>
 
@@ -1478,6 +1576,15 @@
   <div id="error-banner">
     <span>&#9888;</span>
     <span id="error-msg"></span>
+  </div>
+
+  <!-- Rejection screen (shown when API returns 422 DOCUMENT_VALIDATION_FAILED) -->
+  <div id="rejection-screen">
+    <div class="rej-icon">&#9888;</div>
+    <div class="rej-heading">Document Not Recognized</div>
+    <div class="rej-guidance">PortGuard requires trade documents such as a Bill of Lading, Commercial Invoice, Packing List, or Certificate of Origin. Please review and replace the document(s) below.</div>
+    <div class="rej-docs" id="rej-docs-list"></div>
+    <button class="rej-try-again" onclick="hideRejectionScreen()">&#8592; Try Again</button>
   </div>
 
   <!-- ===================== RESULTS ===================== -->
@@ -1492,6 +1599,12 @@
         <span id="download-report-label">Download Compliance Report</span>
       </button>
       <span id="report-status"></span>
+    </div>
+
+    <!-- Validation warning banner (LOW confidence docs passed through) -->
+    <div id="validation-warning-banner">
+      <span>&#9888;</span>
+      <div id="validation-warning-msg"></div>
     </div>
 
     <!-- Decision banner -->
@@ -2058,6 +2171,13 @@ function renderTabs() {
     label.textContent = tab.filename || 'Document ' + tab.id;
     btn.appendChild(label);
 
+    if (tab.detectedType) {
+      const badge = document.createElement('span');
+      badge.className = 'doc-type-badge';
+      badge.textContent = _formatDocType(tab.detectedType);
+      btn.appendChild(badge);
+    }
+
     if (tabs.length > 1) {
       const x = document.createElement('button');
       x.className = 'tab-close';
@@ -2092,9 +2212,24 @@ function renderPane() {
       <span class="file-badge" id="fbadge-${tab.id}"></span>
     </div>
     <div class="extract-status" id="fstatus-${tab.id}"></div>
+    <span class="short-doc-warning" id="short-doc-warning-${tab.id}">
+      &#9888; Document is very short (&lt;20 words) — results may be limited
+    </span>
     <textarea class="doc-text" placeholder="Paste raw document text here, or upload a .pdf / .txt file above."
               id="text-${tab.id}">${escHtml(tab.text)}</textarea>
   `;
+
+  // Show/hide short-doc warning based on word count
+  const _checkWordCount = (text) => {
+    const words = text.trim().split(/\s+/).filter(w => w.length > 0).length;
+    const warn = document.getElementById('short-doc-warning-' + tab.id);
+    if (warn) {
+      if (words > 0 && words < 20) warn.classList.add('visible');
+      else warn.classList.remove('visible');
+    }
+  };
+  // Check immediately on render (e.g. after file upload or scenario load)
+  _checkWordCount(tab.text || '');
 
   document.getElementById('fname-' + tab.id).addEventListener('input', e => {
     tab.filename = e.target.value;
@@ -2105,6 +2240,7 @@ function renderPane() {
   });
   document.getElementById('text-' + tab.id).addEventListener('input', e => {
     tab.text = e.target.value;
+    _checkWordCount(e.target.value);
   });
   document.getElementById('ffile-' + tab.id).addEventListener('change', e => {
     const file = e.target.files[0];
@@ -2544,8 +2680,15 @@ async function analyze() {
     return;
   }
 
+  // Clear stale tab badges and validation banner from prior run
+  tabs.forEach(t => { delete t.detectedType; });
+  renderTabs();
+  const _warnBanner = document.getElementById('validation-warning-banner');
+  if (_warnBanner) _warnBanner.classList.remove('visible');
+
   setLoading(true);
   hideError();
+  hideRejectionScreen();
   const _rEl = document.getElementById('results');
   _rEl.classList.remove('visible');
   _rEl.style.display = '';
@@ -2557,6 +2700,18 @@ async function analyze() {
     const res = await fetch(apiUrl() + '/api/v1/analyze', authedJson('POST', { documents }));
 
     if (res.status === 401) { handle401(); return; }
+
+    if (res.status === 422) {
+      const err = await res.json().catch(() => ({}));
+      const detail = err.detail || {};
+      if (detail.code === 'DOCUMENT_VALIDATION_FAILED' && detail.rejected_documents) {
+        showRejectionScreen(detail.rejected_documents);
+        return;
+      }
+      // Generic 422 (e.g. pydantic validation error)
+      throw new Error((detail.message) || JSON.stringify(detail) || 'Unprocessable request');
+    }
+
     if (!res.ok) {
       const err = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error((err.detail && err.detail.message) || err.detail || `HTTP ${res.status}`);
@@ -2576,17 +2731,46 @@ async function analyze() {
   }
 }
 
+let _loadingStepTimers = [];
+const _LOADING_STEPS = [
+  'Validating documents…',
+  'Running compliance checks…',
+  'Generating decision…',
+];
+
 function setLoading(on) {
   const btn = document.getElementById('analyze-btn');
   const icon = document.getElementById('btn-icon');
   const text = document.getElementById('btn-text');
   btn.disabled = on;
+
+  // Clear any existing step timers
+  _loadingStepTimers.forEach(t => clearTimeout(t));
+  _loadingStepTimers = [];
+
   if (on) {
     icon.outerHTML = '<div class="spinner" id="btn-icon"></div>';
     text.textContent = 'Analyzing…';
+    const stepEl = document.getElementById('loading-step');
+    if (stepEl) {
+      stepEl.textContent = '';
+      stepEl.classList.remove('visible');
+      _LOADING_STEPS.forEach((msg, i) => {
+        const t = setTimeout(() => {
+          stepEl.textContent = msg;
+          stepEl.classList.add('visible');
+        }, 800 + i * 2200);
+        _loadingStepTimers.push(t);
+      });
+    }
   } else {
     document.getElementById('btn-icon').outerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" id="btn-icon" class="btn-icon"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>`;
     text.textContent = 'Analyze Shipment';
+    const stepEl = document.getElementById('loading-step');
+    if (stepEl) {
+      stepEl.textContent = '';
+      stepEl.classList.remove('visible');
+    }
   }
 }
 
@@ -2600,11 +2784,91 @@ function hideError() {
 }
 
 // ---------------------------------------------------------------------------
+// Rejection screen helpers
+// ---------------------------------------------------------------------------
+function showRejectionScreen(rejectedDocs) {
+  const screen = document.getElementById('rejection-screen');
+  const list = document.getElementById('rej-docs-list');
+
+  list.innerHTML = '';
+  (rejectedDocs || []).forEach(doc => {
+    const item = document.createElement('div');
+    item.className = 'rej-doc-item';
+
+    const name = document.createElement('div');
+    name.className = 'rej-doc-filename';
+    name.textContent = doc.filename || 'Unknown document';
+    item.appendChild(name);
+
+    const reason = document.createElement('div');
+    reason.className = 'rej-doc-reason';
+    reason.textContent = doc.message || doc.reason || 'Document type not recognized as a trade document.';
+    item.appendChild(reason);
+
+    list.appendChild(item);
+  });
+
+  screen.classList.add('visible');
+  screen.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function hideRejectionScreen() {
+  document.getElementById('rejection-screen').classList.remove('visible');
+}
+
+// ---------------------------------------------------------------------------
+// Tab badge helpers
+// ---------------------------------------------------------------------------
+const _DOC_TYPE_LABELS = {
+  BILL_OF_LADING:        'B/L',
+  COMMERCIAL_INVOICE:    'Invoice',
+  PACKING_LIST:          'Packing List',
+  CERTIFICATE_OF_ORIGIN: 'COO',
+  ARRIVAL_NOTICE:        'Arrival Notice',
+  ISF_FILING:            'ISF',
+  UNKNOWN:               null,
+};
+
+function _formatDocType(typeKey) {
+  return _DOC_TYPE_LABELS[typeKey] || typeKey.replace(/_/g, ' ');
+}
+
+function updateTabBadges(validations) {
+  if (!validations || !validations.length) return;
+  validations.forEach((v, i) => {
+    const tab = tabs[i];
+    if (tab && v.detected_type && v.detected_type !== 'UNKNOWN') {
+      tab.detectedType = v.detected_type;
+    }
+  });
+  // Re-render tabs so badges appear
+  renderTabs();
+}
+
+// ---------------------------------------------------------------------------
 // Render results
 // ---------------------------------------------------------------------------
 function renderResults(data) {
   const decision = data.decision || 'REVIEW_RECOMMENDED';
   const cfg = DECISION_CONFIG[decision] || DECISION_CONFIG['REVIEW_RECOMMENDED'];
+
+  // Validation warning banner
+  const warnBanner = document.getElementById('validation-warning-banner');
+  const warnMsg = document.getElementById('validation-warning-msg');
+  if (data.validation_warnings && data.validation_warnings.length > 0) {
+    warnMsg.innerHTML = '<strong>Low-confidence document(s):</strong> ' +
+      data.validation_warnings.map(w => escHtml(w)).join('<br>') +
+      '<br><small>Results may be less accurate. Consider providing the full document.</small>';
+    warnBanner.classList.add('visible');
+  } else {
+    warnBanner.classList.remove('visible');
+    warnMsg.innerHTML = '';
+  }
+
+  // Update tab badges with detected document types
+  if (data.document_validations && data.document_validations.length > 0) {
+    updateTabBadges(data.document_validations);
+  }
 
   // Decision banner
   const banner = document.getElementById('decision-banner');

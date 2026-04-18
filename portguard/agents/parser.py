@@ -1,5 +1,7 @@
 """ParserAgent — extract and normalize shipment data using regex (no external API)."""
 
+from __future__ import annotations
+
 import re
 
 from portguard.agents.base import BaseAgent
