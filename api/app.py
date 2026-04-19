@@ -13,7 +13,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, UploadFile, File
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
@@ -2509,5 +2509,899 @@ def report_generate_direct(
                 "message": f"Failed to generate PDF report: {exc}",
             },
         )
+
+
+# ---------------------------------------------------------------------------
+# Bulk screening — analysis helper
+# ---------------------------------------------------------------------------
+
+def _run_bulk_single_analysis(documents_data: list, org_id: str) -> dict:
+    """Run the full analysis pipeline for one shipment in a bulk batch.
+
+    This is a synchronous function executed in a ``ThreadPoolExecutor`` by
+    :class:`~portguard.bulk_processor.BulkProcessor`.  It replicates the
+    exact logic of ``POST /api/v1/analyze`` but returns a serialised result
+    dict instead of raising ``HTTPException`` — errors are raised as plain
+    ``Exception`` so the BulkProcessor can catch them per-shipment without
+    affecting the rest of the batch.
+
+    Parameters
+    ----------
+    documents_data:
+        List of ``{"filename": str, "raw_text": str}`` dicts.
+    org_id:
+        Authenticated organisation UUID.
+
+    Returns
+    -------
+    dict
+        Serialised ``AnalyzeResponse`` (same shape as the JSON response from
+        ``POST /api/v1/analyze``).
+
+    Raises
+    ------
+    ValueError
+        Document validation failed (one or more docs rejected by the gate).
+    Exception
+        Any unexpected error during analysis, pattern scoring, or DB write.
+    """
+    import time as _time
+
+    start = _time.monotonic()
+
+    # Build Document objects from raw dicts
+    docs = [
+        Document(
+            raw_text=d.get("raw_text", d.get("text", "")),
+            filename=d.get("filename"),
+        )
+        for d in documents_data
+        if d.get("raw_text", d.get("text", "")).strip()
+    ]
+    if not docs:
+        raise ValueError("No non-empty document text provided.")
+
+    # Document validation gate
+    val_results = _validate_documents(docs)
+    rejected = [r for r in val_results if not r.is_valid]
+    if rejected:
+        filenames = [d.get("filename", f"Document {i+1}") for i, d in enumerate(documents_data)]
+        rej_filenames = [filenames[i] for i, r in enumerate(val_results) if not r.is_valid]
+        err = build_rejection_error(rejected, rej_filenames, len(docs))
+        raise ValueError(f"Document validation failed: {err['message']}")
+
+    val_warnings = [
+        f"{doc.filename or f'Document {i+1}'}: {r.warning_message}"
+        for i, (doc, r) in enumerate(zip(docs, val_results))
+        if r.warning_message
+    ]
+    val_metadata = [r.to_dict() for r in val_results]
+
+    # Core rule-based analysis
+    result = _analyze_documents(docs)
+    elapsed = round(_time.monotonic() - start, 3)
+    sd = result.get("shipment_data", {})
+
+    rule_score: float = result["risk_score"]
+    rule_decision: str = result["decision"]
+    rule_confidence: str = result["confidence"]
+
+    # Pattern learning overlay (identical to analyze() endpoint)
+    pattern_result = None
+    pattern_score_val: Optional[float] = None
+    history_available: bool = False
+    pattern_signals: list[str] = []
+    pattern_history_depth_val: Optional[int] = None
+    final_score: float = rule_score
+    final_decision: str = rule_decision
+
+    if _pattern_engine is not None:
+        try:
+            scoring_req = _build_scoring_request(sd, organization_id=org_id)
+            if scoring_req is not None:
+                pattern_result = _pattern_engine.score(scoring_req)
+                pattern_score_val = pattern_result.pattern_score
+                history_available = not pattern_result.is_cold_start
+                pattern_signals = pattern_result.explanations
+                pattern_history_depth_val = pattern_result.history_depth
+
+                if history_available:
+                    blended = _RULE_WEIGHT * rule_score + _PATTERN_WEIGHT * pattern_score_val
+                    final_score = round(min(1.0, blended), 4)
+                    final_decision = _make_decision(
+                        result.get("_risk_factors", []),
+                        result.get("_missing_msgs", []),
+                        result.get("_inconsistency_codes", []),
+                        final_score,
+                        sd,
+                    )
+        except Exception as exc:
+            logger.warning("PatternEngine.score() failed in bulk (non-fatal): %s", exc)
+
+    # Risk level from final score
+    if final_score <= 0.25:
+        final_risk_level = "LOW"
+    elif final_score <= 0.50:
+        final_risk_level = "MEDIUM"
+    elif final_score <= 0.75:
+        final_risk_level = "HIGH"
+    else:
+        final_risk_level = "CRITICAL"
+
+    analyze_response = AnalyzeResponse(
+        status="completed",
+        shipment_data=ShipmentData(**sd),
+        risk_score=final_score,
+        risk_level=final_risk_level,
+        decision=final_decision,
+        confidence=rule_confidence,
+        explanations=result["explanations"],
+        recommended_next_steps=result["recommended_next_steps"],
+        inconsistencies_found=result["inconsistencies_found"],
+        documents_analyzed=len(docs),
+        processing_time_seconds=elapsed,
+        shipment_id=None,
+        pattern_score=pattern_score_val,
+        history_available=history_available,
+        pattern_signals=pattern_signals,
+        pattern_history_depth=pattern_history_depth_val,
+        validation_warnings=val_warnings,
+        document_validations=val_metadata,
+    )
+
+    # Record to PatternDB and store report payload
+    try:
+        report_json: Optional[str] = analyze_response.model_dump_json()
+    except Exception:
+        report_json = None
+
+    shipment_id = _record_shipment_bg(
+        sd=sd,
+        rule_score=rule_score,
+        rule_decision=rule_decision,
+        rule_confidence=rule_confidence,
+        risk_factors=result.get("_risk_factors", []),
+        pattern_result=pattern_result,
+        final_score=final_score,
+        final_decision=final_decision,
+        final_confidence=rule_confidence,
+        organization_id=org_id,
+        report_payload_json=report_json,
+    )
+    analyze_response.shipment_id = shipment_id
+
+    return analyze_response.model_dump()
+
+
+# ---------------------------------------------------------------------------
+# Bulk screening — module-level processor singleton
+# ---------------------------------------------------------------------------
+
+_bulk_processor: Optional[object] = None
+
+
+def _get_bulk_processor():
+    """Return the module-level BulkProcessor singleton, creating it on first call."""
+    global _bulk_processor
+    if _bulk_processor is None:
+        try:
+            from portguard.bulk_processor import BulkProcessor
+            _db_path = os.getenv("PORTGUARD_PATTERN_DB_PATH", "portguard_patterns.db")
+            _bulk_processor = BulkProcessor(
+                db_path=_db_path,
+                analyze_fn=_run_bulk_single_analysis,
+            )
+            logger.info("BulkProcessor singleton initialized")
+        except Exception as exc:
+            logger.error("BulkProcessor init failed: %s", exc, exc_info=True)
+            raise
+    return _bulk_processor
+
+
+# ---------------------------------------------------------------------------
+# Bulk screening — request / response models
+# ---------------------------------------------------------------------------
+
+
+class BulkDocumentInput(BaseModel):
+    filename: Optional[str] = None
+    raw_text: str = Field(..., min_length=1)
+
+
+class BulkShipmentInput(BaseModel):
+    ref: str = Field(..., min_length=1, max_length=120)
+    documents: list[BulkDocumentInput] = Field(..., min_length=1)
+
+
+class BulkCreateRequest(BaseModel):
+    """JSON body for POST /api/v1/analyze/bulk (MANUAL input mode)."""
+    input_method: str = Field("MANUAL", description="Must be 'MANUAL' for JSON submissions")
+    shipments: list[BulkShipmentInput] = Field(..., min_length=1)
+
+
+class BulkCreateResponse(BaseModel):
+    batch_id: str
+    total_shipments: int
+    status: str
+    input_method: str
+    created_at: str
+    status_url: str
+    results_url: str
+
+
+class BulkShipmentStatusModel(BaseModel):
+    ref: str
+    status: str
+    decision: Optional[str] = None
+    risk_score: Optional[float] = None
+    risk_level: Optional[str] = None
+    n_findings: Optional[int] = None
+    top_finding: Optional[str] = None
+    analysis_id: Optional[str] = None
+    error_message: Optional[str] = None
+    processed_at: Optional[str] = None
+
+
+class BulkStatusResponse(BaseModel):
+    batch_id: str
+    status: str
+    input_method: str
+    total: int
+    processed: int
+    pending: int
+    decisions: dict
+    created_at: str
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    elapsed_seconds: float
+    estimated_remaining_seconds: float
+    shipments: list[BulkShipmentStatusModel]
+
+
+# ---------------------------------------------------------------------------
+# Bulk screening — rate limiting helper
+# ---------------------------------------------------------------------------
+
+_BULK_RATE_LIMIT_PER_MINUTE = 3
+
+
+def _check_bulk_rate_limit(org_id: str) -> None:
+    """Raise HTTP 429 if org has submitted >= 3 batches in the last 60 seconds."""
+    if _pattern_db is None:
+        return
+    try:
+        from sqlalchemy import text as _text
+        from portguard.db import get_engine as _get_engine
+        _db_path = os.getenv("PORTGUARD_PATTERN_DB_PATH", "portguard_patterns.db")
+        engine, _ = _get_engine(_db_path)
+        cutoff = (
+            __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            - __import__("datetime").timedelta(seconds=60)
+        ).isoformat()
+        with engine.connect() as conn:
+            row = conn.execute(
+                _text("""
+                    SELECT COUNT(*) FROM bulk_batches
+                    WHERE organization_id = :org AND created_at >= :cutoff
+                """),
+                {"org": org_id, "cutoff": cutoff},
+            ).fetchone()
+        if row and row[0] >= _BULK_RATE_LIMIT_PER_MINUTE:
+            raise HTTPException(
+                status_code=429,
+                detail={
+                    "code": "RATE_LIMITED",
+                    "message": (
+                        f"Bulk batch rate limit exceeded: maximum "
+                        f"{_BULK_RATE_LIMIT_PER_MINUTE} batches per minute per organization. "
+                        "Please wait before submitting another batch."
+                    ),
+                },
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning("Bulk rate-limit check failed (non-fatal): %s", exc)
+
+
+# ---------------------------------------------------------------------------
+# Bulk screening — endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.post("/api/v1/analyze/bulk", status_code=202)
+async def bulk_create(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    current_org: dict = Depends(get_current_organization),
+):
+    """Create a new bulk screening batch and begin background processing.
+
+    Accepts three input formats:
+
+    **ZIP upload** (multipart/form-data)::
+
+        POST /api/v1/analyze/bulk
+        Content-Type: multipart/form-data
+
+        zip_file=<binary .zip>
+        input_method=ZIP
+
+    **CSV upload** (multipart/form-data)::
+
+        POST /api/v1/analyze/bulk
+        Content-Type: multipart/form-data
+
+        csv_file=<binary .csv>
+        input_method=CSV
+
+    **Manual JSON** (application/json)::
+
+        POST /api/v1/analyze/bulk
+        Content-Type: application/json
+
+        {"input_method": "MANUAL", "shipments": [...]}
+
+    Returns HTTP 202 immediately with a ``batch_id``.  Poll
+    ``GET /api/v1/analyze/bulk/{batch_id}/status`` every 2 seconds to track
+    progress.
+
+    Raises
+    ------
+    400 EMPTY_BATCH           No valid shipments in input
+    400 BATCH_TOO_LARGE       More than 50 shipments
+    400 INVALID_ZIP           ZIP corrupt, encrypted, or unreadable
+    400 INVALID_CSV           CSV malformed or missing reference column
+    413 FILE_TOO_LARGE        ZIP > 50 MB or CSV > 5 MB
+    422                       JSON body validation error
+    429 RATE_LIMITED          More than 3 batches/minute for this org
+    """
+    from portguard.bulk_parsers import (
+        parse_zip_upload, parse_csv_upload, validate_manual_input,
+        BulkParseError, InvalidZipError, InvalidCsvError,
+        BatchTooLargeError, EmptyBatchError,
+    )
+
+    org_id: str = current_org["organization_id"]
+    _check_bulk_rate_limit(org_id)
+
+    content_type = request.headers.get("content-type", "")
+    shipments: list[dict] = []
+    input_method: str = "MANUAL"
+
+    if "multipart/form-data" in content_type:
+        # --- File upload path (ZIP or CSV) ---
+        try:
+            form = await request.form()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=400,
+                detail={"code": "BAD_REQUEST", "message": f"Could not parse form data: {exc}"},
+            )
+
+        input_method = str(form.get("input_method", "ZIP")).upper()
+        zip_file = form.get("zip_file")
+        csv_file = form.get("csv_file")
+
+        # Auto-detect if input_method not specified but file is present
+        if zip_file and not csv_file:
+            input_method = "ZIP"
+        elif csv_file and not zip_file:
+            input_method = "CSV"
+
+        if input_method == "ZIP":
+            if zip_file is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"code": "MISSING_FILE", "message": "No zip_file provided."},
+                )
+            try:
+                raw = await zip_file.read()
+                if len(raw) > 50 * 1024 * 1024:
+                    raise HTTPException(
+                        status_code=413,
+                        detail={"code": "FILE_TOO_LARGE", "message": "ZIP file exceeds 50 MB limit."},
+                    )
+                shipments = parse_zip_upload(raw)
+            except HTTPException:
+                raise
+            except (InvalidZipError, EmptyBatchError, BatchTooLargeError) as exc:
+                raise HTTPException(
+                    status_code=400 if not isinstance(exc, BatchTooLargeError) else 400,
+                    detail={"code": exc.code, "message": str(exc)},
+                )
+            except BulkParseError as exc:
+                raise HTTPException(
+                    status_code=400, detail={"code": exc.code, "message": str(exc)}
+                )
+
+        elif input_method == "CSV":
+            if csv_file is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail={"code": "MISSING_FILE", "message": "No csv_file provided."},
+                )
+            try:
+                raw = await csv_file.read()
+                if len(raw) > 5 * 1024 * 1024:
+                    raise HTTPException(
+                        status_code=413,
+                        detail={"code": "FILE_TOO_LARGE", "message": "CSV file exceeds 5 MB limit."},
+                    )
+                shipments = parse_csv_upload(raw)
+            except HTTPException:
+                raise
+            except (InvalidCsvError, EmptyBatchError, BatchTooLargeError) as exc:
+                raise HTTPException(
+                    status_code=400, detail={"code": exc.code, "message": str(exc)}
+                )
+            except BulkParseError as exc:
+                raise HTTPException(
+                    status_code=400, detail={"code": exc.code, "message": str(exc)}
+                )
+
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "INVALID_INPUT_METHOD",
+                    "message": f"Unknown input_method '{input_method}'. Expected ZIP or CSV.",
+                },
+            )
+
+    else:
+        # --- JSON body path (MANUAL mode) ---
+        try:
+            body = await request.json()
+        except Exception as exc:
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "INVALID_JSON", "message": f"Could not parse JSON body: {exc}"},
+            )
+
+        input_method = str(body.get("input_method", "MANUAL")).upper()
+        raw_shipments = body.get("shipments", [])
+
+        if not isinstance(raw_shipments, list):
+            raise HTTPException(
+                status_code=422,
+                detail={"code": "INVALID_BODY", "message": "'shipments' must be a list."},
+            )
+
+        try:
+            shipments = validate_manual_input(raw_shipments)
+        except (EmptyBatchError, BatchTooLargeError) as exc:
+            from portguard.bulk_parsers import BulkParseError as _BPE
+            raise HTTPException(
+                status_code=400, detail={"code": exc.code, "message": str(exc)}
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=422, detail={"code": "INVALID_SHIPMENT", "message": str(exc)}
+            )
+
+    # --- Create batch and start background processing ---
+    try:
+        processor = _get_bulk_processor()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "SERVICE_UNAVAILABLE", "message": f"Bulk processor unavailable: {exc}"},
+        )
+
+    batch_id = processor.create_batch(org_id, shipments, input_method)
+
+    background_tasks.add_task(
+        processor.process_batch,
+        batch_id,
+        shipments,
+        org_id,
+    )
+
+    import datetime as _dt
+    now_str = _dt.datetime.now(_dt.timezone.utc).isoformat()
+    return {
+        "batch_id": batch_id,
+        "total_shipments": len(shipments),
+        "status": "PROCESSING",
+        "input_method": input_method,
+        "created_at": now_str,
+        "status_url": f"/api/v1/analyze/bulk/{batch_id}/status",
+        "results_url": f"/api/v1/analyze/bulk/{batch_id}/results",
+    }
+
+
+@app.get("/api/v1/analyze/bulk/{batch_id}/status")
+def bulk_status(
+    batch_id: str,
+    current_org: dict = Depends(get_current_organization),
+):
+    """Return real-time processing progress for a bulk batch.
+
+    Poll every 2 seconds during processing.  Stop polling when
+    ``status == "COMPLETE"`` or ``status == "FAILED"``.
+
+    Returns
+    -------
+    JSON with ``batch_id``, ``status``, ``total``, ``processed``,
+    per-decision counts, elapsed time, and per-shipment status list.
+
+    Raises
+    ------
+    404  batch_id not found or belongs to a different organisation.
+    503  BulkProcessor unavailable.
+    """
+    try:
+        processor = _get_bulk_processor()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "SERVICE_UNAVAILABLE", "message": str(exc)},
+        )
+
+    org_id: str = current_org["organization_id"]
+    status = processor.get_batch_status(batch_id, org_id)
+
+    if status is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "BATCH_NOT_FOUND",
+                "message": (
+                    f"Batch '{batch_id}' not found. "
+                    "It may not exist or may belong to a different organization."
+                ),
+            },
+        )
+
+    return {
+        "batch_id": status.batch_id,
+        "status": status.status,
+        "input_method": status.input_method,
+        "total": status.total,
+        "processed": status.processed,
+        "pending": status.pending,
+        "decisions": status.decisions,
+        "created_at": status.created_at,
+        "started_at": status.started_at,
+        "completed_at": status.completed_at,
+        "elapsed_seconds": status.elapsed_seconds,
+        "estimated_remaining_seconds": status.estimated_remaining_seconds,
+        "shipments": [
+            {
+                "ref": s.ref,
+                "status": s.status,
+                "decision": s.decision,
+                "risk_score": s.risk_score,
+                "risk_level": s.risk_level,
+                "n_findings": s.n_findings,
+                "top_finding": s.top_finding,
+                "analysis_id": s.analysis_id,
+                "error_message": s.error_message,
+                "processed_at": s.processed_at,
+            }
+            for s in status.shipments
+        ],
+    }
+
+
+@app.get("/api/v1/analyze/bulk/{batch_id}/results")
+def bulk_results(
+    batch_id: str,
+    sort: str = "risk_score",
+    decision: Optional[str] = None,
+    current_org: dict = Depends(get_current_organization),
+):
+    """Return full analysis results for a bulk batch.
+
+    Partial results are returned while the batch is still processing.
+    Results are sorted by ``risk_score`` descending by default.
+
+    Query parameters
+    ----------------
+    sort:
+        Column to sort by.  One of ``risk_score`` (default), ``ref``,
+        ``processed_at``, ``decision``.
+    decision:
+        If provided, filter to shipments with this decision value only.
+        Use ``ERROR`` to show only errored shipments.
+
+    Raises
+    ------
+    404  batch_id not found or wrong organisation.
+    503  BulkProcessor unavailable.
+    """
+    try:
+        processor = _get_bulk_processor()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "SERVICE_UNAVAILABLE", "message": str(exc)},
+        )
+
+    org_id: str = current_org["organization_id"]
+    results = processor.get_batch_results(batch_id, org_id)
+
+    if results is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "BATCH_NOT_FOUND",
+                "message": (
+                    f"Batch '{batch_id}' not found. "
+                    "It may not exist or may belong to a different organization."
+                ),
+            },
+        )
+
+    # Apply decision filter
+    shipments = results["shipments"]
+    if decision:
+        d_upper = decision.upper()
+        shipments = [
+            s for s in shipments
+            if (s.get("decision") or "ERROR").upper() == d_upper
+            or (d_upper == "ERROR" and s.get("status") == "ERROR")
+        ]
+
+    # Apply sort
+    valid_sorts = {"risk_score", "ref", "processed_at", "decision"}
+    if sort in valid_sorts and sort != "risk_score":
+        reverse = False
+        shipments = sorted(
+            shipments,
+            key=lambda s: (s.get(sort) or ""),
+            reverse=reverse,
+        )
+
+    results["shipments"] = shipments
+    return results
+
+
+@app.get("/api/v1/analyze/bulk/{batch_id}/export/csv")
+def bulk_export_csv(
+    batch_id: str,
+    current_org: dict = Depends(get_current_organization),
+):
+    """Stream a CSV summary of all shipments in the batch.
+
+    The CSV includes all shipments (COMPLETE and ERROR) sorted by risk_score
+    descending.  Columns: ``shipment_ref``, ``status``, ``decision``,
+    ``risk_score``, ``risk_level``, ``n_findings``, ``top_finding``,
+    ``analysis_id``, ``error_message``, ``processed_at``.
+
+    Returns
+    -------
+    ``text/csv`` streaming response with
+    ``Content-Disposition: attachment; filename="PortGuard_Batch_*.csv"``.
+
+    Raises
+    ------
+    404  Batch not found or wrong organisation.
+    503  BulkProcessor unavailable.
+    """
+    import csv as _csv
+    import io as _io
+    import datetime as _dt
+    from fastapi.responses import StreamingResponse as _StreamingResponse
+
+    try:
+        processor = _get_bulk_processor()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "SERVICE_UNAVAILABLE", "message": str(exc)},
+        )
+
+    org_id: str = current_org["organization_id"]
+    rows = processor.get_export_rows(batch_id, org_id)
+
+    if rows is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "BATCH_NOT_FOUND",
+                "message": (
+                    f"Batch '{batch_id}' not found or belongs to a different organization."
+                ),
+            },
+        )
+
+    _CSV_HEADERS = [
+        "shipment_ref", "status", "decision", "risk_score", "risk_level",
+        "n_findings", "top_finding", "analysis_id", "error_message", "processed_at",
+    ]
+
+    def _generate_csv():
+        buf = _io.StringIO()
+        writer = _csv.DictWriter(
+            buf,
+            fieldnames=_CSV_HEADERS,
+            extrasaction="ignore",
+            lineterminator="\r\n",
+        )
+        writer.writeheader()
+        yield buf.getvalue()
+
+        for row in rows:
+            buf = _io.StringIO()
+            writer = _csv.DictWriter(
+                buf,
+                fieldnames=_CSV_HEADERS,
+                extrasaction="ignore",
+                lineterminator="\r\n",
+            )
+            writer.writerow({k: (row.get(k) or "") for k in _CSV_HEADERS})
+            yield buf.getvalue()
+
+    date_str = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
+    short_id = batch_id[:8]
+    filename = f"PortGuard_Batch_{short_id}_{date_str}.csv"
+
+    return _StreamingResponse(
+        _generate_csv(),
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.get("/api/v1/analyze/bulk/{batch_id}/export/zip")
+def bulk_export_zip(
+    batch_id: str,
+    current_org: dict = Depends(get_current_organization),
+):
+    """Download a ZIP archive of PDF compliance reports for each completed shipment.
+
+    One PDF per shipment is generated using the stored analysis payload and
+    the existing ``generate_report_from_dict()`` function.  Errored shipments
+    (no result_json) are skipped.  Reports are named
+    ``{ref}_{decision}_{risk_score:.2f}.pdf`` and sorted by risk_score descending.
+
+    Returns
+    -------
+    ``application/zip`` response with
+    ``Content-Disposition: attachment; filename="PortGuard_Reports_*.zip"``.
+
+    Raises
+    ------
+    404  Batch not found or wrong organisation.
+    503  BulkProcessor unavailable.
+    """
+    import io as _io
+    import zipfile as _zipfile
+    import re as _re
+    import datetime as _dt
+
+    try:
+        processor = _get_bulk_processor()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "SERVICE_UNAVAILABLE", "message": str(exc)},
+        )
+
+    org_id: str = current_org["organization_id"]
+    payloads = processor.get_shipment_payloads(batch_id, org_id)
+
+    if payloads is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "BATCH_NOT_FOUND",
+                "message": (
+                    f"Batch '{batch_id}' not found or belongs to a different organization."
+                ),
+            },
+        )
+
+    # Build ZIP in memory
+    zip_buf = _io.BytesIO()
+    with _zipfile.ZipFile(zip_buf, mode="w", compression=_zipfile.ZIP_DEFLATED) as zf:
+        for item in payloads:
+            ref = item["ref"]
+            decision = (item.get("decision") or "UNKNOWN").replace(" ", "_")
+            risk = item.get("risk_score") or 0.0
+            payload = item["payload"]
+
+            try:
+                pdf_bytes = generate_report_from_dict(payload)
+            except Exception as exc:
+                logger.warning(
+                    "PDF generation failed for batch=%s ref=%s: %s — skipping",
+                    batch_id, ref, exc,
+                )
+                continue
+
+            # Sanitize ref for use as a filename
+            safe_ref = _re.sub(r'[^\w\-\.]', '_', ref)[:60]
+            pdf_filename = f"{safe_ref}_{decision}_{risk:.2f}.pdf"
+            zf.writestr(pdf_filename, pdf_bytes)
+
+    zip_buf.seek(0)
+    date_str = _dt.datetime.now(_dt.timezone.utc).strftime("%Y-%m-%d")
+    short_id = batch_id[:8]
+    zip_filename = f"PortGuard_Reports_{short_id}_{date_str}.zip"
+
+    return Response(
+        content=zip_buf.read(),
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{zip_filename}"'},
+    )
+
+
+@app.get("/api/v1/analyze/bulk/csv-template")
+def bulk_csv_template():
+    """Return a downloadable CSV template for bulk upload.
+
+    The template contains the correct column headers and one example row so
+    officers can fill it in without manually creating the column layout.
+
+    No authentication required — this is a public static resource.
+    """
+    import io as _io
+    import csv as _csv
+
+    template_rows = [
+        {
+            "reference_id": "SHP-001",
+            "bill_of_lading": (
+                "BILL OF LADING\n"
+                "B/L No: COSU1234567890\n"
+                "Shipper: Example Exports Ltd, 123 Trade Street, Shenzhen, China\n"
+                "Consignee: US Imports Inc, 456 Commerce Ave, Los Angeles, CA 90001\n"
+                "Port of Loading: Yantian, China\n"
+                "Port of Discharge: Los Angeles, CA\n"
+                "Country of Origin: China\n"
+                "HTS Code: 8471.30.0100\n"
+                "Description: Laptop Computers\n"
+                "Quantity: 500 units\n"
+                "Gross Weight: 2500 KG\n"
+                "Vessel: COSCO SHIPPING UNIVERSE V.032E"
+            ),
+            "commercial_invoice": (
+                "COMMERCIAL INVOICE\n"
+                "Invoice No: INV-2026-001\n"
+                "Seller: Example Exports Ltd\n"
+                "Buyer: US Imports Inc\n"
+                "Country of Origin: China\n"
+                "HTS Code: 8471.30.0100\n"
+                "Description: Laptop Computers, 15-inch, Intel Core i5\n"
+                "Quantity: 500 units\n"
+                "Unit Price: USD 350.00\n"
+                "Total Invoice Value: USD 175,000.00\n"
+                "Incoterms: FOB Yantian\n"
+                "EIN: 12-3456789"
+            ),
+            "packing_list": (
+                "PACKING LIST\n"
+                "Shipper: Example Exports Ltd\n"
+                "Consignee: US Imports Inc\n"
+                "Total Packages: 50 cartons\n"
+                "Total Units: 500 pieces\n"
+                "Gross Weight: 2500 KG\n"
+                "Net Weight: 2250 KG"
+            ),
+            "certificate_of_origin": "",
+            "isf_filing": "",
+            "other_doc_1": "",
+        }
+    ]
+
+    buf = _io.StringIO()
+    headers = [
+        "reference_id", "bill_of_lading", "commercial_invoice",
+        "packing_list", "certificate_of_origin", "isf_filing", "other_doc_1",
+    ]
+    writer = _csv.DictWriter(buf, fieldnames=headers, lineterminator="\r\n")
+    writer.writeheader()
+    writer.writerows(template_rows)
+
+    return Response(
+        content=buf.getvalue().encode("utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": 'attachment; filename="PortGuard_Bulk_Template.csv"'
+        },
+    )
 
     return _pdf_response(pdf_bytes, shipment_id)

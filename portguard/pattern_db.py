@@ -560,6 +560,56 @@ _MIGRATIONS: list[tuple[str, str | list[str]]] = [
         "004_add_report_payload",
         "ALTER TABLE shipment_history ADD COLUMN report_payload TEXT;",
     ),
+    (
+        "005_bulk_processing_tables",
+        """
+        CREATE TABLE IF NOT EXISTS bulk_batches (
+            batch_id            TEXT    PRIMARY KEY,
+            organization_id     TEXT    NOT NULL,
+            status              TEXT    NOT NULL DEFAULT 'PENDING',
+            input_method        TEXT    NOT NULL,
+            total_shipments     INTEGER NOT NULL,
+            processed_count     INTEGER NOT NULL DEFAULT 0,
+            approved_count      INTEGER NOT NULL DEFAULT 0,
+            review_count        INTEGER NOT NULL DEFAULT 0,
+            flagged_count       INTEGER NOT NULL DEFAULT 0,
+            needs_info_count    INTEGER NOT NULL DEFAULT 0,
+            rejected_count      INTEGER NOT NULL DEFAULT 0,
+            error_count         INTEGER NOT NULL DEFAULT 0,
+            created_at          TEXT    NOT NULL,
+            started_at          TEXT,
+            completed_at        TEXT,
+            error_message       TEXT
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_bulk_batches_org
+            ON bulk_batches(organization_id, created_at DESC);
+
+        CREATE TABLE IF NOT EXISTS bulk_shipments (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            batch_id        TEXT    NOT NULL,
+            shipment_ref    TEXT    NOT NULL,
+            status          TEXT    NOT NULL DEFAULT 'PENDING',
+            decision        TEXT,
+            risk_score      REAL,
+            risk_level      TEXT,
+            n_findings      INTEGER,
+            top_finding     TEXT,
+            analysis_id     TEXT,
+            result_json     TEXT,
+            error_message   TEXT,
+            processed_at    TEXT,
+            UNIQUE(batch_id, shipment_ref),
+            FOREIGN KEY(batch_id) REFERENCES bulk_batches(batch_id)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_bulk_shipments_batch_status
+            ON bulk_shipments(batch_id, status);
+
+        CREATE INDEX IF NOT EXISTS idx_bulk_shipments_analysis
+            ON bulk_shipments(analysis_id);
+        """,
+    ),
 ]
 
 

@@ -90,7 +90,7 @@
     }
 
     /* Everything above the background layer */
-    header, nav, #auth-overlay, #analyze-panel, #dashboard-panel {
+    header, nav, #auth-overlay, #analyze-panel, #dashboard-panel, #bulk-panel {
       position: relative; z-index: 1;
     }
 
@@ -1335,6 +1335,566 @@
     }
     .dash-empty-cta:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(27,154,170,.45); }
 
+    /* ======================================================
+       BULK UPLOAD PANEL
+       ====================================================== */
+
+    #bulk-panel { display: none; }
+    #bulk-panel.visible { display: block; }
+
+    .bulk-container {
+      max-width: 1100px; margin: 0 auto;
+      padding: 2rem 1.5rem 6rem;
+    }
+
+    /* ---- Bulk header ---- */
+    .bulk-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;
+    }
+    .bulk-title {
+      font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+      font-size: 1.25rem; font-weight: 700; color: var(--text);
+    }
+    .bulk-subtitle { font-size: .82rem; color: var(--muted); margin-top: .25rem; }
+
+    /* ---- Upload method cards (3-col grid) ---- */
+    .bulk-method-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 1.25rem; margin-bottom: 1.5rem;
+    }
+    @media (max-width: 820px) { .bulk-method-grid { grid-template-columns: 1fr; } }
+
+    .bulk-method-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 1.5rem 1.25rem;
+      display: flex; flex-direction: column; gap: 1rem;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .bulk-method-card:hover { border-color: var(--border-hi); }
+    .bulk-method-card.active {
+      border-color: var(--teal-500);
+      box-shadow: 0 0 0 1px rgba(27,154,170,.2), var(--glow-teal-sm);
+    }
+
+    .bulk-method-title {
+      font-size: .8rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted); display: flex; align-items: center; gap: .4rem;
+    }
+    .bulk-method-title svg { opacity: .6; }
+
+    /* Drag-drop zone */
+    .bulk-drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 2rem 1rem; text-align: center;
+      cursor: pointer; transition: all .2s; position: relative;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .5rem;
+    }
+    .bulk-drop-zone:hover, .bulk-drop-zone.drag-over {
+      border-color: var(--teal-500);
+      background: rgba(27,154,170,.05);
+    }
+    .bulk-drop-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .bulk-drop-icon { color: var(--faint); margin-bottom: .25rem; }
+    .bulk-drop-label {
+      font-size: .88rem; font-weight: 600; color: var(--text);
+    }
+    .bulk-drop-sub { font-size: .75rem; color: var(--muted); }
+    .bulk-drop-limit { font-size: .72rem; color: var(--faint); margin-top: .15rem; }
+    .bulk-drop-status {
+      font-size: .78rem; color: var(--teal-400); min-height: 1.1em;
+      display: flex; align-items: center; gap: .4rem; justify-content: center;
+    }
+    .bulk-drop-status.error { color: var(--red); }
+
+    .bulk-template-btn {
+      background: transparent; border: 1px solid var(--border);
+      color: var(--muted); font-family: 'Inter', sans-serif;
+      font-size: .78rem; font-weight: 600; padding: .4rem .85rem;
+      border-radius: var(--radius-sm); cursor: pointer; transition: all .18s;
+      display: flex; align-items: center; gap: .4rem; width: 100%; justify-content: center;
+    }
+    .bulk-template-btn:hover { border-color: var(--teal-500); color: var(--teal-300); background: rgba(27,154,170,.06); }
+
+    /* ---- Manual batch slots ---- */
+    .bulk-manual-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: .75rem;
+    }
+    .bulk-slot-count {
+      font-size: .78rem; color: var(--muted);
+    }
+    .bulk-add-slot-btn {
+      background: linear-gradient(135deg, var(--teal-700), var(--teal-500));
+      color: #fff; border: none; font-family: 'Inter', sans-serif;
+      font-size: .82rem; font-weight: 600; padding: .45rem 1rem;
+      border-radius: var(--radius-sm); cursor: pointer; transition: all .18s;
+      display: flex; align-items: center; gap: .35rem;
+      box-shadow: 0 2px 8px rgba(27,154,170,.25);
+    }
+    .bulk-add-slot-btn:hover { transform: translateY(-1px); box-shadow: 0 4px 14px rgba(27,154,170,.4); }
+    .bulk-add-slot-btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+    .bulk-slots-list {
+      display: flex; flex-direction: column; gap: .75rem; margin-top: .5rem;
+    }
+
+    .bulk-slot {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); overflow: hidden;
+      transition: border-color .18s;
+    }
+    .bulk-slot.expanded { border-color: var(--border-hi); }
+
+    .bulk-slot-header {
+      display: flex; align-items: center; gap: .75rem;
+      padding: .75rem 1rem; cursor: pointer; user-select: none;
+    }
+    .bulk-slot-header:hover { background: rgba(255,255,255,.02); }
+
+    .bulk-slot-num {
+      font-size: .7rem; font-weight: 700; color: var(--faint);
+      text-transform: uppercase; letter-spacing: .06em; flex-shrink: 0; width: 2.2rem;
+    }
+    .bulk-slot-ref-wrap {
+      flex: 1; display: flex; align-items: center; gap: .5rem;
+    }
+    .bulk-slot-ref-label {
+      font-size: .7rem; font-weight: 600; color: var(--faint);
+      text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0;
+    }
+    .bulk-slot-ref-input {
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text);
+      font-family: 'JetBrains Mono', monospace; font-size: .8rem;
+      padding: .28rem .7rem; width: 14ch;
+      outline: none; transition: border-color .18s;
+    }
+    .bulk-slot-ref-input:focus { border-color: var(--teal-500); }
+    .bulk-slot-doc-count {
+      font-size: .72rem; color: var(--muted); flex-shrink: 0; margin-left: auto;
+    }
+    .bulk-slot-expand-btn {
+      background: none; border: none; color: var(--faint); cursor: pointer;
+      padding: .2rem; display: flex; align-items: center;
+      transition: color .18s, transform .18s;
+    }
+    .bulk-slot-expand-btn.open { transform: rotate(180deg); color: var(--teal-400); }
+    .bulk-slot-remove-btn {
+      background: none; border: none; color: var(--faint); cursor: pointer;
+      padding: .25rem; border-radius: 4px; transition: color .15s, background .15s;
+      display: flex; align-items: center;
+    }
+    .bulk-slot-remove-btn:hover { color: var(--red); background: rgba(224,80,80,.12); }
+
+    .bulk-slot-body {
+      border-top: 1px solid var(--border); padding: 1rem;
+      display: none;
+    }
+    .bulk-slot-body.open { display: block; }
+
+    /* Mini doc tabs inside a slot */
+    .bulk-slot-tabs-bar {
+      display: flex; align-items: center; gap: .2rem;
+      background: rgba(15,32,64,.5); border: 1px solid var(--border);
+      border-bottom: none; border-radius: 8px 8px 0 0;
+      padding: .35rem .35rem 0; overflow-x: auto; scrollbar-width: none;
+    }
+    .bulk-slot-tabs-bar::-webkit-scrollbar { display: none; }
+    .bulk-slot-tab-btn {
+      background: none; border: none; font-family: 'Inter', sans-serif;
+      font-size: .76rem; font-weight: 500; color: var(--muted);
+      padding: .4rem .75rem; cursor: pointer; white-space: nowrap;
+      border-radius: 5px 5px 0 0; border-bottom: 2px solid transparent;
+      transition: all .15s; display: flex; align-items: center; gap: .35rem;
+    }
+    .bulk-slot-tab-btn:hover { color: var(--text); background: rgba(27,154,170,.06); }
+    .bulk-slot-tab-btn.active { color: var(--teal-300); border-bottom-color: var(--teal-500); background: var(--bg-card); }
+    .bulk-slot-tab-close {
+      width: 14px; height: 14px; background: none; border: none; cursor: pointer;
+      color: var(--faint); font-size: 12px; border-radius: 3px;
+      display: flex; align-items: center; justify-content: center; padding: 0;
+      transition: all .12s;
+    }
+    .bulk-slot-tab-close:hover { background: rgba(239,68,68,.2); color: var(--red); }
+    .bulk-slot-tab-add {
+      background: none; border: 1px dashed var(--border); color: var(--faint);
+      font-size: .9rem; width: 22px; height: 22px; border-radius: 5px;
+      cursor: pointer; transition: all .15s; display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; margin-left: .15rem;
+    }
+    .bulk-slot-tab-add:hover { border-color: var(--teal-500); color: var(--teal-400); }
+
+    .bulk-slot-doc-pane {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-top: none; border-radius: 0 0 8px 8px; padding: .75rem;
+    }
+    .bulk-slot-filename-row {
+      display: flex; align-items: center; gap: .4rem; margin-bottom: .5rem;
+    }
+    .bulk-slot-fname-label {
+      font-size: .67rem; color: var(--faint); font-weight: 600;
+      letter-spacing: .06em; text-transform: uppercase; flex-shrink: 0;
+    }
+    .bulk-slot-fname-input {
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: 5px; color: var(--muted);
+      font-family: 'JetBrains Mono', monospace; font-size: .75rem;
+      padding: .22rem .5rem; width: 20ch; outline: none; transition: border-color .15s;
+    }
+    .bulk-slot-fname-input:focus { border-color: var(--teal-500); color: var(--text); }
+    textarea.bulk-slot-doc-text {
+      width: 100%; height: 150px;
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); color: var(--text);
+      font-family: 'JetBrains Mono', monospace; font-size: .76rem;
+      line-height: 1.65; padding: .7rem .85rem;
+      resize: vertical; outline: none; transition: border-color .18s, box-shadow .18s;
+    }
+    textarea.bulk-slot-doc-text:focus {
+      border-color: var(--teal-500); box-shadow: 0 0 0 3px rgba(27,154,170,.1);
+    }
+    textarea.bulk-slot-doc-text::placeholder { color: var(--faint); }
+
+    /* ---- Submit button ---- */
+    .bulk-submit-wrap {
+      margin-top: 1.5rem; display: flex; align-items: center; gap: 1rem;
+    }
+    #bulk-submit-btn {
+      flex: 1; padding: 1rem 2rem;
+      background: linear-gradient(135deg, var(--teal-700) 0%, var(--teal-500) 60%, var(--teal-400) 100%);
+      border: none; border-radius: var(--radius);
+      color: #fff; font-family: 'Inter', sans-serif;
+      font-size: 1rem; font-weight: 700; letter-spacing: .05em;
+      cursor: pointer; transition: all .22s var(--ease-out);
+      display: flex; align-items: center; justify-content: center; gap: .6rem;
+      box-shadow: 0 4px 20px rgba(27,154,170,.35), 0 0 0 1px rgba(27,154,170,.2);
+    }
+    #bulk-submit-btn:hover:not(:disabled) {
+      transform: translateY(-2px); box-shadow: 0 8px 32px rgba(27,154,170,.5), 0 0 0 1px rgba(27,154,170,.3);
+    }
+    #bulk-submit-btn:active:not(:disabled) { transform: translateY(0) scale(.98); }
+    #bulk-submit-btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+    /* ---- Confirm modal ---- */
+    .bulk-modal-overlay {
+      position: fixed; inset: 0; z-index: 8000; background: rgba(5,12,24,.75);
+      backdrop-filter: blur(6px); display: none;
+      align-items: center; justify-content: center; padding: 1.5rem;
+    }
+    .bulk-modal-overlay.visible { display: flex; }
+    .bulk-modal {
+      background: var(--bg-card); border: 1px solid var(--border-hi);
+      border-radius: var(--radius-xl); padding: 2rem;
+      max-width: 420px; width: 100%; box-shadow: var(--shadow-modal);
+      animation: fade-up .25s var(--ease-out);
+    }
+    .bulk-modal-icon {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: rgba(232,168,56,.12); border: 1px solid rgba(232,168,56,.3);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--amber); margin-bottom: 1.25rem;
+    }
+    .bulk-modal-title { font-size: 1.1rem; font-weight: 700; margin-bottom: .5rem; }
+    .bulk-modal-body { font-size: .88rem; color: var(--muted); line-height: 1.6; margin-bottom: 1.5rem; }
+    .bulk-modal-actions { display: flex; gap: .75rem; }
+    .bulk-modal-cancel {
+      flex: 1; background: transparent; border: 1px solid var(--border-hi);
+      color: var(--muted); font-family: 'Inter', sans-serif;
+      font-size: .88rem; font-weight: 600; padding: .65rem; border-radius: var(--radius-sm);
+      cursor: pointer; transition: all .15s;
+    }
+    .bulk-modal-cancel:hover { border-color: var(--text); color: var(--text); }
+    .bulk-modal-confirm {
+      flex: 2;
+      background: linear-gradient(135deg, var(--teal-700), var(--teal-500));
+      color: #fff; border: none; font-family: 'Inter', sans-serif;
+      font-size: .88rem; font-weight: 600; padding: .65rem; border-radius: var(--radius-sm);
+      cursor: pointer; transition: all .18s;
+      box-shadow: 0 3px 12px rgba(27,154,170,.3);
+    }
+    .bulk-modal-confirm:hover { transform: translateY(-1px); box-shadow: 0 5px 18px rgba(27,154,170,.45); }
+
+    /* ---- Progress screen ---- */
+    #bulk-progress-screen { display: none; }
+    #bulk-progress-screen.visible { display: block; }
+
+    .bulk-progress-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1.5rem; flex-wrap: wrap; gap: .75rem;
+    }
+    .bulk-progress-title {
+      font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+      font-size: 1.15rem; font-weight: 700;
+    }
+    #bulk-cancel-btn {
+      background: transparent; border: 1px solid rgba(224,80,80,.35);
+      color: var(--red); font-family: 'Inter', sans-serif;
+      font-size: .8rem; font-weight: 600; padding: .4rem .9rem;
+      border-radius: var(--radius-sm); cursor: pointer; transition: all .18s;
+      display: flex; align-items: center; gap: .35rem;
+    }
+    #bulk-cancel-btn:hover { background: rgba(224,80,80,.1); border-color: var(--red); }
+    #bulk-cancel-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+    .bulk-progress-bar-wrap {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 1.25rem 1.5rem;
+      margin-bottom: 1.25rem;
+    }
+    .bulk-progress-counts {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: .75rem; font-size: .85rem;
+    }
+    .bulk-progress-label { font-weight: 600; color: var(--text); }
+    .bulk-progress-pct { font-weight: 700; color: var(--teal-300); font-size: 1rem; }
+    .bulk-progress-bar {
+      height: 8px; background: var(--bg-surface); border-radius: 999px;
+      overflow: hidden; margin-bottom: .65rem;
+    }
+    .bulk-progress-fill {
+      height: 100%; width: 0; border-radius: 999px;
+      background: linear-gradient(90deg, var(--teal-700), var(--teal-400));
+      transition: width .4s var(--ease-out);
+    }
+    .bulk-progress-eta { font-size: .75rem; color: var(--muted); }
+
+    .bulk-live-feed {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: 1rem 1.25rem;
+    }
+    .bulk-live-feed-title {
+      font-size: .72rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .1em; color: var(--faint); margin-bottom: .75rem;
+      display: flex; align-items: center; gap: .4rem;
+    }
+    .bulk-live-feed-title::before {
+      content: ''; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--teal-400); display: inline-block;
+      animation: teal-pulse 1.2s ease infinite;
+    }
+    .bulk-live-feed-list {
+      display: flex; flex-direction: column; gap: .45rem;
+      max-height: 240px; overflow-y: auto; scrollbar-width: thin;
+    }
+    .bulk-live-item {
+      display: flex; align-items: center; gap: .65rem;
+      font-size: .82rem; animation: fade-up .3s var(--ease-out);
+    }
+    .bulk-live-ref {
+      font-family: 'JetBrains Mono', monospace; font-size: .78rem;
+      color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    }
+
+    /* ---- Results screen ---- */
+    #bulk-results-screen { display: none; }
+    #bulk-results-screen.visible { display: block; }
+
+    .bulk-results-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1.25rem; flex-wrap: wrap; gap: .75rem;
+    }
+    .bulk-results-title {
+      font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+      font-size: 1.15rem; font-weight: 700;
+    }
+    .bulk-new-batch-btn {
+      background: transparent; border: 1px solid var(--border-hi);
+      color: var(--muted); font-family: 'Inter', sans-serif;
+      font-size: .8rem; font-weight: 600; padding: .4rem .9rem;
+      border-radius: var(--radius-sm); cursor: pointer; transition: all .18s;
+      display: flex; align-items: center; gap: .35rem;
+    }
+    .bulk-new-batch-btn:hover { color: var(--text); border-color: var(--text); }
+
+    /* Summary bar */
+    .bulk-summary-bar {
+      display: grid; grid-template-columns: repeat(7, 1fr);
+      gap: .75rem; margin-bottom: 1.25rem;
+    }
+    @media (max-width: 900px) { .bulk-summary-bar { grid-template-columns: repeat(4, 1fr); } }
+    @media (max-width: 560px) { .bulk-summary-bar { grid-template-columns: repeat(2, 1fr); } }
+
+    .bulk-stat-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: .9rem 1rem;
+      display: flex; flex-direction: column; gap: .2rem;
+    }
+    .bulk-stat-label {
+      font-size: .67rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--muted);
+    }
+    .bulk-stat-value {
+      font-size: 1.5rem; font-weight: 800; color: var(--text);
+      font-family: 'JetBrains Mono', monospace; line-height: 1;
+    }
+    .bulk-stat-value.green  { color: var(--green); }
+    .bulk-stat-value.red    { color: var(--red); }
+    .bulk-stat-value.amber  { color: var(--amber); }
+    .bulk-stat-value.orange { color: var(--orange); }
+    .bulk-stat-value.gray   { color: var(--faint); }
+    .bulk-stat-value.teal   { color: var(--teal-300); }
+    .bulk-stat-sub { font-size: .7rem; color: var(--muted); line-height: 1.3; }
+
+    /* Highest risk callout */
+    .bulk-highest-risk {
+      background: rgba(212,119,58,.07); border: 1px solid rgba(212,119,58,.2);
+      border-radius: var(--radius); padding: .7rem 1rem;
+      font-size: .82rem; color: var(--muted); margin-bottom: 1.25rem;
+      display: flex; align-items: center; gap: .6rem;
+    }
+    .bulk-highest-risk strong { color: var(--orange); }
+    .bulk-highest-risk .bulk-hr-ref {
+      font-family: 'JetBrains Mono', monospace; font-size: .8rem; color: var(--text);
+    }
+
+    /* Filter row */
+    .bulk-filter-row {
+      display: flex; align-items: center; gap: .5rem; flex-wrap: wrap;
+      margin-bottom: .85rem;
+    }
+    .bulk-filter-btn {
+      background: var(--bg-card); border: 1px solid var(--border);
+      color: var(--muted); font-family: 'Inter', sans-serif;
+      font-size: .78rem; font-weight: 600; padding: .35rem .85rem;
+      border-radius: 999px; cursor: pointer; transition: all .16s;
+    }
+    .bulk-filter-btn:hover { border-color: var(--teal-500); color: var(--teal-300); }
+    .bulk-filter-btn.active {
+      background: rgba(27,154,170,.12); border-color: var(--teal-500); color: var(--teal-300);
+    }
+    .bulk-filter-count {
+      display: inline-flex; align-items: center; justify-content: center;
+      background: rgba(27,154,170,.2); color: var(--teal-300);
+      font-size: .67rem; font-weight: 700; border-radius: 999px;
+      min-width: 1.3em; height: 1.3em; padding: 0 .3em; margin-left: .3em;
+    }
+
+    /* Results table */
+    .bulk-table-wrap {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 1.25rem;
+    }
+    .bulk-table {
+      width: 100%; border-collapse: collapse; font-size: .83rem;
+    }
+    .bulk-table th {
+      background: var(--bg-surface); padding: .65rem 1rem;
+      font-size: .7rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--muted); text-align: left;
+      cursor: pointer; white-space: nowrap; user-select: none;
+    }
+    .bulk-table th:hover { color: var(--teal-300); }
+    .bulk-table th .sort-icon { margin-left: .3em; opacity: .5; }
+    .bulk-table th.sorted { color: var(--teal-300); }
+    .bulk-table th.sorted .sort-icon { opacity: 1; }
+    .bulk-table td {
+      padding: .65rem 1rem; border-top: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    .bulk-table tr:hover td { background: rgba(27,154,170,.03); }
+    .bulk-table .ref-cell {
+      font-family: 'JetBrains Mono', monospace; font-size: .8rem; color: var(--text);
+    }
+
+    /* Risk bar in table */
+    .bulk-risk-bar-wrap { display: flex; align-items: center; gap: .5rem; }
+    .bulk-risk-bar {
+      flex: 1; height: 5px; background: var(--bg-surface);
+      border-radius: 999px; overflow: hidden; max-width: 64px;
+    }
+    .bulk-risk-bar-fill { height: 100%; border-radius: 999px; }
+    .bulk-risk-val { font-family: 'JetBrains Mono', monospace; font-size: .78rem; }
+
+    /* Badges (reuse existing decision pattern) */
+    .bulk-badge {
+      display: inline-block; font-size: .68rem; font-weight: 700;
+      letter-spacing: .04em; padding: .22em .65em; border-radius: 999px;
+      text-transform: uppercase; white-space: nowrap;
+    }
+    .bulk-badge.APPROVE              { background: rgba(29,184,122,.15);  color: #1DB87A; }
+    .bulk-badge.REVIEW_RECOMMENDED   { background: rgba(155,108,214,.15); color: #9B6CD6; }
+    .bulk-badge.FLAG_FOR_INSPECTION  { background: rgba(212,119,58,.15);  color: #D4773A; }
+    .bulk-badge.REQUEST_MORE_INFORMATION { background: rgba(232,168,56,.15); color: #E8A838; }
+    .bulk-badge.REJECT               { background: rgba(224,80,80,.15);   color: #E05050; }
+    .bulk-badge.ERROR                { background: rgba(74,104,128,.15);  color: #8BAABF; }
+    .bulk-badge.PENDING              { background: rgba(74,104,128,.1);   color: var(--faint); }
+
+    /* Row expand inline analysis */
+    .bulk-row-expand {
+      grid-column: 1 / -1; padding: 0; display: none;
+    }
+    .bulk-row-expand.open { display: table-row; }
+    .bulk-row-expand td {
+      padding: 0; border-top: none;
+    }
+    .bulk-inline-analysis {
+      background: var(--bg-surface); border-top: 1px solid var(--border);
+      padding: 1rem 1.25rem; font-size: .82rem;
+    }
+    .bulk-inline-findings { display: flex; flex-direction: column; gap: .4rem; margin-top: .5rem; }
+    .bulk-inline-finding {
+      display: flex; align-items: flex-start; gap: .5rem;
+      color: var(--muted); font-size: .8rem; line-height: 1.5;
+    }
+    .bulk-inline-finding::before {
+      content: '›'; color: var(--teal-500); font-weight: 700; flex-shrink: 0; margin-top: 1px;
+    }
+
+    /* Action buttons in table */
+    .bulk-row-actions { display: flex; align-items: center; gap: .35rem; }
+    .bulk-action-btn {
+      background: none; border: none; cursor: pointer; color: var(--faint);
+      padding: .25rem .3rem; border-radius: 4px; transition: color .13s, background .13s;
+      line-height: 1; display: flex; align-items: center;
+    }
+    .bulk-action-btn:hover { color: var(--teal-400); background: rgba(27,154,170,.1); }
+    .bulk-action-btn.expand-btn.open { color: var(--teal-400); background: rgba(27,154,170,.08); }
+
+    /* Export bar */
+    .bulk-export-bar {
+      display: flex; align-items: center; gap: .75rem; flex-wrap: wrap;
+    }
+    .bulk-export-btn {
+      background: var(--bg-card); border: 1px solid var(--border);
+      color: var(--muted); font-family: 'Inter', sans-serif;
+      font-size: .82rem; font-weight: 600; padding: .55rem 1.1rem;
+      border-radius: var(--radius-sm); cursor: pointer; transition: all .18s;
+      display: flex; align-items: center; gap: .45rem;
+    }
+    .bulk-export-btn:hover { border-color: var(--teal-500); color: var(--teal-300); background: rgba(27,154,170,.06); }
+    .bulk-export-btn:disabled { opacity: .45; cursor: not-allowed; }
+    .bulk-export-btn.copied { color: var(--green); border-color: rgba(29,184,122,.4); }
+
+    /* ---- Empty state ---- */
+    #bulk-empty-state { /* shown by default */ }
+    .bulk-empty {
+      text-align: center; padding: 3rem 1.5rem 4rem;
+      display: flex; flex-direction: column; align-items: center; gap: 1rem;
+    }
+    .bulk-empty-art {
+      width: 88px; height: 88px; border-radius: 50%;
+      background: rgba(27,154,170,.08); border: 1px solid rgba(27,154,170,.15);
+      display: flex; align-items: center; justify-content: center;
+      margin-bottom: .5rem; color: var(--teal-500);
+    }
+    .bulk-empty-title {
+      font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+      font-size: 1.1rem; font-weight: 700; color: var(--text);
+    }
+    .bulk-empty-sub { font-size: .85rem; color: var(--muted); max-width: 340px; }
+    .bulk-empty-arrow {
+      font-size: 1.4rem; color: var(--teal-500);
+      animation: bounce-up .9s ease infinite;
+    }
+    @keyframes bounce-up {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-6px); }
+    }
+
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
@@ -1519,6 +2079,14 @@
       <rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>
     </svg>
     Dashboard
+  </button>
+  <button class="section-nav-btn" id="nav-bulk" onclick="showSection('bulk')">
+    <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+      <polyline points="17 8 12 3 7 8"/>
+      <line x1="12" y1="3" x2="12" y2="15"/>
+    </svg>
+    Bulk Upload
   </button>
 </nav>
 
@@ -1921,6 +2489,268 @@
 
   </div>
 </div><!-- /dashboard-panel -->
+
+<!-- ===================== BULK PANEL ===================== -->
+<div id="bulk-panel">
+  <div class="bulk-container">
+
+    <!-- Header -->
+    <div class="bulk-header">
+      <div>
+        <div class="bulk-title">Bulk Shipment Screening</div>
+        <div class="bulk-subtitle">Screen up to 50 shipments at once — ZIP bundle, CSV manifest, or manual entry</div>
+      </div>
+    </div>
+
+    <!-- ---- UPLOAD SECTION (hidden during progress/results) ---- -->
+    <div id="bulk-upload-section">
+
+      <!-- Three upload method cards -->
+      <div class="bulk-method-grid">
+
+        <!-- Card 1: ZIP Upload -->
+        <div class="bulk-method-card" id="bulk-card-zip">
+          <div class="bulk-method-title">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            ZIP Bundle
+          </div>
+          <div class="bulk-drop-zone" id="bulk-zip-drop"
+               ondragenter="bulkDragEnter(event,'zip')" ondragleave="bulkDragLeave(event,'zip')"
+               ondragover="event.preventDefault()" ondrop="bulkDrop(event,'zip')">
+            <input type="file" id="bulk-zip-input" accept=".zip" onchange="bulkFileChosen('zip',this)">
+            <div class="bulk-drop-icon">
+              <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path d="M3 7a2 2 0 0 1 2-2h1l1-2h6l1 2h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                <path d="M9 5v4M9 9v4M9 13v2M12 5v4M12 9v4M12 13v2"/>
+              </svg>
+            </div>
+            <div class="bulk-drop-label">Drop shipment bundle here</div>
+            <div class="bulk-drop-sub">Each subfolder = one shipment</div>
+            <div class="bulk-drop-limit">Max 50 shipments · 100 MB</div>
+          </div>
+          <div class="bulk-drop-status" id="bulk-zip-status"></div>
+        </div>
+
+        <!-- Card 2: CSV Upload -->
+        <div class="bulk-method-card" id="bulk-card-csv">
+          <div class="bulk-method-title">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="9" x2="9" y2="21"/></svg>
+            CSV Manifest
+          </div>
+          <div class="bulk-drop-zone" id="bulk-csv-drop"
+               ondragenter="bulkDragEnter(event,'csv')" ondragleave="bulkDragLeave(event,'csv')"
+               ondragover="event.preventDefault()" ondrop="bulkDrop(event,'csv')">
+            <input type="file" id="bulk-csv-input" accept=".csv" onchange="bulkFileChosen('csv',this)">
+            <div class="bulk-drop-icon">
+              <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                <polyline points="14 2 14 8 20 8"/>
+                <line x1="8" y1="13" x2="16" y2="13"/>
+                <line x1="8" y1="17" x2="16" y2="17"/>
+                <line x1="10" y1="9" x2="8" y2="9"/>
+              </svg>
+            </div>
+            <div class="bulk-drop-label">Drop CSV manifest here</div>
+            <div class="bulk-drop-sub">One row per shipment</div>
+            <div class="bulk-drop-limit">Max 50 rows · 5 MB</div>
+          </div>
+          <button class="bulk-template-btn" onclick="bulkDownloadTemplate()">
+            <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Download CSV Template
+          </button>
+          <div class="bulk-drop-status" id="bulk-csv-status"></div>
+        </div>
+
+        <!-- Card 3: Manual Batch -->
+        <div class="bulk-method-card" id="bulk-card-manual">
+          <div class="bulk-method-title">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            Manual Entry
+          </div>
+          <div class="bulk-manual-header">
+            <div class="bulk-slot-count" id="bulk-slot-count">0 shipments</div>
+            <button class="bulk-add-slot-btn" id="bulk-add-slot-btn" onclick="bulkAddSlot()">
+              <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+              Add Shipment Slot
+            </button>
+          </div>
+          <div class="bulk-slots-list" id="bulk-slots-list">
+            <!-- slots injected by JS -->
+          </div>
+        </div>
+
+      </div><!-- /bulk-method-grid -->
+
+      <!-- Submit button -->
+      <div class="bulk-submit-wrap">
+        <button id="bulk-submit-btn" disabled onclick="bulkSubmitClick()">
+          <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>
+          <span id="bulk-submit-label">Screen All Shipments</span>
+        </button>
+      </div>
+
+      <!-- Empty state (shown before any shipments loaded) -->
+      <div id="bulk-empty-state">
+        <div class="bulk-empty">
+          <div class="bulk-empty-arrow">↑</div>
+          <div class="bulk-empty-art">
+            <svg width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <rect x="2" y="7" width="20" height="14" rx="2"/>
+              <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+              <line x1="12" y1="12" x2="12" y2="16"/>
+              <line x1="10" y1="14" x2="14" y2="14"/>
+            </svg>
+          </div>
+          <div class="bulk-empty-title">Screen up to 50 shipments at once</div>
+          <div class="bulk-empty-sub">Upload a ZIP bundle, a CSV manifest, or add shipment slots manually above to get started.</div>
+        </div>
+      </div>
+
+    </div><!-- /bulk-upload-section -->
+
+    <!-- ---- PROGRESS SCREEN ---- -->
+    <div id="bulk-progress-screen">
+      <div class="bulk-progress-header">
+        <div class="bulk-progress-title">Processing Batch…</div>
+        <button id="bulk-cancel-btn" onclick="bulkCancelBatch()">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Cancel Batch
+        </button>
+      </div>
+      <div class="bulk-progress-bar-wrap">
+        <div class="bulk-progress-counts">
+          <span class="bulk-progress-label" id="bulk-progress-text">Waiting for results…</span>
+          <span class="bulk-progress-pct" id="bulk-progress-pct">0%</span>
+        </div>
+        <div class="bulk-progress-bar">
+          <div class="bulk-progress-fill" id="bulk-progress-fill"></div>
+        </div>
+        <div class="bulk-progress-eta" id="bulk-progress-eta"></div>
+      </div>
+      <div class="bulk-live-feed">
+        <div class="bulk-live-feed-title">Live completions</div>
+        <div class="bulk-live-feed-list" id="bulk-live-feed-list">
+          <!-- items injected by JS -->
+        </div>
+      </div>
+    </div><!-- /bulk-progress-screen -->
+
+    <!-- ---- RESULTS SCREEN ---- -->
+    <div id="bulk-results-screen">
+      <div class="bulk-results-header">
+        <div class="bulk-results-title">Batch Results</div>
+        <button class="bulk-new-batch-btn" onclick="bulkResetToUpload()">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New Batch
+        </button>
+      </div>
+
+      <!-- Summary bar -->
+      <div class="bulk-summary-bar" id="bulk-summary-bar">
+        <div class="bulk-stat-card">
+          <div class="bulk-stat-label">Total</div>
+          <div class="bulk-stat-value teal" id="bstat-total">—</div>
+        </div>
+        <div class="bulk-stat-card">
+          <div class="bulk-stat-label">Approved</div>
+          <div class="bulk-stat-value green" id="bstat-approved">—</div>
+        </div>
+        <div class="bulk-stat-card">
+          <div class="bulk-stat-label">Flagged</div>
+          <div class="bulk-stat-value orange" id="bstat-flagged">—</div>
+        </div>
+        <div class="bulk-stat-card">
+          <div class="bulk-stat-label">Review</div>
+          <div class="bulk-stat-value" style="color:var(--purple)" id="bstat-review">—</div>
+        </div>
+        <div class="bulk-stat-card">
+          <div class="bulk-stat-label">Needs Info</div>
+          <div class="bulk-stat-value amber" id="bstat-info">—</div>
+        </div>
+        <div class="bulk-stat-card">
+          <div class="bulk-stat-label">Errors</div>
+          <div class="bulk-stat-value gray" id="bstat-errors">—</div>
+        </div>
+        <div class="bulk-stat-card">
+          <div class="bulk-stat-label">Avg Risk</div>
+          <div class="bulk-stat-value" id="bstat-avg-risk">—</div>
+          <div class="bulk-stat-sub" id="bstat-highest-risk"></div>
+        </div>
+      </div>
+
+      <!-- Highest risk callout -->
+      <div class="bulk-highest-risk" id="bulk-highest-risk-bar" style="display:none">
+        <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <span>Highest Risk: <span class="bulk-hr-ref" id="bulk-hr-ref"></span></span>
+        <span>—</span>
+        <span>Score: <strong id="bulk-hr-score"></strong></span>
+      </div>
+
+      <!-- Filter row -->
+      <div class="bulk-filter-row" id="bulk-filter-row">
+        <button class="bulk-filter-btn active" data-filter="ALL" onclick="bulkSetFilter('ALL')">All <span class="bulk-filter-count" id="bfc-all">0</span></button>
+        <button class="bulk-filter-btn" data-filter="FLAG_FOR_INSPECTION" onclick="bulkSetFilter('FLAG_FOR_INSPECTION')">Flagged <span class="bulk-filter-count" id="bfc-flag">0</span></button>
+        <button class="bulk-filter-btn" data-filter="REJECT" onclick="bulkSetFilter('REJECT')">Rejected <span class="bulk-filter-count" id="bfc-reject">0</span></button>
+        <button class="bulk-filter-btn" data-filter="REVIEW_RECOMMENDED" onclick="bulkSetFilter('REVIEW_RECOMMENDED')">Review <span class="bulk-filter-count" id="bfc-review">0</span></button>
+        <button class="bulk-filter-btn" data-filter="APPROVE" onclick="bulkSetFilter('APPROVE')">Approved <span class="bulk-filter-count" id="bfc-approve">0</span></button>
+        <button class="bulk-filter-btn" data-filter="REQUEST_MORE_INFORMATION" onclick="bulkSetFilter('REQUEST_MORE_INFORMATION')">Needs Info <span class="bulk-filter-count" id="bfc-info">0</span></button>
+        <button class="bulk-filter-btn" data-filter="ERROR" onclick="bulkSetFilter('ERROR')">Errors <span class="bulk-filter-count" id="bfc-error">0</span></button>
+      </div>
+
+      <!-- Results table -->
+      <div class="bulk-table-wrap">
+        <table class="bulk-table" id="bulk-results-table">
+          <thead>
+            <tr>
+              <th onclick="bulkSort('ref')">Reference ID <span class="sort-icon" id="bsort-ref"></span></th>
+              <th onclick="bulkSort('decision')">Decision <span class="sort-icon" id="bsort-decision"></span></th>
+              <th onclick="bulkSort('risk_score')">Risk Score <span class="sort-icon" id="bsort-risk_score">↓</span></th>
+              <th onclick="bulkSort('n_findings')">Findings <span class="sort-icon" id="bsort-n_findings"></span></th>
+              <th>Top Finding</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="bulk-results-tbody">
+            <!-- rows injected by JS -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Export bar -->
+      <div class="bulk-export-bar">
+        <button class="bulk-export-btn" id="bulk-export-csv-btn" onclick="bulkExportCsv()">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export CSV Summary
+        </button>
+        <button class="bulk-export-btn" id="bulk-export-zip-btn" onclick="bulkExportZip()">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h1l1-2h6l1 2h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+          Download All PDF Reports (ZIP)
+        </button>
+        <button class="bulk-export-btn" id="bulk-share-btn" onclick="bulkShareLink()">
+          <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          Share Batch Results
+        </button>
+      </div>
+
+    </div><!-- /bulk-results-screen -->
+
+  </div><!-- /bulk-container -->
+</div><!-- /bulk-panel -->
+
+<!-- Confirm modal (outside panel so it overlays everything) -->
+<div class="bulk-modal-overlay" id="bulk-confirm-modal">
+  <div class="bulk-modal">
+    <div class="bulk-modal-icon">
+      <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    </div>
+    <div class="bulk-modal-title" id="bulk-modal-title">Confirm Batch Screening</div>
+    <div class="bulk-modal-body" id="bulk-modal-body"></div>
+    <div class="bulk-modal-actions">
+      <button class="bulk-modal-cancel" onclick="bulkModalClose()">Cancel</button>
+      <button class="bulk-modal-confirm" onclick="bulkModalConfirm()">Screen Shipments</button>
+    </div>
+  </div>
+</div>
 
 <script>
 'use strict';
@@ -4845,21 +5675,19 @@ function showSection(section) {
   _currentSection = section;
   const analyzePanel = document.getElementById('analyze-panel');
   const dashPanel    = document.getElementById('dashboard-panel');
+  const bulkPanel    = document.getElementById('bulk-panel');
   const navAnalyze   = document.getElementById('nav-analyze');
   const navDash      = document.getElementById('nav-dashboard');
+  const navBulk      = document.getElementById('nav-bulk');
 
-  if (section === 'dashboard') {
-    analyzePanel.classList.add('hidden');
-    dashPanel.classList.add('visible');
-    navAnalyze.classList.remove('active');
-    navDash.classList.add('active');
-    loadDashboard(false);
-  } else {
-    analyzePanel.classList.remove('hidden');
-    dashPanel.classList.remove('visible');
-    navAnalyze.classList.add('active');
-    navDash.classList.remove('active');
-  }
+  analyzePanel.classList.toggle('hidden',   section !== 'analyze');
+  dashPanel.classList.toggle('visible',     section === 'dashboard');
+  bulkPanel.classList.toggle('visible',     section === 'bulk');
+  navAnalyze.classList.toggle('active',     section === 'analyze');
+  navDash.classList.toggle('active',        section === 'dashboard');
+  navBulk.classList.toggle('active',        section === 'bulk');
+
+  if (section === 'dashboard') loadDashboard(false);
 }
 
 // ---------------------------------------------------------------------------
@@ -5426,6 +6254,863 @@ function _dashCleanup() {
   if (nav) nav.style.display = 'none';
   showSection('analyze');
 }
+
+// ===========================================================================
+// BULK UPLOAD — complete implementation
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// Bulk state
+// ---------------------------------------------------------------------------
+let _bulkSlots       = [];   // [{ id, ref, tabs:[{id,filename,text}], activeTab }]
+let _bulkSlotNextId  = 1;
+let _bulkTabNextId   = 100;
+let _bulkMethod      = null; // 'zip' | 'csv' | 'manual'
+let _bulkZipFile     = null;
+let _bulkCsvFile     = null;
+let _bulkBatchId     = null;
+let _bulkPollTimer   = null;
+let _bulkSeenRefs    = new Set();
+let _bulkAllResults  = [];
+let _bulkSortKey     = 'risk_score';
+let _bulkSortAsc     = false;
+let _bulkFilter      = 'ALL';
+
+// ---------------------------------------------------------------------------
+// Decision helpers
+// ---------------------------------------------------------------------------
+const _BULK_DEC_LABEL = {
+  APPROVE:                  'Approved',
+  REVIEW_RECOMMENDED:       'Review',
+  FLAG_FOR_INSPECTION:      'Flagged',
+  REQUEST_MORE_INFORMATION: 'Needs Info',
+  REJECT:                   'Rejected',
+  ERROR:                    'Error',
+  PENDING:                  'Pending',
+};
+function _bulkDecLabel(d) { return _BULK_DEC_LABEL[d] || d || '—'; }
+function _bulkRiskColor(s) {
+  if (s == null) return 'var(--faint)';
+  if (s >= 0.65) return 'var(--red)';
+  if (s >= 0.40) return 'var(--amber)';
+  return 'var(--green)';
+}
+
+// ---------------------------------------------------------------------------
+// Drag-drop helpers for ZIP and CSV zones
+// ---------------------------------------------------------------------------
+function bulkDragEnter(e, type) {
+  e.preventDefault();
+  document.getElementById('bulk-' + type + '-drop').classList.add('drag-over');
+}
+function bulkDragLeave(e, type) {
+  if (!e.currentTarget.contains(e.relatedTarget))
+    document.getElementById('bulk-' + type + '-drop').classList.remove('drag-over');
+}
+function bulkDrop(e, type) {
+  e.preventDefault();
+  document.getElementById('bulk-' + type + '-drop').classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) _bulkHandleFile(type, file);
+}
+function bulkFileChosen(type, input) {
+  const file = input.files[0];
+  if (file) _bulkHandleFile(type, file);
+  input.value = '';
+}
+
+function _bulkHandleFile(type, file) {
+  const statusEl = document.getElementById('bulk-' + type + '-status');
+  const cardEl   = document.getElementById('bulk-card-' + type);
+
+  // Validate
+  if (type === 'zip' && !file.name.toLowerCase().endsWith('.zip')) {
+    statusEl.textContent = 'Please select a .zip file';
+    statusEl.className = 'bulk-drop-status error';
+    return;
+  }
+  if (type === 'csv' && !file.name.toLowerCase().endsWith('.csv')) {
+    statusEl.textContent = 'Please select a .csv file';
+    statusEl.className = 'bulk-drop-status error';
+    return;
+  }
+
+  if (type === 'zip') { _bulkZipFile = file; _bulkMethod = 'zip'; }
+  else                { _bulkCsvFile = file; _bulkMethod = 'csv'; }
+
+  // Clear the other method's file
+  if (type === 'zip') { _bulkCsvFile = null; _setBulkCardActive('zip'); }
+  else                { _bulkZipFile = null; _setBulkCardActive('csv'); }
+
+  statusEl.className = 'bulk-drop-status';
+  statusEl.innerHTML = `<svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> ${escHtml(file.name)} (${(file.size/1024).toFixed(0)} KB)`;
+
+  _bulkUpdateSubmitBtn();
+  _bulkHideEmpty();
+}
+
+function _setBulkCardActive(type) {
+  ['zip','csv','manual'].forEach(t => {
+    document.getElementById('bulk-card-' + t).classList.toggle('active', t === type);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// CSV template download (calls public API endpoint)
+// ---------------------------------------------------------------------------
+async function bulkDownloadTemplate() {
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/analyze/bulk/csv-template', {
+      headers: _authToken ? { Authorization: 'Bearer ' + _authToken } : {}
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'portguard_bulk_template.csv';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  } catch(e) {
+    // fallback: generate locally
+    const headers = 'reference_id,bill_of_lading,commercial_invoice,packing_list,certificate_of_origin,isf_filing,other_doc_1\n';
+    const example = 'SHP-001,"OCEAN BILL OF LADING...","COMMERCIAL INVOICE...",,,,\n';
+    const blob = new Blob([headers + example], { type: 'text/csv' });
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'portguard_bulk_template.csv';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Manual slot management
+// ---------------------------------------------------------------------------
+function bulkAddSlot() {
+  if (_bulkSlots.length >= 50) return;
+  const slotId  = _bulkSlotNextId++;
+  const tabId   = _bulkTabNextId++;
+  _bulkSlots.push({
+    id: slotId,
+    ref: 'SHP-' + String(slotId).padStart(3, '0'),
+    tabs: [{ id: tabId, filename: 'bill_of_lading.txt', text: '' }],
+    activeTab: tabId,
+    expanded: true,
+  });
+  _bulkMethod = 'manual';
+  _setBulkCardActive('manual');
+  _bulkZipFile = null; _bulkCsvFile = null;
+  _bulkRenderAllSlots();
+  _bulkUpdateSubmitBtn();
+  _bulkHideEmpty();
+  // Scroll new slot into view
+  requestAnimationFrame(() => {
+    const el = document.getElementById('bulk-slot-' + slotId);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+}
+
+function _bulkRenderAllSlots() {
+  const list   = document.getElementById('bulk-slots-list');
+  const countEl = document.getElementById('bulk-slot-count');
+  const addBtn  = document.getElementById('bulk-add-slot-btn');
+  countEl.textContent = _bulkSlots.length + ' shipment' + (_bulkSlots.length !== 1 ? 's' : '');
+  addBtn.disabled = _bulkSlots.length >= 50;
+
+  list.innerHTML = '';
+  _bulkSlots.forEach(slot => {
+    const el = _bulkBuildSlotEl(slot);
+    list.appendChild(el);
+    _bulkAttachSlotListeners(slot);
+  });
+}
+
+function _bulkBuildSlotEl(slot) {
+  const div = document.createElement('div');
+  div.className = 'bulk-slot' + (slot.expanded ? ' expanded' : '');
+  div.id = 'bulk-slot-' + slot.id;
+
+  const docCount = slot.tabs.filter(t => t.text.trim()).length;
+
+  // Build tab HTML for the active doc pane
+  const activeTabData = slot.tabs.find(t => t.id === slot.activeTab) || slot.tabs[0];
+
+  const tabsHtml = slot.tabs.map(t => `
+    <button class="bulk-slot-tab-btn${t.id === slot.activeTab ? ' active' : ''}"
+            data-slot="${slot.id}" data-tab="${t.id}"
+            onclick="bulkSlotSwitchTab(${slot.id},${t.id})">
+      <span>${escHtml(t.filename || 'Doc ' + t.id)}</span>
+      ${slot.tabs.length > 1 ? `<span class="bulk-slot-tab-close" onclick="event.stopPropagation();bulkSlotRemoveTab(${slot.id},${t.id})">×</span>` : ''}
+    </button>`).join('');
+
+  div.innerHTML = `
+    <div class="bulk-slot-header" onclick="bulkToggleSlot(${slot.id})">
+      <div class="bulk-slot-num">#${slot.id}</div>
+      <div class="bulk-slot-ref-wrap">
+        <div class="bulk-slot-ref-label">Ref</div>
+        <input class="bulk-slot-ref-input" id="bulk-slot-ref-${slot.id}"
+               value="${escHtml(slot.ref)}" placeholder="SHP-001"
+               onclick="event.stopPropagation()"
+               oninput="bulkSlotRefChange(${slot.id},this.value)">
+      </div>
+      <div class="bulk-slot-doc-count">${docCount} doc${docCount !== 1 ? 's' : ''}</div>
+      <button class="bulk-slot-expand-btn${slot.expanded ? ' open' : ''}" tabindex="-1">
+        <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <button class="bulk-slot-remove-btn" title="Remove shipment"
+              onclick="event.stopPropagation();bulkRemoveSlot(${slot.id})">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+    </div>
+    <div class="bulk-slot-body${slot.expanded ? ' open' : ''}" id="bulk-slot-body-${slot.id}">
+      <div class="bulk-slot-tabs-bar" id="bulk-slot-tabs-bar-${slot.id}">
+        ${tabsHtml}
+        <button class="bulk-slot-tab-add" title="Add document" onclick="bulkSlotAddTab(${slot.id})">+</button>
+      </div>
+      <div class="bulk-slot-doc-pane" id="bulk-slot-pane-${slot.id}">
+        <div class="bulk-slot-filename-row">
+          <div class="bulk-slot-fname-label">File</div>
+          <input class="bulk-slot-fname-input" id="bulk-slt-fname-${slot.id}-${activeTabData.id}"
+                 value="${escHtml(activeTabData.filename)}" placeholder="document.txt">
+        </div>
+        <textarea class="bulk-slot-doc-text" id="bulk-slt-text-${slot.id}-${activeTabData.id}"
+                  placeholder="Paste document text here…">${escHtml(activeTabData.text)}</textarea>
+      </div>
+    </div>`;
+  return div;
+}
+
+function _bulkAttachSlotListeners(slot) {
+  const activeTabData = slot.tabs.find(t => t.id === slot.activeTab) || slot.tabs[0];
+  const fnameEl = document.getElementById(`bulk-slt-fname-${slot.id}-${activeTabData.id}`);
+  const textEl  = document.getElementById(`bulk-slt-text-${slot.id}-${activeTabData.id}`);
+  if (fnameEl) fnameEl.addEventListener('input', e => {
+    activeTabData.filename = e.target.value;
+    // update tab label
+    const tabBtn = document.querySelector(`.bulk-slot-tab-btn[data-tab="${activeTabData.id}"] span`);
+    if (tabBtn) tabBtn.textContent = e.target.value || 'Doc ' + activeTabData.id;
+  });
+  if (textEl) textEl.addEventListener('input', e => {
+    activeTabData.text = e.target.value;
+    _bulkUpdateSlotDocCount(slot);
+    _bulkUpdateSubmitBtn();
+  });
+}
+
+function bulkToggleSlot(slotId) {
+  const slot = _bulkSlots.find(s => s.id === slotId);
+  if (!slot) return;
+  // Save current text before re-render
+  _bulkSaveSlotActiveTab(slot);
+  slot.expanded = !slot.expanded;
+  const el     = document.getElementById('bulk-slot-' + slotId);
+  const body   = document.getElementById('bulk-slot-body-' + slotId);
+  const expBtn = el && el.querySelector('.bulk-slot-expand-btn');
+  if (el)     el.classList.toggle('expanded', slot.expanded);
+  if (body)   body.classList.toggle('open', slot.expanded);
+  if (expBtn) expBtn.classList.toggle('open', slot.expanded);
+}
+
+function bulkSlotSwitchTab(slotId, tabId) {
+  const slot = _bulkSlots.find(s => s.id === slotId);
+  if (!slot) return;
+  _bulkSaveSlotActiveTab(slot);
+  slot.activeTab = tabId;
+  _bulkRerenderSlotTabs(slot);
+}
+
+function bulkSlotRefChange(slotId, val) {
+  const slot = _bulkSlots.find(s => s.id === slotId);
+  if (slot) slot.ref = val;
+}
+
+function bulkRemoveSlot(slotId) {
+  _bulkSlots = _bulkSlots.filter(s => s.id !== slotId);
+  document.getElementById('bulk-slot-' + slotId)?.remove();
+  document.getElementById('bulk-slot-count').textContent =
+    _bulkSlots.length + ' shipment' + (_bulkSlots.length !== 1 ? 's' : '');
+  document.getElementById('bulk-add-slot-btn').disabled = _bulkSlots.length >= 50;
+  _bulkUpdateSubmitBtn();
+  if (_bulkSlots.length === 0) _bulkShowEmpty();
+}
+
+function bulkSlotAddTab(slotId) {
+  const slot = _bulkSlots.find(s => s.id === slotId);
+  if (!slot || slot.tabs.length >= 10) return;
+  _bulkSaveSlotActiveTab(slot);
+  const newTabId = _bulkTabNextId++;
+  slot.tabs.push({ id: newTabId, filename: 'document_' + slot.tabs.length + '.txt', text: '' });
+  slot.activeTab = newTabId;
+  _bulkRerenderSlotTabs(slot);
+}
+
+function bulkSlotRemoveTab(slotId, tabId) {
+  const slot = _bulkSlots.find(s => s.id === slotId);
+  if (!slot || slot.tabs.length <= 1) return;
+  _bulkSaveSlotActiveTab(slot);
+  slot.tabs = slot.tabs.filter(t => t.id !== tabId);
+  if (slot.activeTab === tabId) slot.activeTab = slot.tabs[slot.tabs.length - 1].id;
+  _bulkRerenderSlotTabs(slot);
+}
+
+function _bulkSaveSlotActiveTab(slot) {
+  const at = slot.tabs.find(t => t.id === slot.activeTab);
+  if (!at) return;
+  const fnEl = document.getElementById(`bulk-slt-fname-${slot.id}-${at.id}`);
+  const txEl = document.getElementById(`bulk-slt-text-${slot.id}-${at.id}`);
+  if (fnEl) at.filename = fnEl.value;
+  if (txEl) at.text     = txEl.value;
+}
+
+function _bulkRerenderSlotTabs(slot) {
+  const bar  = document.getElementById('bulk-slot-tabs-bar-' + slot.id);
+  const pane = document.getElementById('bulk-slot-pane-' + slot.id);
+  if (!bar || !pane) return;
+
+  const at = slot.tabs.find(t => t.id === slot.activeTab) || slot.tabs[0];
+
+  bar.innerHTML = slot.tabs.map(t => `
+    <button class="bulk-slot-tab-btn${t.id === slot.activeTab ? ' active' : ''}"
+            data-slot="${slot.id}" data-tab="${t.id}"
+            onclick="bulkSlotSwitchTab(${slot.id},${t.id})">
+      <span>${escHtml(t.filename || 'Doc ' + t.id)}</span>
+      ${slot.tabs.length > 1 ? `<span class="bulk-slot-tab-close" onclick="event.stopPropagation();bulkSlotRemoveTab(${slot.id},${t.id})">×</span>` : ''}
+    </button>`).join('') +
+    `<button class="bulk-slot-tab-add" title="Add document" onclick="bulkSlotAddTab(${slot.id})">+</button>`;
+
+  pane.innerHTML = `
+    <div class="bulk-slot-filename-row">
+      <div class="bulk-slot-fname-label">File</div>
+      <input class="bulk-slot-fname-input" id="bulk-slt-fname-${slot.id}-${at.id}"
+             value="${escHtml(at.filename)}" placeholder="document.txt">
+    </div>
+    <textarea class="bulk-slot-doc-text" id="bulk-slt-text-${slot.id}-${at.id}"
+              placeholder="Paste document text here…">${escHtml(at.text)}</textarea>`;
+
+  _bulkAttachSlotListeners(slot);
+  _bulkUpdateSlotDocCount(slot);
+}
+
+function _bulkUpdateSlotDocCount(slot) {
+  const el = document.querySelector(`#bulk-slot-${slot.id} .bulk-slot-doc-count`);
+  const n  = slot.tabs.filter(t => t.text.trim()).length;
+  if (el) el.textContent = n + ' doc' + (n !== 1 ? 's' : '');
+}
+
+// ---------------------------------------------------------------------------
+// Submit button state
+// ---------------------------------------------------------------------------
+function _bulkUpdateSubmitBtn() {
+  const btn   = document.getElementById('bulk-submit-btn');
+  const label = document.getElementById('bulk-submit-label');
+  let count = 0;
+  if (_bulkMethod === 'zip' && _bulkZipFile) count = 1; // unknown count until processed
+  else if (_bulkMethod === 'csv' && _bulkCsvFile) count = 1;
+  else if (_bulkMethod === 'manual') {
+    count = _bulkSlots.filter(s => s.tabs.some(t => t.text.trim())).length;
+  }
+
+  const enabled = count >= 1 && (
+    (_bulkMethod === 'zip'    && !!_bulkZipFile) ||
+    (_bulkMethod === 'csv'    && !!_bulkCsvFile) ||
+    (_bulkMethod === 'manual' && count >= 2)
+  );
+
+  // For manual, require at least 2
+  if (_bulkMethod === 'manual') {
+    btn.disabled = count < 2;
+    label.textContent = count < 2
+      ? 'Screen All Shipments (need ≥ 2)'
+      : `Screen ${count} Shipment${count !== 1 ? 's' : ''}`;
+  } else {
+    btn.disabled = !enabled;
+    label.textContent = 'Screen All Shipments';
+  }
+}
+
+function _bulkHideEmpty() {
+  document.getElementById('bulk-empty-state').style.display = 'none';
+}
+function _bulkShowEmpty() {
+  document.getElementById('bulk-empty-state').style.display = '';
+  _bulkUpdateSubmitBtn();
+}
+
+// ---------------------------------------------------------------------------
+// Confirm modal
+// ---------------------------------------------------------------------------
+function bulkSubmitClick() {
+  // Save all open slot text areas first
+  _bulkSlots.forEach(s => _bulkSaveSlotActiveTab(s));
+
+  let count = 0;
+  if (_bulkMethod === 'zip') count = '?'; // unknown
+  else if (_bulkMethod === 'csv') count = '?';
+  else count = _bulkSlots.filter(s => s.tabs.some(t => t.text.trim())).length;
+
+  if (typeof count === 'number' && count <= 10) {
+    bulkModalConfirm(); // skip confirm for small batches
+    return;
+  }
+
+  const estMins = typeof count === 'number' ? Math.ceil(count * 6 / 60) : '?';
+  document.getElementById('bulk-modal-body').textContent =
+    `You are about to screen ${count} shipment${count !== 1 ? 's' : ''}. This may take up to ${estMins} minute${estMins !== 1 ? 's' : ''}.`;
+  document.getElementById('bulk-confirm-modal').classList.add('visible');
+}
+
+function bulkModalClose() {
+  document.getElementById('bulk-confirm-modal').classList.remove('visible');
+}
+
+async function bulkModalConfirm() {
+  bulkModalClose();
+  await _bulkSubmit();
+}
+
+// ---------------------------------------------------------------------------
+// Submit — send to API
+// ---------------------------------------------------------------------------
+async function _bulkSubmit() {
+  // Switch to progress view
+  document.getElementById('bulk-upload-section').style.display  = 'none';
+  document.getElementById('bulk-progress-screen').classList.add('visible');
+  document.getElementById('bulk-results-screen').classList.remove('visible');
+
+  // Reset progress UI
+  _bulkSeenRefs = new Set();
+  document.getElementById('bulk-live-feed-list').innerHTML = '';
+  _bulkSetProgress(0, 0, 0);
+
+  try {
+    let res;
+    if (_bulkMethod === 'zip' && _bulkZipFile) {
+      const fd = new FormData();
+      fd.append('file', _bulkZipFile);
+      res = await fetch(apiUrl() + '/api/v1/analyze/bulk', authedForm(fd));
+    } else if (_bulkMethod === 'csv' && _bulkCsvFile) {
+      const fd = new FormData();
+      fd.append('file', _bulkCsvFile);
+      res = await fetch(apiUrl() + '/api/v1/analyze/bulk', authedForm(fd));
+    } else {
+      // Manual JSON
+      const shipments = _bulkSlots
+        .filter(s => s.tabs.some(t => t.text.trim()))
+        .map(s => ({
+          ref: s.ref || ('SHP-' + String(s.id).padStart(3,'0')),
+          documents: s.tabs
+            .filter(t => t.text.trim())
+            .map(t => ({ filename: t.filename || 'document.txt', raw_text: t.text.trim() })),
+        }));
+      res = await fetch(apiUrl() + '/api/v1/analyze/bulk',
+        authedJson('POST', { input_method: 'MANUAL', shipments }));
+    }
+
+    if (res.status === 401) { handle401(); return; }
+    if (res.status === 429) {
+      const err = await res.json().catch(() => ({}));
+      _bulkShowProgressError((err.detail && (err.detail.message || err.detail)) || 'Rate limit exceeded — please wait before submitting another batch.');
+      return;
+    }
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      const msg = (err.detail && (typeof err.detail === 'object' ? err.detail.message : err.detail)) || `HTTP ${res.status}`;
+      _bulkShowProgressError(msg);
+      return;
+    }
+
+    const data = await res.json();
+    _bulkBatchId = data.batch_id;
+
+    // Start polling
+    _bulkStartPolling(data.total_shipments || 0);
+
+  } catch (e) {
+    _bulkShowProgressError(e.message || 'Network error — is the API server running?');
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Polling
+// ---------------------------------------------------------------------------
+function _bulkStartPolling(total) {
+  if (_bulkPollTimer) clearInterval(_bulkPollTimer);
+  _bulkPollTimer = setInterval(() => _bulkPoll(total), 2000);
+  _bulkPoll(total);
+}
+
+async function _bulkPoll(total) {
+  if (!_bulkBatchId) return;
+  try {
+    const res = await fetch(
+      apiUrl() + '/api/v1/analyze/bulk/' + _bulkBatchId + '/status',
+      { headers: _authToken ? { Authorization: 'Bearer ' + _authToken } : {} }
+    );
+    if (res.status === 401) { handle401(); return; }
+    if (!res.ok) return;
+
+    const d = await res.json();
+    const processed = d.processed || 0;
+    const tot       = d.total || total || 1;
+    const pct       = Math.round((processed / tot) * 100);
+
+    _bulkSetProgress(processed, tot, pct);
+
+    // ETA
+    const eta = d.estimated_remaining_seconds;
+    const etaEl = document.getElementById('bulk-progress-eta');
+    if (eta != null && eta > 0) {
+      etaEl.textContent = `~${Math.ceil(eta)}s remaining`;
+    } else if (d.status === 'PROCESSING') {
+      etaEl.textContent = 'Calculating…';
+    } else {
+      etaEl.textContent = '';
+    }
+
+    // Live feed — add newly completed shipments
+    const shipments = d.shipments || [];
+    shipments.forEach(s => {
+      if (s.status !== 'PENDING' && !_bulkSeenRefs.has(s.ref)) {
+        _bulkSeenRefs.add(s.ref);
+        _bulkAddLiveFeedItem(s);
+      }
+    });
+
+    if (d.status === 'COMPLETE' || d.status === 'FAILED') {
+      clearInterval(_bulkPollTimer);
+      _bulkPollTimer = null;
+      if (d.status === 'COMPLETE') {
+        setTimeout(() => _bulkLoadResults(), 400);
+      } else {
+        _bulkShowProgressError(d.error_message || 'Batch processing failed.');
+      }
+    }
+  } catch (e) {
+    console.warn('Bulk poll error:', e.message);
+  }
+}
+
+function _bulkSetProgress(processed, total, pct) {
+  document.getElementById('bulk-progress-text').textContent =
+    total > 0 ? `${processed} of ${total} shipments complete` : 'Processing…';
+  document.getElementById('bulk-progress-pct').textContent  = pct + '%';
+  document.getElementById('bulk-progress-fill').style.width = pct + '%';
+}
+
+function _bulkAddLiveFeedItem(s) {
+  const feed  = document.getElementById('bulk-live-feed-list');
+  const dec   = s.decision || 'PENDING';
+  const score = s.risk_score != null ? Math.round(s.risk_score * 100) : null;
+  const item  = document.createElement('div');
+  item.className = 'bulk-live-item';
+  item.innerHTML = `
+    <span class="bulk-live-ref">${escHtml(s.ref)}</span>
+    <span class="bulk-badge ${dec}">${_bulkDecLabel(dec)}</span>
+    ${score != null ? `<span style="font-family:'JetBrains Mono',monospace;font-size:.75rem;color:${_bulkRiskColor(s.risk_score)}">${score}</span>` : ''}`;
+  feed.insertBefore(item, feed.firstChild);
+}
+
+async function bulkCancelBatch() {
+  if (_bulkPollTimer) { clearInterval(_bulkPollTimer); _bulkPollTimer = null; }
+  _bulkBatchId = null;
+  bulkResetToUpload();
+}
+
+function _bulkShowProgressError(msg) {
+  if (_bulkPollTimer) { clearInterval(_bulkPollTimer); _bulkPollTimer = null; }
+  document.getElementById('bulk-progress-text').textContent = '⚠ ' + msg;
+  document.getElementById('bulk-progress-text').style.color = 'var(--red)';
+  document.getElementById('bulk-cancel-btn').disabled = true;
+}
+
+// ---------------------------------------------------------------------------
+// Load and render results
+// ---------------------------------------------------------------------------
+async function _bulkLoadResults() {
+  if (!_bulkBatchId) return;
+  try {
+    const res = await fetch(
+      apiUrl() + '/api/v1/analyze/bulk/' + _bulkBatchId + '/results',
+      { headers: _authToken ? { Authorization: 'Bearer ' + _authToken } : {} }
+    );
+    if (!res.ok) return;
+    const data = await res.json();
+
+    _bulkAllResults = (data.shipments || []).map(s => ({
+      ref:        s.ref,
+      decision:   s.decision   || 'PENDING',
+      risk_score: s.risk_score != null ? +s.risk_score : null,
+      n_findings: s.n_findings || 0,
+      top_finding: s.top_finding || '',
+      status:     s.status,
+      analysis_id: s.analysis_id,
+      findings:   (s.full_result && s.full_result.explanations) || [],
+    }));
+
+    // Summary stats
+    const decisions = data.decisions || {};
+    document.getElementById('bstat-total').textContent    = data.total_shipments || _bulkAllResults.length;
+    document.getElementById('bstat-approved').textContent = decisions.APPROVE || 0;
+    document.getElementById('bstat-flagged').textContent  = (decisions.FLAG_FOR_INSPECTION || 0) + (decisions.REJECT || 0);
+    document.getElementById('bstat-review').textContent   = decisions.REVIEW_RECOMMENDED || 0;
+    document.getElementById('bstat-info').textContent     = decisions.REQUEST_MORE_INFORMATION || 0;
+    document.getElementById('bstat-errors').textContent   = decisions.ERROR || 0;
+
+    const avgRisk = data.average_risk_score;
+    const avgEl   = document.getElementById('bstat-avg-risk');
+    if (avgRisk != null) {
+      avgEl.textContent = Math.round(avgRisk * 100);
+      avgEl.style.color = _bulkRiskColor(avgRisk);
+    } else {
+      avgEl.textContent = '—';
+      avgEl.style.color = '';
+    }
+
+    // Highest risk
+    if (data.highest_risk) {
+      const hr = data.highest_risk;
+      document.getElementById('bulk-highest-risk-bar').style.display = 'flex';
+      document.getElementById('bulk-hr-ref').textContent   = hr.ref || '—';
+      document.getElementById('bulk-hr-score').textContent = hr.risk_score != null ? Math.round(hr.risk_score * 100) : '—';
+    }
+
+    // Filter counts
+    _bulkUpdateFilterCounts();
+
+    // Sort by risk_score desc by default
+    _bulkSortKey = 'risk_score'; _bulkSortAsc = false; _bulkFilter = 'ALL';
+    _bulkActivateFilter('ALL');
+    _bulkRenderTable();
+
+    // Show results, hide progress
+    document.getElementById('bulk-progress-screen').classList.remove('visible');
+    document.getElementById('bulk-results-screen').classList.add('visible');
+
+  } catch (e) {
+    _bulkShowProgressError('Failed to load results: ' + e.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Filter + sort
+// ---------------------------------------------------------------------------
+function _bulkUpdateFilterCounts() {
+  const counts = {};
+  _bulkAllResults.forEach(r => { counts[r.decision] = (counts[r.decision] || 0) + 1; });
+  document.getElementById('bfc-all').textContent    = _bulkAllResults.length;
+  document.getElementById('bfc-flag').textContent   = counts.FLAG_FOR_INSPECTION   || 0;
+  document.getElementById('bfc-reject').textContent = counts.REJECT                || 0;
+  document.getElementById('bfc-review').textContent = counts.REVIEW_RECOMMENDED    || 0;
+  document.getElementById('bfc-approve').textContent = counts.APPROVE              || 0;
+  document.getElementById('bfc-info').textContent   = counts.REQUEST_MORE_INFORMATION || 0;
+  document.getElementById('bfc-error').textContent  = counts.ERROR                 || 0;
+}
+
+function bulkSetFilter(f) {
+  _bulkFilter = f;
+  _bulkActivateFilter(f);
+  _bulkRenderTable();
+}
+
+function _bulkActivateFilter(f) {
+  document.querySelectorAll('#bulk-filter-row .bulk-filter-btn').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.filter === f);
+  });
+}
+
+function bulkSort(key) {
+  if (_bulkSortKey === key) { _bulkSortAsc = !_bulkSortAsc; }
+  else { _bulkSortKey = key; _bulkSortAsc = key === 'ref'; }
+  // Update sort icons
+  ['ref','decision','risk_score','n_findings'].forEach(k => {
+    const el = document.getElementById('bsort-' + k);
+    if (!el) return;
+    el.textContent = _bulkSortKey === k ? (_bulkSortAsc ? '↑' : '↓') : '';
+  });
+  document.getElementById('bsort-' + _bulkSortKey)?.parentElement?.classList.add('sorted');
+  _bulkRenderTable();
+}
+
+function _bulkGetFiltered() {
+  let rows = _bulkAllResults;
+  if (_bulkFilter !== 'ALL') rows = rows.filter(r => r.decision === _bulkFilter);
+  return [...rows].sort((a, b) => {
+    let av = a[_bulkSortKey], bv = b[_bulkSortKey];
+    if (av == null) av = _bulkSortAsc ? Infinity : -Infinity;
+    if (bv == null) bv = _bulkSortAsc ? Infinity : -Infinity;
+    if (typeof av === 'string') return _bulkSortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+    return _bulkSortAsc ? av - bv : bv - av;
+  });
+}
+
+function _bulkRenderTable() {
+  const tbody = document.getElementById('bulk-results-tbody');
+  tbody.innerHTML = '';
+  const rows = _bulkGetFiltered();
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem">No results match this filter.</td></tr>`;
+    return;
+  }
+  rows.forEach(r => {
+    const dec   = r.decision || 'PENDING';
+    const score = r.risk_score;
+    const scorePct = score != null ? Math.round(score * 100) : null;
+    const scoreColor = _bulkRiskColor(score);
+    const topFinding = r.top_finding ? escHtml(r.top_finding.slice(0, 60)) + (r.top_finding.length > 60 ? '…' : '') : '—';
+    const expandId = 'bulk-expand-' + r.ref.replace(/[^a-z0-9]/gi,'_');
+
+    const row = document.createElement('tr');
+    row.dataset.ref = r.ref;
+    row.innerHTML = `
+      <td class="ref-cell">${escHtml(r.ref)}</td>
+      <td><span class="bulk-badge ${dec}">${_bulkDecLabel(dec)}</span></td>
+      <td>
+        <div class="bulk-risk-bar-wrap">
+          <div class="bulk-risk-bar"><div class="bulk-risk-bar-fill" style="width:${scorePct != null ? scorePct : 0}%;background:${scoreColor}"></div></div>
+          <span class="bulk-risk-val" style="color:${scoreColor}">${scorePct != null ? scorePct : '—'}</span>
+        </div>
+      </td>
+      <td>${r.n_findings || '—'}</td>
+      <td style="color:var(--muted);font-size:.78rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${topFinding}</td>
+      <td>
+        <div class="bulk-row-actions">
+          <button class="bulk-action-btn expand-btn" title="Expand analysis" data-expand="${expandId}"
+                  onclick="bulkToggleExpand(this,'${expandId}')">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
+          ${r.analysis_id ? `<button class="bulk-action-btn" title="Download PDF" onclick="bulkDownloadRowPdf(${JSON.stringify(r.analysis_id)})">
+            <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>` : ''}
+        </div>
+      </td>`;
+    tbody.appendChild(row);
+
+    // Expand row (hidden by default)
+    const expRow = document.createElement('tr');
+    expRow.id = expandId;
+    expRow.className = 'bulk-row-expand';
+    const findings = r.findings.length
+      ? r.findings.map(f => `<div class="bulk-inline-finding">${escHtml(f)}</div>`).join('')
+      : '<div style="color:var(--muted);font-size:.8rem">No findings recorded.</div>';
+    expRow.innerHTML = `<td colspan="6"><div class="bulk-inline-analysis">
+      <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);margin-bottom:.5rem">Analysis Findings</div>
+      <div class="bulk-inline-findings">${findings}</div>
+    </div></td>`;
+    tbody.appendChild(expRow);
+  });
+}
+
+function bulkToggleExpand(btn, expandId) {
+  const row = document.getElementById(expandId);
+  if (!row) return;
+  const open = row.classList.toggle('open');
+  btn.classList.toggle('open', open);
+}
+
+async function bulkDownloadRowPdf(analysisId) {
+  await downloadActivityReport(analysisId);
+}
+
+// ---------------------------------------------------------------------------
+// Export
+// ---------------------------------------------------------------------------
+async function bulkExportCsv() {
+  if (!_bulkBatchId) return;
+  const btn = document.getElementById('bulk-export-csv-btn');
+  btn.disabled = true;
+  try {
+    const res = await fetch(
+      apiUrl() + '/api/v1/analyze/bulk/' + _bulkBatchId + '/export/csv',
+      { headers: _authToken ? { Authorization: 'Bearer ' + _authToken } : {} }
+    );
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'portguard_batch_' + _bulkBatchId.slice(0,8) + '.csv';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error('CSV export failed:', e.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function bulkExportZip() {
+  if (!_bulkBatchId) return;
+  const btn = document.getElementById('bulk-export-zip-btn');
+  btn.disabled = true;
+  btn.textContent = 'Building ZIP…';
+  try {
+    const res = await fetch(
+      apiUrl() + '/api/v1/analyze/bulk/' + _bulkBatchId + '/export/zip',
+      { headers: _authToken ? { Authorization: 'Bearer ' + _authToken } : {} }
+    );
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'portguard_batch_' + _bulkBatchId.slice(0,8) + '_reports.zip';
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a); URL.revokeObjectURL(url);
+  } catch (e) {
+    console.error('ZIP export failed:', e.message);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = `<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h1l1-2h6l1 2h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg> Download All PDF Reports (ZIP)`;
+  }
+}
+
+function bulkShareLink() {
+  const btn = document.getElementById('bulk-share-btn');
+  const url = window.location.href.split('?')[0] + '?batch=' + (_bulkBatchId || '');
+  navigator.clipboard.writeText(url).then(() => {
+    btn.classList.add('copied');
+    btn.innerHTML = `<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg> Link Copied!`;
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = `<svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Share Batch Results`;
+    }, 2500);
+  }).catch(() => {
+    prompt('Copy this link:', url);
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Reset back to upload view
+// ---------------------------------------------------------------------------
+function bulkResetToUpload() {
+  if (_bulkPollTimer) { clearInterval(_bulkPollTimer); _bulkPollTimer = null; }
+  _bulkBatchId   = null;
+  _bulkZipFile   = null;
+  _bulkCsvFile   = null;
+  _bulkMethod    = null;
+  _bulkAllResults = [];
+  _bulkSeenRefs  = new Set();
+  // Reset file inputs and status
+  const zi = document.getElementById('bulk-zip-input'); if (zi) zi.value = '';
+  const ci = document.getElementById('bulk-csv-input'); if (ci) ci.value = '';
+  document.getElementById('bulk-zip-status').textContent = '';
+  document.getElementById('bulk-csv-status').textContent = '';
+  ['zip','csv','manual'].forEach(t =>
+    document.getElementById('bulk-card-' + t)?.classList.remove('active'));
+  // Reset progress text color
+  document.getElementById('bulk-progress-text').style.color = '';
+  document.getElementById('bulk-cancel-btn').disabled = false;
+  document.getElementById('bulk-highest-risk-bar').style.display = 'none';
+  // Hide results / progress, show upload
+  document.getElementById('bulk-progress-screen').classList.remove('visible');
+  document.getElementById('bulk-results-screen').classList.remove('visible');
+  document.getElementById('bulk-upload-section').style.display = '';
+  _bulkUpdateSubmitBtn();
+  if (_bulkSlots.length === 0) _bulkShowEmpty();
+}
+
+// Close confirm modal on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') bulkModalClose();
+});
 
 // ---------------------------------------------------------------------------
 // Init
