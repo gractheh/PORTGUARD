@@ -2291,1761 +2291,1449 @@ function escHtml(s) {
 }
 
 // ---------------------------------------------------------------------------
-// Scenario library — randomized pool per demo category
+// Scenario library — rule-aligned demo pools
+// Each scenario is designed to reliably trigger (or avoid) specific scoring
+// rules in api/app.py. See STEP 1 analysis for exact thresholds used.
 // ---------------------------------------------------------------------------
 const SCENARIO_POOLS = {
 
-  // ── CLEAN SHIPMENTS (9 scenarios) ──────────────────────────────────────
+  // ── CLEAN SHIPMENTS ──────────────────────────────────────────────────────
+  // Design target: score = 0.00, decision = APPROVE
+  // Requirements per scenario:
+  //   - Non-CN origin (no Section 301)
+  //   - Port of loading country == origin country (no transshipment)
+  //   - Shipper name on B/L == Seller name on invoice (token overlap >= 0.35)
+  //   - HTS not in any AD/CVD order for that country
+  //   - Unit values well above undervaluation thresholds
+  //   - All required fields present (IOR/EIN, COO, 10-digit HTS, manufacturer)
+  // ---------------------------------------------------------------------------
   clean: [
 
-    // 1 · Consumer Electronics — Vietnam → Los Angeles (MSC)
+    // C1 · Japan LCD Monitors → Long Beach · score 0.00 → APPROVE
     {
-      label: 'Consumer Electronics — Vietnam to Los Angeles (MSC)',
+      label: 'LCD Monitors — Japan to Long Beach (Yokohama → LAX)',
       documents: [
-        { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING - ORIGINAL
+        { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING — NEGOTIABLE
 
-B/L Number: MSCU7249301-24
-Date of Issue: 2024-10-08
+B/L No.: YRKT-2025-0044187
+Date of Issue: 2025-05-12
 
-SHIPPER / EXPORTER
-Viet Star Electronics Manufacturing Co., Ltd.
-18 Thang Long Industrial Park, Dong Anh District
-Hanoi, Vietnam
-Tel: +84-24-3886-0900
+SHIPPER: Nippon Visual Corp.
+4-18 Minato Mirai, Nishi-ku
+Yokohama, Kanagawa 220-0012, Japan
+Tel: +81-45-220-8800
 
 CONSIGNEE
-Horizon Technology Group, Inc.
-1200 Brickell Avenue, Suite 850
-Miami, FL 33131, USA
+Pacific Tech Distributors Inc.
+3500 Figueroa Street, Suite 900
+Los Angeles, CA 90007, USA
+Importer of Record: Pacific Tech Distributors Inc.
+EIN: 87-3240156
 
 NOTIFY PARTY
-Horizon Technology Group, Inc. (same as consignee)
-Attn: Import Operations -- imports@horizontechgroup.com
+Pacific Tech Distributors Inc. (same as consignee)
+Attn: Import Operations
 
-VESSEL / VOYAGE: MSC AURORA / 0124E
-PORT OF LOADING: Cat Lai, Ho Chi Minh City, Vietnam
-PORT OF DISCHARGE: Port of Los Angeles (USLAX), California, USA
-FINAL DESTINATION: Miami, FL, USA (via inland)
-
-PLACE OF RECEIPT: Hanoi, Vietnam (shipper's warehouse)
-ON BOARD DATE: 2024-10-08   ETA: 2024-10-26
+VESSEL: YRSA MANHATTAN   VOYAGE: 042E
+PORT OF LOADING: Yokohama, Japan
+PORT OF DISCHARGE: Port of Long Beach, CA USA
+ON BOARD DATE: 2025-05-16   ETA: 2025-06-02
 
 DESCRIPTION OF GOODS
-Commodity:    Laptop Computers (Notebook PCs)
-HTS Code:     8471.30.0100
-Country of Origin: Vietnam
-No. of Packages: 100 cartons (40 units per carton)
-Total Units:  4,000 units
-Gross Weight: 8,200 KG
-Measurement:  32.4 CBM
-Marks & Numbers: HZT-VN-2024-OCT / 1-100
+Commodity: LCD Monitors, 24-inch widescreen commercial display
+HTS Code: 8528.52.0000
+Country of Origin: Japan
+Manufacturer: Nippon Visual Corp., Yokohama, Japan
+
+No. of Packages: 12 cartons (10 units per carton)
+TOTAL UNITS: 120
+Gross Weight: 960 KG
+Net Weight: 840 KG
+Measurement: 4.8 CBM
 
 FREIGHT: PREPAID
-CARRIER: Mediterranean Shipping Company (MSC)
-Signed for the Carrier: MSC Vietnam Ltd. as Agent
-Date: 2024-10-08`
-      },
-      {
-        filename: 'commercial_invoice.txt',
-        text: `COMMERCIAL INVOICE
+Incoterms: CIF Los Angeles
+Original B/L: 3 originals issued` },
 
-Invoice Number: VSE-2024-10-0047
-Invoice Date: 2024-10-05
+        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
 
-SELLER
-Viet Star Electronics Manufacturing Co., Ltd.
-18 Thang Long Industrial Park, Dong Anh District
-Hanoi, Vietnam
+Invoice No.: NVC-2025-0512-44
+Date: 2025-05-11
+Incoterms: CIF Los Angeles
+
+SELLER: Nippon Visual Corp.
+4-18 Minato Mirai, Nishi-ku
+Yokohama, Kanagawa 220-0012, Japan
 
 BUYER
-Horizon Technology Group, Inc.
-1200 Brickell Avenue, Suite 850
-Miami, FL 33131, USA
+Pacific Tech Distributors Inc.
+3500 Figueroa Street, Suite 900
+Los Angeles, CA 90007, USA
 
-COUNTRY OF ORIGIN: Vietnam
-PORT OF LOADING: Cat Lai, HCMC, Vietnam
-PORT OF DISCHARGE: Los Angeles, CA, USA
-DELIVERY TERMS: FOB Cat Lai, Vietnam (Incoterms 2020)
-PAYMENT TERMS: Letter of Credit, Irrevocable sight
+DESCRIPTION                               HTS CODE      QTY       UNIT PRICE      TOTAL
+LCD Monitor 24-inch Commercial (NV-240C)  8528.52.0000  120 pcs   USD 180.00   USD 21,600.00
 
-LINE ITEM DETAIL
-Line  Description                    HTS Code      Qty     Unit Price  Total
-  1   Laptop Computer, 15.6" FHD     8471.30.0100  4,000   USD 52.00   208,000.00
-      Intel Core i5, 16GB RAM, 512GB SSD, Win 11 Pro
-      Model: VS-PRO-15-2024
-      Country of Origin: Vietnam
-      Manufacturer: Viet Star Electronics Mfg Co Ltd
+QUANTITY: 120 units
+TOTAL INVOICE VALUE: USD 21,600.00
 
-TOTAL INVOICE VALUE:  USD 208,000.00
-
-DECLARATION: We hereby certify that the merchandise described herein is of
-Vietnamese origin and all information in this invoice is true and correct.
-Authorized Signature: [signed] Nguyen Thi Lan, Export Manager
-Date: 2024-10-05`
-      },
-      {
-        filename: 'certificate_of_origin.txt',
-        text: `CERTIFICATE OF ORIGIN (Non-Preferential)
-
-Issued by: Vietnam Chamber of Commerce and Industry (VCCI)
-Certificate No.: VCCI-HN-2024-CO-038821
-Date of Issue: 2024-10-06
-
-EXPORTER / PRODUCER
-Viet Star Electronics Manufacturing Co., Ltd.
-18 Thang Long Industrial Park, Dong Anh District, Hanoi, Vietnam
-
-CONSIGNEE
-Horizon Technology Group, Inc., Miami, FL 33131, USA
-
-MEANS OF TRANSPORT: Ocean - Vessel MSC AURORA
-DEPARTURE DATE: 2024-10-08
-COUNTRY OF DESTINATION: United States of America
-
-GOODS DESCRIPTION
-HS Code    Description                      Qty         Origin
-8471.30    Laptop computers, portable        4,000 pcs   Vietnam
-           (ADP machines, weight < 10kg)
-
-DECLARATION BY EXPORTER: The undersigned hereby declares that the above
-details are correct and that all goods were produced entirely in Vietnam.
-Place and Date: Hanoi, 2024-10-06
-Signature & Stamp: [VCCI Official Seal]`
-      }
-    ]
-  },
-
-  // 2 · LCD Monitors — Japan → Long Beach (Maersk)
-  {
-    label: 'LCD Monitors — Japan to Long Beach (Maersk)',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING - ORIGINAL
-
-B/L Number: MAEU8432109-24
-Date of Issue: 2024-11-15
-
-SHIPPER / EXPORTER
-Fujitsu Component Technology Ltd.
-12-1 Kamikodanaka, Nakahara-ku
-Kawasaki-shi, Kanagawa 211-8588, Japan
-
-CONSIGNEE
-Pacific Technology Distributors LLC
-3400 Wilshire Blvd, Suite 1200
-Los Angeles, CA 90010, USA
-
-NOTIFY PARTY
-Pacific Technology Distributors LLC (same as consignee)
-Attn: Import Compliance -- compliance@pactechdist.com
-
-VESSEL / VOYAGE: MAERSK EINDHOVEN / 404N
-PORT OF LOADING: Port of Yokohama, Japan (JPYOK)
-PORT OF DISCHARGE: Port of Long Beach, CA (USLGB)
-PLACE OF RECEIPT: Kawasaki, Japan
-ON BOARD DATE: 2024-11-15   ETA: 2024-12-03
-
-DESCRIPTION OF GOODS
-Commodity:    Flat Panel LCD Monitors, 27-inch FHD
-HTS Code:     8528.72.6400
 Country of Origin: Japan
-No. of Packages: 150 cartons (10 units per carton)
-Total Units:  1,500 units
-Gross Weight: 9,750 KG
-Measurement:  45.2 CBM
-Marks & Numbers: PTD-JP-NOV24 / C/1-150
+Currency: USD
+Payment: Wire Transfer — 30 days from B/L date
+Manufacturer: Nippon Visual Corp., Yokohama, Japan
+EIN (Importer): 87-3240156
 
-FREIGHT: CIF Long Beach
-CARRIER: Maersk Line A/S
-B/L Type: Original, 3/3 issued
-Signed: Maersk Japan Ltd., as agents for the Carrier
-Date: 2024-11-15` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+Authorized Signature: K. Tanaka, Export Manager
+Company Stamp: [AFFIXED]` },
 
-Invoice Number: FJT-2024-INV-0281
-Invoice Date: 2024-11-12
-Payment Terms: Letter of Credit No. LC-2024-US-PAC-00418 (irrevocable at sight)
+        { filename: 'packing_list.txt', text: `PACKING LIST
 
-SELLER / EXPORTER
-Fujitsu Component Technology Ltd.
-12-1 Kamikodanaka, Nakahara-ku, Kawasaki-shi, Kanagawa 211-8588, Japan
-Exporter Control Ref: JP-EXP-04-8821034
+Ref No.: NVC-PL-2025-0512-44
+Corresponding B/L: YRKT-2025-0044187
+Date: 2025-05-11
 
-BUYER / IMPORTER
-Pacific Technology Distributors LLC
-3400 Wilshire Blvd, Suite 1200, Los Angeles, CA 90010, USA
+Shipper: Nippon Visual Corp., Yokohama, Japan
+Consignee: Pacific Tech Distributors Inc., Los Angeles, CA USA
 
-B/L NUMBER: MAEU8432109-24
-VESSEL: MAERSK EINDHOVEN   VOYAGE: 404N
-PORT OF LOADING: Yokohama, Japan
-PORT OF DISCHARGE: Long Beach, CA, USA
-INCOTERMS 2020: CIF Long Beach
-COUNTRY OF ORIGIN: Japan
+CTN     CONTENTS                           QTY/CTN   TOTAL
+001-012 LCD Monitor 24-inch (NV-240C)      10 pcs    120 units
 
-LINE ITEMS
-No.  Description                           HTS Code      Qty    Unit USD   Total
- 1   LCD Monitor 27-inch FHD IPS Panel    8528.72.6400  1,500  $575.00   $862,500.00
-     Model: FJ-VL27F-2024, 1920x1080
-     Manufacturer: Fujitsu Component Technology Ltd., Japan
+TOTAL CARTONS: 12
+TOTAL UNITS: 120
+GROSS WEIGHT: 960 KG
+NET WEIGHT: 840 KG
+VOLUME: 4.8 CBM
 
-TOTAL INVOICE VALUE (CIF):   USD 862,500.00
-(Freight USD 14,200 + Insurance USD 2,590 included)
+HTS Code: 8528.52.0000
+Country of Origin: Japan
+Marks and Numbers: PTD-LAX-MAY25 / Carton 001-012
+Packing: Each unit foam-padded and boxed; master cartons double-wall corrugated
 
-CERTIFICATION: The undersigned declares that the goods described herein
-originate in Japan and that all particulars are true and correct.
-Signed: Kenji Yamamoto, General Manager, Export Division
-Date: 2024-11-12   [Fujitsu Official Seal]` }
-    ]
-  },
+Prepared by: Shipping Dept., Nippon Visual Corp.` }
+      ]
+    },
 
-  // 3 · Woven Polyester Fabric — Vietnam → New York (MSC)
-  {
-    label: 'Woven Textile — Vietnam to New York (MSC)',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING - NEGOTIABLE
+    // C2 · Germany Automotive Components → Savannah · score 0.00 → APPROVE
+    {
+      label: 'Automotive Components — Germany to Savannah (Hamburg → SAV)',
+      documents: [
+        { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING — NEGOTIABLE
 
-B/L Number: MSCU5891034-24
-Date of Issue: 2024-09-22
+B/L No.: HLCU-HAM-2025-0073821
+Date of Issue: 2025-04-18
 
-SHIPPER / EXPORTER
-Saigon Apparel Export Corp.
-45 Nguyen Hue Boulevard, District 1
-Ho Chi Minh City, Vietnam
+SHIPPER: Bayern Automotive Parts GmbH
+Zeppelinstrasse 41
+80333 Munich, Bavaria, Germany
+Tel: +49-89-2180-5500
 
 CONSIGNEE
-Manhattan Textile Imports Inc.
-530 Seventh Avenue, Suite 1104
-New York, NY 10018, USA
+Atlantic Auto Supply Corp.
+200 Bourne Avenue, Suite 300
+Savannah, GA 31408, USA
+Importer of Record: Atlantic Auto Supply Corp.
+EIN: 58-1943022
 
 NOTIFY PARTY
-Expeditors International, New York Branch
-140 E 45th Street, New York, NY 10017
+Atlantic Auto Supply Corp. (same as consignee)
 
-VESSEL / VOYAGE: MSC ELBE / 240W
-PORT OF LOADING: Cat Lai Container Port, Ho Chi Minh City (VNSGN)
-PORT OF DISCHARGE: Port of New York / Newark (USNYC)
-ON BOARD DATE: 2024-09-22   ETA: 2024-10-15
-
-DESCRIPTION OF GOODS
-Commodity:    Woven Fabric, Polyester >= 85%, Plain Weave, Dyed
-HTS Code:     5407.61.9905
-Country of Origin: Vietnam
-No. of Packages: 1,200 rolls (avg 37.5 m per roll)
-Total Quantity: 45,000 meters
-Gross Weight: 5,400 KG
-Measurement:  18.6 CBM
-Marks & Numbers: MTI-VN-SEP24 / R/1-1200
-
-FREIGHT: FOB Cat Lai (buyer arranges and pays ocean freight)
-CARRIER: Mediterranean Shipping Company S.A.
-B/L Type: 3 Originals Issued
-Signed: MSC Vietnam Ltd., as agents for the Carrier
-Date: 2024-09-22` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
-
-Invoice Number: SAE-2024-SEP-119
-Invoice Date: 2024-09-18
-Payment Terms: Deferred Letter of Credit, 60 days sight
-
-SELLER
-Saigon Apparel Export Corp.
-45 Nguyen Hue Boulevard, District 1, Ho Chi Minh City, Vietnam
-VAT No.: 0315678901
-
-BUYER
-Manhattan Textile Imports Inc.
-530 Seventh Avenue, Suite 1104, New York, NY 10018, USA
-
-VESSEL: MSC ELBE   VOYAGE: 240W   B/L: MSCU5891034-24
-PORT OF LOADING: Cat Lai, Ho Chi Minh City, Vietnam
-PORT OF DISCHARGE: New York / Newark, USA
-DELIVERY TERMS: FOB Cat Lai (Incoterms 2020)
-COUNTRY OF ORIGIN: Vietnam
-
-LINE ITEMS
-Qty           Description                             HTS Code      Unit $    Total
-45,000 m      Polyester Woven Fabric >= 85%           5407.61.9905  $2.80   $126,000.00
-              Plain weave, width 150 cm, dyed
-              Weight: 120 g/sqm, thread count 68x52
-              Colors: Navy 40%, Black 35%, Grey 25%
-              Manufacturer: Saigon Apparel Export Corp., Vietnam
-
-TOTAL INVOICE VALUE (FOB):  USD 126,000.00
-
-We certify the goods are of Vietnamese origin and all details are true and correct.
-Signed: Pham Thi Huong, Deputy Director, International Sales
-Date: 2024-09-18   [Company Seal]` }
-    ]
-  },
-
-  // 4 · Automotive Brake Components — Germany → Savannah (Hapag-Lloyd)
-  {
-    label: 'Auto Parts — Germany to Savannah (Hapag-Lloyd)',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING - ORIGINAL
-
-B/L Number: HLCUHAM2411020112
-Date of Issue: 2024-11-02
-
-SHIPPER / EXPORTER
-Continental Automotive GmbH
-Vahrenwalder Strasse 9, 30165 Hannover, Germany
-EORI: DE123456789012345
-
-CONSIGNEE
-Southeast Auto Distribution LLC
-100 Commerce Parkway, Pooler, GA 31322, USA
-
-NOTIFY PARTY
-Kuehne + Nagel Inc., Atlanta Branch
-3350 Riverwood Parkway SE, Atlanta, GA 30339
-
-VESSEL / VOYAGE: HANNOVER EXPRESS / 081W
-PORT OF LOADING: Hamburg CTA Container Terminal (DEHAM)
-PORT OF DISCHARGE: Garden City Terminal, Port of Savannah, GA (USSAV)
-PLACE OF RECEIPT: Hannover, Germany
-ON BOARD DATE: 2024-11-02   ETA: 2024-11-28
-
-DESCRIPTION OF GOODS
-Commodity:    Automotive Disc Brake Calipers and Pad Sets (complete)
-HTS Code:     8708.30.5060
-Country of Origin: Germany
-No. of Packages: 240 cartons (20 sets per carton)
-Total Units:  4,800 units (2,400 caliper units + 2,400 pad sets)
-Gross Weight: 14,400 KG
-Measurement:  38.8 CBM
-Marks & Numbers: SEAD-DE-NOV24 / C/1-240
-
-FREIGHT: DAP Savannah, GA (freight prepaid by shipper)
-CARRIER: Hapag-Lloyd AG
-B/L Type: Original, 3/3 issued
-Signed: Hapag-Lloyd (Deutschland) GmbH, Hamburg
-Date: 2024-11-02` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
-
-Invoice Number: CAG-2024-1028-0057
-Invoice Date: 2024-10-28
-Payment Terms: Open Account, Net 60 days
-
-SELLER
-Continental Automotive GmbH
-Vahrenwalder Strasse 9, 30165 Hannover, Germany
-VAT-ID: DE 123456789   EORI: DE123456789012345
-
-BUYER
-Southeast Auto Distribution LLC
-100 Commerce Parkway, Pooler, GA 31322, USA
-
-VESSEL: HANNOVER EXPRESS   VOYAGE: 081W   B/L: HLCUHAM2411020112
+VESSEL: HAPAG CHICAGO   VOYAGE: 018W
 PORT OF LOADING: Hamburg, Germany
-PORT OF DISCHARGE: Savannah, GA, USA
-DELIVERY TERMS: DAP Savannah, Georgia (Incoterms 2020)
-COUNTRY OF ORIGIN: Germany
+PORT OF DISCHARGE: Port of Savannah, GA USA
+ON BOARD DATE: 2025-04-22   ETA: 2025-05-10
 
-LINE ITEMS
-No.  Description                                  HTS Code      Qty    Unit USD     Total
- 1   Disc Brake Caliper, 4-piston, front axle     8708.30.5060  2,400  $52.00    $124,800.00
-     Part No.: CAG-BC-FRT-4P-2024 -- SUV/light truck
- 2   Disc Brake Pad Set, ceramic OEM spec         8708.30.5060  2,400  $28.00     $67,200.00
-     Part No.: CAG-BP-CER-OEM-2024 -- matched to above calipers
+DESCRIPTION OF GOODS
+Commodity: Automotive transmission seal kits and gasket sets
+HTS Code: 8708.99.8180
+Country of Origin: Germany
+Manufacturer: Bayern Automotive Parts GmbH, Munich, Germany
 
-TOTAL GROSS WEIGHT: 14,400 KG   VOLUME: 38.8 CBM
-TOTAL INVOICE VALUE (DAP SAVANNAH): USD 384,000.00
+No. of Packages: 50 cartons (10 sets per carton)
+TOTAL UNITS: 500
+Gross Weight: 2,200 KG
+Net Weight: 1,980 KG
+Measurement: 11.4 CBM
 
-Certified: Goods originate in Germany, in conformity with EU export regulations.
-Signed: Hans-Dieter Brandt, Export Manager
-Date: 2024-10-28   [Continental Automotive GmbH Seal]` },
-      { filename: 'certificate_of_origin.txt', text: `MOVEMENT CERTIFICATE EUR.1
+FREIGHT: PREPAID
+Incoterms: CIF Savannah
+Original B/L: 3 originals issued` },
 
-Certificate No.: EUR1-DE-HH-2024-0388012
-Issued by: Hamburg Chamber of Commerce (Handelskammer Hamburg)
-Date of Issue: 2024-10-30
+        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+
+Invoice No.: BAP-2025-0418-73
+Date: 2025-04-17
+Incoterms: CIF Savannah
+
+SELLER: Bayern Automotive Parts GmbH
+Zeppelinstrasse 41
+80333 Munich, Bavaria, Germany
+
+BUYER
+Atlantic Auto Supply Corp.
+200 Bourne Avenue, Suite 300
+Savannah, GA 31408, USA
+
+DESCRIPTION                                   HTS CODE      QTY       UNIT PRICE     TOTAL
+Transmission Seal Kit (Part No. BAP-T440)    8708.99.8180  500 sets  USD 88.00   USD 44,000.00
+
+QUANTITY: 500 units
+TOTAL INVOICE VALUE: USD 44,000.00
+
+Country of Origin: Germany
+Currency: USD
+Payment: Letter of Credit — 60 days sight
+Manufacturer: Bayern Automotive Parts GmbH, Munich, Germany
+EIN (Importer): 58-1943022
+
+Authorized Signature: H. Schreiber, Export Director
+Company Stamp: [AFFIXED]` },
+
+        { filename: 'eur1_certificate_of_origin.txt', text: `EUR.1 MOVEMENT CERTIFICATE
+
+Certificate No.: DE-EUR1-2025-0094471
+Issued by: Hamburg Chamber of Commerce and Industry
+Date of Issue: 2025-04-17
 
 EXPORTER
-Continental Automotive GmbH
-Vahrenwalder Strasse 9, 30165 Hannover, Germany
+Bayern Automotive Parts GmbH
+Zeppelinstrasse 41, 80333 Munich, Germany
 
 CONSIGNEE
-Southeast Auto Distribution LLC, Pooler, GA 31322, USA
+Atlantic Auto Supply Corp.
+200 Bourne Avenue, Savannah, GA 31408, USA
 
-TRANSPORT
-Vessel: HANNOVER EXPRESS   Voyage: 081W
+TRANSPORT DETAILS
+Vessel: HAPAG CHICAGO, Voyage 018W
 Port of Loading: Hamburg, Germany
 Port of Discharge: Savannah, GA, USA
 
 GOODS DESCRIPTION
-No.  HS Heading  Description                       Net Weight   Gross Weight
- 1   8708.30     Disc brake calipers, automotive    6,720 KG     7,200 KG
- 2   8708.30     Disc brake pad sets, automotive    6,480 KG     7,200 KG
-                 Total: 4,800 units                13,200 KG    14,400 KG
+Automotive transmission seal kits and gasket sets
+HTS Code: 8708.99.8180
+Net Weight: 1,980 KG
 
-COUNTRY OF ORIGIN: Federal Republic of Germany (European Union)
-The goods originate in Germany under EU preferential origin rules.
+DECLARATION
+The exporter of the products covered by this document
+declares that these products originate in Germany
+and comply with the origin rules specified.
 
-Authorized Signatory: [Signed]
-Hamburg Chamber of Commerce Official Stamp
-Date: 2024-10-30` }
-    ]
-  },
+Country of Origin: Germany
 
-  // 5 · Pharmaceutical API — Ireland → Houston (CMA CGM)
-  {
-    label: 'Pharmaceutical API — Ireland to Houston (CMA CGM)',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING - ORIGINAL
+Signature of Exporter: [SIGNED]
+Customs Authority Endorsement: Hamburg ZA-2025-144   [STAMPED]` }
+      ]
+    },
 
-B/L Number: CMDUCRK2408240001
-Date of Issue: 2024-08-24
+    // C3 · Ireland Pharmaceuticals → Houston · score 0.00 → APPROVE
+    {
+      label: 'Pharmaceutical APIs — Ireland to Houston (Dublin → HOU)',
+      documents: [
+        { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING — NEGOTIABLE
 
-SHIPPER / EXPORTER
-AbbVie Ireland Unlimited Company
-Ballytivnan Industrial Estate
-Sligo, F91 VW86, Ireland
+B/L No.: CMDU-DUB-2025-0018844
+Date of Issue: 2025-06-03
+
+SHIPPER: Limerick BioPharma Ltd
+IDA Business Park, Raheen
+Limerick V94 T9PX, Ireland
+Tel: +353-61-302-800
 
 CONSIGNEE
-Houston Medical Supply Corp
-12501 East Freeway, Suite 300
-Houston, TX 77015, USA
-FDA Facility Reg: 3006781234
+Gulf Coast Pharmaceutical Supply Inc.
+One Greenway Plaza, Suite 150
+Houston, TX 77046, USA
+Importer of Record: Gulf Coast Pharmaceutical Supply Inc.
+EIN: 76-0481233
 
 NOTIFY PARTY
-DB Schenker USA Inc., Houston Branch
-12000 Almeda Road, Houston, TX 77045
+Gulf Coast Pharmaceutical Supply Inc. (same as consignee)
 
-VESSEL / VOYAGE: CMA CGM MARCO POLO / 0114E
-PORT OF LOADING: Port of Cork, Ringaskiddy Terminal, Ireland (IECOB)
-PORT OF DISCHARGE: Port of Houston, Barbours Cut Terminal (USHOU)
-ON BOARD DATE: 2024-08-24   ETA: 2024-09-18
+VESSEL: CMA CGM CONCORDE   VOYAGE: FAL4-022N
+PORT OF LOADING: Dublin Port, Ireland
+PORT OF DISCHARGE: Port of Houston, TX USA
+ON BOARD DATE: 2025-06-07   ETA: 2025-06-24
 
 DESCRIPTION OF GOODS
-Commodity:    Pharmaceutical Active Ingredient (API), Bulk
-              Amoxicillin Trihydrate, Bulk Powder
-HTS Code:     2941.10.5000
+Commodity: Pharmaceutical medicaments — amoxicillin capsules (finished dosage)
+HTS Code: 3004.20.0020
 Country of Origin: Ireland
-No. of Packages: 36 fiber drums (50 KG net per drum)
-Total Net Weight: 1,800 KG   Gross Weight: 2,100 KG
-Measurement:  4.2 CBM
-Temperature requirement: +2 to +8 degrees C (cold chain)
-Marks & Numbers: HMS-API-AUG24 / D/001-036
+Manufacturer: Limerick BioPharma Ltd, Limerick, Ireland
 
-FREIGHT: CIP Houston (carrier paid, insurance included)
-CARRIER: CMA CGM S.A.
-B/L Type: 3 Originals Issued
-Signed: CMA CGM Ireland Ltd., as agents
-Date: 2024-08-24` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+No. of Packages: 40 cartons (50 units per carton)
+TOTAL UNITS: 2,000
+Gross Weight: 480 KG
+Net Weight: 420 KG
+Measurement: 2.6 CBM
 
-Invoice Number: ABV-IRL-2024-08-0044
-Invoice Date: 2024-08-20
-Payment Terms: Letter of Credit (irrevocable, at sight)
+Temperature Control: Ambient (15-25 degrees C)
+FREIGHT: PREPAID
+Incoterms: CIF Houston
+Original B/L: 3 originals issued` },
 
-SELLER / MANUFACTURER
-AbbVie Ireland Unlimited Company
-Ballytivnan Industrial Estate, Sligo, F91 VW86, Ireland
-EU EORI: IE6388047S
+        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
 
-BUYER / IMPORTER
-Houston Medical Supply Corp
-12501 East Freeway, Suite 300, Houston, TX 77015, USA
+Invoice No.: LBP-2025-0603-18
+Date: 2025-06-02
+Incoterms: CIF Houston
 
-B/L: CMDUCRK2408240001   VESSEL: CMA CGM MARCO POLO   VOYAGE: 0114E
-PORT OF LOADING: Cork (Ringaskiddy), Ireland
-PORT OF DISCHARGE: Houston, TX, USA
-INCOTERMS 2020: CIP Houston, Texas
-COUNTRY OF ORIGIN: Ireland
-
-LINE ITEMS
-No.  Description                              HTS Code       Qty Net     Unit/KG     Total
- 1   Amoxicillin Trihydrate, bulk powder       2941.10.5000   1,800 KG    $720.00   $1,296,000.00
-     CAS No.: 61336-70-7
-     BP/USP/EP pharmaceutical grade
-     Batch Nos.: ABV-AT-2024-081 thru ABV-AT-2024-088
-     Expiry: 2026-08-31   Storage: 2-8 degrees C
-     Mfr: AbbVie Ireland Unlimited Company, Sligo, Ireland
-
-TOTAL NET WEIGHT: 1,800 KG   GROSS WEIGHT: 2,100 KG   VOLUME: 4.2 CBM
-TOTAL INVOICE VALUE: USD 1,296,000.00
-
-Certificate of Analysis, GMP documentation, and FDA Prior Notice enclosed.
-This shipment complies with all applicable export regulations.
-Signed: Siobhan Murphy, Regulatory Affairs & Export Manager
-Date: 2024-08-20   [AbbVie Ireland Official Seal]` }
-    ]
-  },
-
-  // 6 · Upholstered Furniture — Italy → Miami (Evergreen)
-  {
-    label: 'Luxury Furniture — Italy to Miami (Evergreen)',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING - ORIGINAL
-
-B/L Number: EGHU9021483-24
-Date of Issue: 2024-07-19
-
-SHIPPER / EXPORTER
-Natuzzi S.p.A.
-S.S. 7, Zona Industriale
-70029 Santeramo in Colle (BA), Italy
-
-CONSIGNEE
-InteriorStyle Americas Inc.
-1001 Brickell Bay Drive, Suite 1800
-Miami, FL 33131, USA
-
-NOTIFY PARTY
-Panalpina World Transport (Holding) Ltd.
-1700 NW 64th Street, Fort Lauderdale, FL 33309
-
-VESSEL / VOYAGE: EVER GENTLE / 0043-024E
-PORT OF LOADING: Voltri Terminal Europa, Genoa, Italy (ITGOA)
-PORT OF DISCHARGE: Port of Miami, FL (USMIA)
-ON BOARD DATE: 2024-07-19   ETA: 2024-08-14
-
-DESCRIPTION OF GOODS
-Commodity:    Upholstered Sofas, Loveseats, Accent Chairs (wood frame, leather)
-HTS Code:     9401.61.6010
-Country of Origin: Italy
-No. of Packages: 320 packages (cartons and moving pads)
-Total Units:  240 pieces (80 sofa sets, 80 loveseats, 80 chairs)
-Gross Weight: 19,200 KG
-Measurement:  220.0 CBM
-Marks & Numbers: ISA-IT-JUL24 / P/001-320
-
-FREIGHT: CFR Miami (ocean freight prepaid)
-CARRIER: Evergreen Marine Corporation (Taiwan) Ltd.
-B/L Type: 3 Originals Issued
-Signed: Evergreen Shipping Agency (Italy) S.r.l., as agents
-Date: 2024-07-19` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
-
-Invoice Number: NTZ-2024-IT-00412
-Invoice Date: 2024-07-15
-Payment Terms: 30% advance deposit + 70% against presentation of shipping documents
-
-SELLER
-Natuzzi S.p.A.
-S.S. 7, Zona Industriale, 70029 Santeramo in Colle (BA), Italy
-P.IVA: IT06237670722   EORI: IT06237670722
+SELLER: Limerick BioPharma Ltd
+IDA Business Park, Raheen
+Limerick V94 T9PX, Ireland
 
 BUYER
-InteriorStyle Americas Inc.
-1001 Brickell Bay Drive, Suite 1800, Miami, FL 33131, USA
+Gulf Coast Pharmaceutical Supply Inc.
+One Greenway Plaza, Suite 150
+Houston, TX 77046, USA
 
-B/L: EGHU9021483-24   VESSEL: EVER GENTLE   VOYAGE: 0043-024E
-PORT OF LOADING: Genoa (Voltri), Italy
-PORT OF DISCHARGE: Miami, FL, USA
-DELIVERY TERMS: CFR Miami (Incoterms 2020)
-COUNTRY OF ORIGIN: Italy (all goods produced at Santeramo facility)
+DESCRIPTION                                    HTS CODE      QTY         UNIT PRICE       TOTAL
+Amoxicillin Capsules 500mg — 100-ct blister   3004.20.0020  2,000 pks   USD 220.00   USD 440,000.00
 
-LINE ITEMS
-No.  Description                               HTS Code      Qty   Unit USD    Total
- 1   3-seater sofa, Model Re-vive 5290C        9401.61.6010   80   $1,800.00  $144,000.00
-     Leather upholstery, Walnut frame
- 2   2-seater loveseat, Model Re-vive 5280B    9401.61.6010   80   $1,400.00  $112,000.00
-     Leather upholstery, Walnut frame
- 3   Accent chair, Model Re-vive 5210A         9401.61.6010   80   $1,000.00   $80,000.00
-     Leather upholstery, Walnut frame
- 4   Replacement cushion sets (matched)        9401.90.5000   80     $300.00   $24,000.00
+QUANTITY: 2000 units
+TOTAL INVOICE VALUE: USD 440,000.00
 
-SUBTOTAL (FOB Genoa):  USD 360,000.00
-OCEAN FREIGHT:         USD 216,000.00 (included, CFR terms)
-TOTAL INVOICE VALUE:   USD 576,000.00
+Country of Origin: Ireland
+Currency: USD
+Payment: Wire Transfer — 30 days from B/L date
+Manufacturer: Limerick BioPharma Ltd, Limerick, Ireland
+EIN (Importer): 76-0481233
+FDA Drug Registration No.: 301-11492 (on file with FDA)
 
-Certified: All goods manufactured entirely in Italy.
-Signed: Marco Boniello, Chief Commercial Officer
-Date: 2024-07-15   [Natuzzi S.p.A. Official Seal]` }
-    ]
-  },
+Authorized Signature: S. O'Brien, Export Compliance Manager
+Company Stamp: [AFFIXED]` },
 
-  // 7 · Fresh Hass Avocados — Mexico → Long Beach (ONE)
-  {
-    label: 'Fresh Produce — Mexico to Long Beach (ONE)',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING - ORIGINAL (REEFER)
+        { filename: 'certificate_of_analysis.txt', text: `CERTIFICATE OF ANALYSIS
 
-B/L Number: ONEY24031200078
-Date of Issue: 2024-03-12
+Certificate No.: LBP-COA-2025-1804
+Product: Amoxicillin Capsules 500mg — 100-ct blister
+Batch No.: LBP-AX-2025-0401
+Manufacturing Date: 2025-04-01
+Expiry Date: 2027-03-31
 
-SHIPPER / EXPORTER
-Grupo Aguacates del Pacifico S.A. de C.V.
-Carretera Uruapan-Patzcuaro Km 2.5
-Uruapan, Michoacan 60080, Mexico
-RFC: GAP-140315-AB2
+MANUFACTURER
+Limerick BioPharma Ltd
+IDA Business Park, Raheen, Limerick, Ireland
+EU GMP License No.: IE-MIA-2019-0042
 
-CONSIGNEE
-Pacific Fresh Distribution LLC
-2400 Wilmington Avenue, Carson, CA 90745, USA
+REGULATORY COMPLIANCE
+European Pharmacopoeia (Ph. Eur.) 10th Edition
+ICH Q7 Good Manufacturing Practice
+FDA Drug Establishment Registration No.: 301-11492
 
-NOTIFY PARTY
-Pacific Fresh Distribution LLC (same as consignee)
-Attn: Produce Receiving -- receiving@pacfreshdist.com
+ANALYTICAL RESULTS
+Test                         Specification       Result          Status
+Identification (HPLC)        Matches reference   Confirmed       PASS
+Assay (% of label claim)     98.0-102.0%         100.2%          PASS
+Related substances           NMT 1.0%            0.12%           PASS
+Water content (Karl Fischer) NMT 2.0%            0.88%           PASS
+Microbial limits             Complies Ph. Eur.   Complies        PASS
+Dissolution (30 min)         NLT 80%             96.4%           PASS
 
-VESSEL / VOYAGE: ONE HARMONY / 021W
-PORT OF LOADING: Port of Manzanillo, Colima, Mexico (MXZLO)
-PORT OF DISCHARGE: Port of Long Beach, CA (USLGB)
-ON BOARD DATE: 2024-03-12   ETA: 2024-03-16
+CONCLUSION: Batch meets all specifications. Released for export.
 
-DESCRIPTION OF GOODS
-Commodity:    Fresh Hass Avocados (Persea americana, cv. Hass)
-HTS Code:     0804.40.0000
-Country of Origin: Mexico (Michoacan State, SENASICA authorized)
-No. of Packages: 800 cartons (10 KG net per carton)
-Total Net Weight: 8,000 KG
-Gross Weight: 8,960 KG
-Measurement:  12.8 CBM
-Container type: 1 x 40-ft High Cube Reefer, pre-cooled 7 degrees C
-Temperature setting: 7 degrees C / 45 degrees F
-Marks & Numbers: PFD-MX-MAR24 / C/1-800
+QC Manager Signature: Dr. M. Fitzgerald   [SIGNED]
+Date: 2025-05-28
 
-FREIGHT: CFR Long Beach
-CARRIER: Ocean Network Express (ONE)
-B/L Type: Original, 3 originals issued
-Signed: ONE Mexico S.A. de C.V., as agents for the Carrier
-Date: 2024-03-12` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+Country of Origin: Ireland
+HTS Code: 3004.20.0020` }
+      ]
+    },
 
-Invoice Number: GAP-MX-2024-MAR-0088
-Invoice Date: 2024-03-10
-Payment Terms: Open Account, net 14 days after delivery
+    // C4 · South Korea Conveyor Equipment → Seattle · score 0.00 → APPROVE
+    {
+      label: 'Conveyor Equipment — South Korea to Seattle (Busan → SEA)',
+      documents: [
+        { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING — NEGOTIABLE
 
-SELLER / EXPORTER
-Grupo Aguacates del Pacifico S.A. de C.V.
-Carretera Uruapan-Patzcuaro Km 2.5, Uruapan, Michoacan 60080, Mexico
+B/L No.: YMLU-PUS-2025-0031167
+Date of Issue: 2025-03-20
 
-BUYER / IMPORTER
-Pacific Fresh Distribution LLC
-2400 Wilmington Avenue, Carson, CA 90745, USA
-
-B/L: ONEY24031200078   VESSEL: ONE HARMONY   VOYAGE: 021W
-PORT OF LOADING: Manzanillo, Colima, Mexico
-PORT OF DISCHARGE: Long Beach, CA, USA
-DELIVERY TERMS: CFR Long Beach (Incoterms 2020)
-COUNTRY OF ORIGIN: Mexico (State of Michoacan)
-
-LINE ITEMS
-Qty          Description                               HTS Code      Unit/KG    Total
-8,000 KG     Fresh Hass Avocados, Size 60 count        0804.40.0000  $4.00/KG  $32,000.00
-             800 cartons x 10 KG net
-             USDA/APHIS Pest Risk Permit No.: P330-18-00204
-             SENASICA Phytosanitary Certificate No.: MICH-2024-03-00881
-             Grower/Packer: Grupo Aguacates del Pacifico
-
-TOTAL NET WEIGHT: 8,000 KG   GROSS WEIGHT: 8,960 KG
-TOTAL INVOICE VALUE (CFR): USD 32,000.00
-
-Signed: Carlos Mendoza Rios, Export Manager
-Date: 2024-03-10   [Official Company Seal]` },
-      { filename: 'phytosanitary_certificate.txt', text: `PHYTOSANITARY CERTIFICATE
-
-Certificate Number: MICH-2024-03-00881
-Issuing Authority: Servicio Nacional de Sanidad, Inocuidad y Calidad
-                   Agroalimentaria (SENASICA)
-                   Delegacion Regional Michoacan, Mexico
-Date of Issue: 2024-03-09
-
-EXPORTER / CONSIGNOR
-Grupo Aguacates del Pacifico S.A. de C.V.
-Uruapan, Michoacan, Mexico
-
-IMPORTER / CONSIGNEE
-Pacific Fresh Distribution LLC, Carson, CA, USA
-
-DECLARED NAME OF PRODUCE: Persea americana Mill, cv. Hass (Avocado)
-QUANTITY AND DESCRIPTION: 800 cartons, 8,000 KG net, fresh fruit
-BOTANICAL NAME OF PLANTS: Persea americana
-COUNTRY OF ORIGIN: United Mexican States (Michoacan State)
-DECLARED PORT OF ENTRY: Port of Long Beach, California, USA
-NAME OF CONVEYANCE: ONE HARMONY, Voyage 021W
-
-TREATMENT / DISINFECTION
-Treatment: Cold treatment per USDA APHIS PPQ 305
-Temperature: Continuous 7 degrees C from pack house to port
-
-ADDITIONAL DECLARATION:
-This is to certify that the plants or plant products described herein have been
-inspected by authorized SENASICA officials and are considered to be free from
-quarantine pests and practically free from other injurious pests, in conformity
-with the current phytosanitary requirements of the United States of America.
-
-Authorized Inspector: Ing. Rosa Elena Fuentes Vargas
-SENASICA Official Seal and Signature
-Date: 2024-03-09` }
-    ]
-  },
-
-  // 8 · Industrial Pumps — South Korea → Seattle (Yang Ming)
-  {
-    label: 'Industrial Machinery — South Korea to Seattle (Yang Ming)',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING - ORIGINAL
-
-B/L Number: YMLU8712039-24
-Date of Issue: 2024-06-08
-
-SHIPPER / EXPORTER
-Doosan Fluid Systems Co., Ltd.
-Doosan Tower, 275 Eulji-ro, Jung-gu
-Seoul 04617, Republic of Korea
+SHIPPER: Daewon Industrial Systems Corp.
+14 Gamgyo-ro, Gangseo-gu
+Busan 46757, South Korea
+Tel: +82-51-831-9200
 
 CONSIGNEE
-Pacific Northwest Industrial Supply Corp.
-1200 Terminal Street
-Seattle, WA 98101, USA
+Pacific Northwest Automation Inc.
+1600 Industry Way, Suite 200
+Seattle, WA 98108, USA
+Importer of Record: Pacific Northwest Automation Inc.
+EIN: 91-1522047
 
 NOTIFY PARTY
-Expeditors International of Washington, Inc.
-1015 Third Avenue, Seattle, WA 98104
+Pacific Northwest Automation Inc. (same as consignee)
 
-VESSEL / VOYAGE: YM UNIFORMITY / 045E
-PORT OF LOADING: Busan New Port, South Korea (KRPUS)
-PORT OF DISCHARGE: Port of Seattle, WA (USSEA)
-ON BOARD DATE: 2024-06-08   ETA: 2024-06-30
+VESSEL: YM UNANIMITY   VOYAGE: 033E
+PORT OF LOADING: Busan Port, South Korea
+PORT OF DISCHARGE: Port of Seattle, WA USA
+ON BOARD DATE: 2025-03-24   ETA: 2025-04-06
 
 DESCRIPTION OF GOODS
-Commodity:    Industrial Centrifugal Pumps with Electric Motor Drives
-HTS Code:     8413.50.0090
-Country of Origin: Republic of Korea
-No. of Packages: 48 wooden crates (1 unit per crate)
-Total Units:  48 units
-Gross Weight: 11,520 KG
-Measurement:  52.0 CBM
-Marks & Numbers: PNI-KR-JUN24 / CR/1-48
+Commodity: Belt conveyor systems with motorized drive units
+HTS Code: 8428.33.0000
+Country of Origin: South Korea
+Manufacturer: Daewon Industrial Systems Corp., Busan, South Korea
 
-FREIGHT: CFR Seattle (ocean freight prepaid)
-CARRIER: Yang Ming Marine Transport Corporation
-B/L Type: Original, 3/3 issued
-Signed: Yang Ming Korea Co., Ltd., as agents for the Carrier
-Date: 2024-06-08` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+No. of Packages: 3 heavy-lift crates
+TOTAL UNITS: 3
+Gross Weight: 5,400 KG
+Net Weight: 4,860 KG
+Measurement: 28.4 CBM
 
-Invoice Number: DFS-KR-2024-0605-INV
-Invoice Date: 2024-06-05
-Payment Terms: Irrevocable Letter of Credit, sight
+FREIGHT: PREPAID
+Incoterms: CIF Seattle
+Original B/L: 1 original issued (telex released)` },
 
-SELLER / EXPORTER
-Doosan Fluid Systems Co., Ltd.
-Doosan Tower, 275 Eulji-ro, Jung-gu, Seoul 04617, Korea
-Korea Exporter Code: KR-EXP-2024-00441
+        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
 
-BUYER / IMPORTER
-Pacific Northwest Industrial Supply Corp.
-1200 Terminal Street, Seattle, WA 98101, USA
+Invoice No.: DIS-2025-0320-31
+Date: 2025-03-19
+Incoterms: CIF Seattle
 
-B/L: YMLU8712039-24   VESSEL: YM UNIFORMITY   VOYAGE: 045E
-PORT OF LOADING: Busan New Port, South Korea
-PORT OF DISCHARGE: Seattle, WA, USA
-DELIVERY TERMS: CFR Seattle (Incoterms 2020)
-COUNTRY OF ORIGIN: Republic of Korea
+SELLER: Daewon Industrial Systems Corp.
+14 Gamgyo-ro, Gangseo-gu
+Busan 46757, South Korea
 
-LINE ITEMS
-No.  Description                                     HTS Code      Qty   Unit USD    Total
- 1   Centrifugal Pump, 200 HP, 1800 RPM              8413.50.0090   24   $10,500.00  $252,000.00
-     Model: DFS-CP200H, stainless impeller, ANSI flanges
-     Serial Nos.: DFS-CP-2024-0601 thru DFS-CP-2024-0624
- 2   Centrifugal Pump, 150 HP, 3600 RPM              8413.50.0090   24   $16,500.00  $396,000.00
-     Model: DFS-CP150HV, API 610 compliant
-     Serial Nos.: DFS-CP-2024-0625 thru DFS-CP-2024-0648
+BUYER
+Pacific Northwest Automation Inc.
+1600 Industry Way, Suite 200
+Seattle, WA 98108, USA
 
-TOTAL UNITS: 48   TOTAL GROSS WEIGHT: 11,520 KG   VOLUME: 52.0 CBM
-TOTAL INVOICE VALUE (CFR): USD 648,000.00
+DESCRIPTION                                  HTS CODE      QTY    UNIT PRICE        TOTAL
+Belt Conveyor System (Model DIS-B1200-3m)   8428.33.0000  3 pcs  USD 42,000.00  USD 126,000.00
 
-Manufactured and tested at Doosan Fluid Systems, Changwon Plant, Korea.
-All equipment certified to ANSI/HI and API standards.
-Signed: Park Jun-seo, Senior Manager, Export Sales
-Date: 2024-06-05   [Doosan Fluid Systems Official Seal]` }
-    ]
-  },
+QUANTITY: 3 units
+TOTAL INVOICE VALUE: USD 126,000.00
 
-  // 9 · Vitamin D3 Concentrate — Netherlands → Charleston (ZIM)
-  {
-    label: 'Specialty Chemicals — Netherlands to Charleston (ZIM)',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING - ORIGINAL
+Country of Origin: South Korea
+Currency: USD
+Payment: Irrevocable L/C — 45 days sight
+Manufacturer: Daewon Industrial Systems Corp., Busan, South Korea
+EIN (Importer): 91-1522047
 
-B/L Number: ZIMUCHM2405170033
-Date of Issue: 2024-05-17
+Authorized Signature: J.H. Park, Director of Exports
+Company Stamp: [AFFIXED]` },
 
-SHIPPER / EXPORTER
-dsm-firmenich Nederland B.V.
-Urmonderbaan 22
-6167 RD Geleen, Netherlands
+        { filename: 'packing_list.txt', text: `PACKING LIST
+
+Ref No.: DIS-PL-2025-0320-31
+Corresponding B/L: YMLU-PUS-2025-0031167
+Date: 2025-03-19
+
+Shipper: Daewon Industrial Systems Corp., Busan, South Korea
+Consignee: Pacific Northwest Automation Inc., Seattle, WA USA
+
+CRATE   CONTENTS                                    WEIGHT (KG)   DIMS (CM)
+001     Belt Conveyor System DIS-B1200-3m Unit 1    1,800 KG      310x90x140
+002     Belt Conveyor System DIS-B1200-3m Unit 2    1,800 KG      310x90x140
+003     Belt Conveyor System DIS-B1200-3m Unit 3    1,800 KG      310x90x140
+
+TOTAL CRATES: 3
+TOTAL UNITS: 3
+GROSS WEIGHT: 5,400 KG
+NET WEIGHT: 4,860 KG
+VOLUME: 28.4 CBM
+
+HTS Code: 8428.33.0000
+Country of Origin: South Korea
+Marks and Numbers: PNAI-SEA-MAR25 / Crate 001-003
+Packing: Steel frame, bolted and braced; OWS (overweight shipment) handling required
+
+Prepared by: K.Y. Choi, Logistics Dept., Daewon Industrial Systems Corp.` }
+      ]
+    },
+
+    // C5 · Netherlands Specialty Chemicals → Charleston · score 0.00 → APPROVE
+    {
+      label: 'Specialty Chemicals — Netherlands to Charleston (Rotterdam → CHS)',
+      documents: [
+        { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING — NEGOTIABLE
+
+B/L No.: ZIMU-RTM-2025-0055604
+Date of Issue: 2025-07-08
+
+SHIPPER: Holland Chem Solutions BV
+Westblaak 180
+3012 KN Rotterdam, Netherlands
+Tel: +31-10-411-7700
 
 CONSIGNEE
-Carolina Nutraceutical Distributors LLC
-500 Wando Park Blvd, Suite 200
-Mt. Pleasant, SC 29464, USA
+Southeast Chemical Distributors LLC
+8200 Rivers Avenue, Suite 400
+North Charleston, SC 29406, USA
+Importer of Record: Southeast Chemical Distributors LLC
+EIN: 57-1089443
 
 NOTIFY PARTY
-Expeditors International, Charleston Branch
-5000 International Blvd, North Charleston, SC 29418
+Southeast Chemical Distributors LLC (same as consignee)
 
-VESSEL / VOYAGE: ZIM PHOENIX / 036W
-PORT OF LOADING: Port of Rotterdam, Maasvlakte II (NLRTM)
-PORT OF DISCHARGE: Port of Charleston, SC (USCHS)
-ON BOARD DATE: 2024-05-17   ETA: 2024-06-10
+VESSEL: ZIM CHARLESTON   VOYAGE: 016W
+PORT OF LOADING: Rotterdam, Netherlands
+PORT OF DISCHARGE: Port of Charleston, SC USA
+ON BOARD DATE: 2025-07-12   ETA: 2025-07-28
 
 DESCRIPTION OF GOODS
-Commodity:    Vitamin D3 (Cholecalciferol) Concentrate, 1,000,000 IU/g
-              Bulk powder in hermetically sealed drums
-HTS Code:     2936.29.2000
+Commodity: Industrial disinfectant concentrate — sodium hypochlorite solution
+HTS Code: 3808.94.5000
 Country of Origin: Netherlands
-IMDG: Not classified as DG for ocean freight (limited qty exemption)
-No. of Packages: 90 fiber drums (50 KG net per drum)
-Total Net Weight: 4,500 KG   Gross Weight: 5,200 KG
-Measurement:  8.4 CBM
-Marks & Numbers: CND-NL-MAY24 / D/001-090
+Manufacturer: Holland Chem Solutions BV, Rotterdam, Netherlands
 
-FREIGHT: CIF Charleston
-CARRIER: ZIM Integrated Shipping Services Ltd.
-B/L Type: 3 Originals Issued
-Signed: ZIM Benelux B.V., as agents for the Carrier
-Date: 2024-05-17` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+No. of Packages: 200 HDPE drums (200L each)
+TOTAL UNITS: 200
+Gross Weight: 44,000 KG
+Net Weight: 40,000 KG
+Measurement: 42.0 CBM
 
-Invoice Number: DSM-NL-2024-05-0892
-Invoice Date: 2024-05-14
-Payment Terms: Wire transfer, net 30 days from invoice date
+Hazmat: UN1791 (CORROSIVE), IMDG Class 8, PG III
+FREIGHT: PREPAID
+Incoterms: CIF Charleston
+Original B/L: 3 originals issued` },
 
-SELLER / MANUFACTURER
-dsm-firmenich Nederland B.V.
-Urmonderbaan 22, 6167 RD Geleen, Netherlands
-EU EORI: NL001234567B01   VAT: NL001234567B01
+        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
 
-BUYER / IMPORTER
-Carolina Nutraceutical Distributors LLC
-500 Wando Park Blvd, Suite 200, Mt. Pleasant, SC 29464, USA
-FDA Facility Registration: 19018940214
+Invoice No.: HCS-2025-0708-55
+Date: 2025-07-07
+Incoterms: CIF Charleston
 
-B/L: ZIMUCHM2405170033   VESSEL: ZIM PHOENIX   VOYAGE: 036W
-PORT OF LOADING: Rotterdam (Maasvlakte II), Netherlands
-PORT OF DISCHARGE: Charleston, SC, USA
-INCOTERMS 2020: CIF Charleston, South Carolina
-COUNTRY OF ORIGIN: Netherlands
+SELLER: Holland Chem Solutions BV
+Westblaak 180
+3012 KN Rotterdam, Netherlands
 
-LINE ITEMS
-No.  Description                               HTS Code       Qty Net    Unit/KG     Total
- 1   Vitamin D3 Concentrate 1,000,000 IU/g     2936.29.2000   4,500 KG   $83.00   $373,500.00
-     Cholecalciferol in maltodextrin carrier
-     CAS No.: 67-97-0
-     Batch Nos.: DSM-D3-2024-051 thru DSM-D3-2024-059
-     Expiry: 2026-05-31   Certificate of Analysis attached
+BUYER
+Southeast Chemical Distributors LLC
+8200 Rivers Avenue, Suite 400
+North Charleston, SC 29406, USA
 
-TOTAL NET WEIGHT: 4,500 KG   GROSS WEIGHT: 5,200 KG   VOLUME: 8.4 CBM
-TOTAL INVOICE VALUE (CIF): USD 373,500.00
+DESCRIPTION                                          HTS CODE      QTY       UNIT PRICE    TOTAL
+Industrial Disinfectant Concentrate (200L drum)     3808.94.5000  200 drm   USD 380.00  USD 76,000.00
 
-Safety Data Sheet and Certificate of Analysis enclosed per FDA requirements.
-Signed: Ingrid van der Berg, Export Documentation Manager
-Date: 2024-05-14   [dsm-firmenich Official Seal]` }
-    ]
-  },
+QUANTITY: 200 units
+TOTAL INVOICE VALUE: USD 76,000.00
+
+Country of Origin: Netherlands
+Currency: USD
+Payment: Wire Transfer — 30 days from B/L date
+Manufacturer: Holland Chem Solutions BV, Rotterdam, Netherlands
+EIN (Importer): 57-1089443
+EPA Registration: Not required — industrial bulk (non-pesticide)
+
+Authorized Signature: R. van den Berg, Export Manager
+Company Stamp: [AFFIXED]` },
+
+        { filename: 'safety_data_sheet.txt', text: `SAFETY DATA SHEET (SDS)
+According to OSHA HCS 2012 / GHS Rev. 6
+
+SDS Reference No.: HCS-SDS-2025-0012
+Product Name: Holland Chem HC-80 Industrial Disinfectant Concentrate
+Revision Date: 2025-01-15
+
+SECTION 1 — IDENTIFICATION
+Manufacturer: Holland Chem Solutions BV, Westblaak 180, 3012 KN Rotterdam, Netherlands
+Product Use: Industrial surface disinfection and sanitation
+Emergency Tel: +31-10-411-7799
+
+SECTION 2 — HAZARD IDENTIFICATION
+GHS Classification: Skin corrosion Category 1B; Eye damage Category 1
+Signal Word: DANGER
+Hazard Statements: H314 — Causes severe skin burns and eye damage
+Active Ingredient: Sodium hypochlorite 12% w/w (CAS 7681-52-9)
+
+SECTION 3 — COMPOSITION
+Component               CAS No.        Concentration
+Sodium hypochlorite     7681-52-9      12% w/w
+Water                   7732-18-5      balance
+
+SECTION 9 — PHYSICAL PROPERTIES
+Form: Clear liquid      Color: Pale yellow      Odor: Chlorine
+pH: 11-13 (concentrated)    Specific Gravity: 1.19 g/mL at 20 deg C
+Flash Point: Non-flammable
+
+SECTION 14 — TRANSPORT INFORMATION
+UN No.: UN1791          Class: 8 (Corrosive)
+Packing Group: III      Proper Shipping Name: HYPOCHLORITE SOLUTION
+Marine Pollutant: No
+
+Country of Origin: Netherlands
+HTS Code: 3808.94.5000` }
+      ]
+    },
+
+    // C6 · Vietnam Woven Polyester Fabrics → New York · score 0.00 → APPROVE
+    {
+      label: 'Woven Polyester Fabric — Vietnam to New York (Ho Chi Minh → NYC)',
+      documents: [
+        { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING — NEGOTIABLE
+
+B/L No.: MSCU-HCM-2025-0088431
+Date of Issue: 2025-08-14
+
+SHIPPER: Saigon Premium Fabrics Corp.
+Lot 8B, Tan Thuan Export Processing Zone
+District 7, Ho Chi Minh City, Vietnam
+Tel: +84-28-3770-8800
+
+CONSIGNEE
+Northeast Textile Wholesale LLC
+135 West 36th Street, 4th Floor
+New York, NY 10018, USA
+Importer of Record: Northeast Textile Wholesale LLC
+EIN: 13-3841927
+
+NOTIFY PARTY
+Northeast Textile Wholesale LLC (same as consignee)
+
+VESSEL: MSC AURORA   VOYAGE: 0341W
+PORT OF LOADING: Ho Chi Minh City Port, Vietnam
+PORT OF DISCHARGE: Port of New York / Newark, NJ USA
+ON BOARD DATE: 2025-08-18   ETA: 2025-09-06
+
+DESCRIPTION OF GOODS
+Commodity: Woven polyester fabric — plain weave, 150cm wide, 180 g/sq meter
+HTS Code: 5407.61.9905
+Country of Origin: Vietnam
+Manufacturer: Saigon Premium Fabrics Corp., Ho Chi Minh City, Vietnam
+
+No. of Packages: 250 rolls
+TOTAL UNITS: 250
+Gross Weight: 6,250 KG
+Net Weight: 5,800 KG
+Measurement: 31.2 CBM
+
+FREIGHT: PREPAID
+Incoterms: FOB Ho Chi Minh City
+Original B/L: 3 originals issued` },
+
+        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+
+Invoice No.: SPF-2025-0814-88
+Date: 2025-08-13
+Incoterms: FOB Ho Chi Minh City
+
+SELLER: Saigon Premium Fabrics Corp.
+Lot 8B, Tan Thuan Export Processing Zone
+District 7, Ho Chi Minh City, Vietnam
+
+BUYER
+Northeast Textile Wholesale LLC
+135 West 36th Street, 4th Floor
+New York, NY 10018, USA
+
+DESCRIPTION                                       HTS CODE      QTY       UNIT PRICE    TOTAL
+Woven Polyester Fabric PW-180 (per 50m roll)    5407.61.9905  250 rolls  USD 320.00  USD 80,000.00
+
+QUANTITY: 250 units
+TOTAL INVOICE VALUE: USD 80,000.00
+
+Country of Origin: Vietnam
+Currency: USD
+Payment: Wire Transfer — 30 days from B/L date
+Manufacturer: Saigon Premium Fabrics Corp., Ho Chi Minh City, Vietnam
+EIN (Importer): 13-3841927
+
+Authorized Signature: N.T. Linh, Export Manager
+Company Stamp: [AFFIXED]` },
+
+        { filename: 'packing_list.txt', text: `PACKING LIST
+
+Ref No.: SPF-PL-2025-0814-88
+Corresponding B/L: MSCU-HCM-2025-0088431
+Date: 2025-08-13
+
+Shipper: Saigon Premium Fabrics Corp., Ho Chi Minh City, Vietnam
+Consignee: Northeast Textile Wholesale LLC, New York, NY USA
+
+ROLL    ITEM CODE     DESCRIPTION                   WIDTH   LENGTH   NET WT
+001-050 PW-180-WHT    Polyester Woven Plain White   150cm   50m      22 KG
+051-150 PW-180-NAV    Polyester Woven Plain Navy    150cm   50m      22 KG
+151-250 PW-180-CHR    Polyester Woven Plain Charcoal 150cm  50m      22 KG
+
+TOTAL ROLLS: 250
+TOTAL UNITS: 250
+GROSS WEIGHT: 6,250 KG (incl. cardboard cores and plastic wrap)
+NET WEIGHT: 5,800 KG
+VOLUME: 31.2 CBM
+
+HTS Code: 5407.61.9905
+Country of Origin: Vietnam
+Marks and Numbers: NTWL-NYC-AUG25 / Roll 001-250
+Packing: Each roll wound on cardboard core, wrapped in polyethylene film
+
+Prepared by: Packing Dept., Saigon Premium Fabrics Corp.` }
+      ]
+    }
 
   ],  // end clean pool
 
-  // ── SUSPICIOUS SHIPMENTS (8 scenarios) ────────────────────────────────
+  // ── SUSPICIOUS SHIPMENTS ─────────────────────────────────────────────────
+  // Design target: decision = FLAG_FOR_INSPECTION
+  // Each scenario deliberately triggers at least one automatic FLAG rule:
+  //   - Transshipment: pol_country != origin_iso2 (auto-flag regardless of score)
+  //   - Shipper mismatch: SHIPPER_SELLER_MISMATCH inconsistency (auto-flag)
+  //   - HIGH undervaluation: unit_val < benchmark * 0.40 (auto-flag)
+  // Additional Section 301 / AD/CVD factors boost the score further.
+  // ---------------------------------------------------------------------------
   suspicious: [
 
-    // 1 · Undervalued ICs — China via Singapore (transshipment + Section 301)
+    // S1 · China Laptops via Singapore — Transshipment + Section 301 + Undervaluation
+    // Flags: TRANSSHIPMENT (0.28) + SECTION_301 List 3 (0.22) + HIGH_UNDERVALUATION (0.18)
+    // Score: 0.68  Decision: FLAG_FOR_INSPECTION (transshipment alone triggers it)
     {
-      label: 'Undervalued Electronics — China via Singapore [Transshipment Flag]',
+      label: 'Laptops — China via Singapore [Transshipment + Undervalued + Section 301]',
       documents: [
-        { filename: 'bill_of_lading.txt', text: `BILL OF LADING
+        { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING — NEGOTIABLE
 
-B/L No.: APXT-YTN-2024-0892
-Date: 2024-09-14
+B/L No.: OOLU-SIN-2025-0091144
+Date of Issue: 2025-04-10
 
-SHIPPER
-Guangzhou Apex Trading Ltd.
-Room 1108, Fortune Plaza
-182 Tianhe North Road, Tianhe District
-Guangzhou, Guangdong, P.R. China 510620
-
-CONSIGNEE: TO ORDER
-
-NOTIFY PARTY
-Global Freight Solutions LLC
-3300 NW 79th Ave, Suite 200
-Miami, FL 33122, USA
-
-VESSEL / VOYAGE: COSCO SHIPPING UNIVERSE / 082E
-PORT OF LOADING: Yantian International Container Terminal, Shenzhen, China
-PORT OF DISCHARGE: Port of Miami, Florida, USA
-
-ON BOARD DATE: 2024-09-14
-ETA MIAMI: 2024-10-03
-
-DESCRIPTION OF CARGO
-General Merchandise
-200 Cartons
-Gross Weight: 420 KG
-Measurement: 1.8 CBM
-Freight: Collect
-
-Marks & Numbers: SGL/MIA/2024/09
-ORIGINAL B/L: 3/3 originals issued
-Signed: Apex Freight Agency, Shenzhen (as agent for carrier)
-Date: 2024-09-14`
-      },
-      {
-        filename: 'commercial_invoice.txt',
-        text: `COMMERCIAL INVOICE
-
-Invoice No.: SGE-INV-2024-0091
-Date: 2024-09-10
-
-SELLER
-Sunrise Global Exports Pte. Ltd.
-10 Anson Road, #28-01 International Plaza
-Singapore 079903
-
-BUYER
-NexGen Components Inc.
-8750 NW 36th Street, Suite 400
-Doral, FL 33166, USA
-
-COUNTRY OF ORIGIN: Malaysia
-COUNTRY OF DESTINATION: USA
-PORT OF SHIPMENT: [not specified]
-
-DELIVERY TERMS: CIF Miami
-PAYMENT TERMS: 100% TT in advance - paid to OCBC Bank, Singapore, Acct: 501-XXXXX-001
-
-LINE ITEMS
-Qty       Description                   HTS           Unit $    Total
-8,000 pcs Monolithic Integrated Circuit 8542.31.0000  $0.85     $6,800.00
-          Boards, memory type
-          Country of Origin: Malaysia
-          Manufacturer: [not specified]
-
-TOTAL: USD 6,800.00
-
-Note: Goods packed in 200 cartons, 40 pcs per carton.
-Declared for customs purposes.
-Signature: [illegible]`
-      },
-      {
-        filename: 'packing_list.txt',
-        text: `PACKING LIST
-
-Ref: SGE-PL-2024-0091
-Date: 2024-09-10
-
-Shipper: Sunrise Global Exports Pte. Ltd., Singapore
-Consignee: NexGen Components Inc., Doral, FL, USA
-
-Cartons: 200
-Contents: Electronic components - circuit boards
-Qty per carton: 40 pcs
-Total: 8,000 pcs
-Gross weight per carton: 2.1 KG
-Total gross weight: 420 KG
-Net weight: 380 KG
-Measurement: 1.8 CBM
-
-Country of origin: Malaysia
-
-No individual unit markings.
-Packed in plain brown cartons, no retail packaging.
-
-[No authorized signature present on document]`
-      }
-    ]
-  },
-
-  // 2 · Weight Discrepancy — Steel Pipes, China → Houston
-  {
-    label: 'Weight Discrepancy — Steel Pipes China to Houston [AD/CVD Risk]',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `BILL OF LADING
-
-B/L No.: COSU7291048-24
-Date: 2024-10-18
-
-SHIPPER
-Tianjin Bohai Steel Pipe Co., Ltd.
-No. 22 Gangwu Road, Binhai New Area
-Tianjin 300461, P.R. China
+SHIPPER: Dongguan Global Tech Co. Ltd.
+Building A, Songshan Lake Hi-Tech Park
+Dongguan, Guangdong 523808, China
+Tel: +86-769-8886-2200
 
 CONSIGNEE
-Gulf Coast Industrial Supply LLC
-4200 Navigation Blvd, Houston, TX 77011, USA
+West Coast Electronics Wholesale Inc.
+2100 Sepulveda Boulevard, Suite 500
+Los Angeles, CA 90025, USA
 
 NOTIFY PARTY
-Gulf Coast Industrial Supply LLC (same as consignee)
+West Coast Electronics Wholesale Inc. (same as consignee)
 
-VESSEL / VOYAGE: COSCO SHIPPING RHINE / 068E
-PORT OF LOADING: Tianjin Xingang Port, China (CNTSN)
-PORT OF DISCHARGE: Port of Houston, TX (USHOU)
-ON BOARD DATE: 2024-10-18   ETA: 2024-11-14
+VESSEL: OOCL SINGAPORE   VOYAGE: 018E
+PORT OF LOADING: Singapore
+PORT OF DISCHARGE: Port of Los Angeles, CA USA
+ON BOARD DATE: 2025-04-14   ETA: 2025-04-30
 
 DESCRIPTION OF GOODS
-Commodity:    Seamless Steel Pipes
-HTS Code:     7304.19.1020
+Commodity: Laptop Computers, 15.6-inch, Intel Core i5
+HTS Code: 8471.30.0100
 Country of Origin: China
-No. of Packages: 200 bundles (10 pipes per bundle)
-Total Pieces: 2,000 pipes
-Gross Weight: 8,200 KG (shipper's declaration)
-Measurement:  42.0 CBM
-Marks & Numbers: GCI-TJ-OCT24 / B/1-200
 
-FREIGHT: CFR Houston
-CARRIER: COSCO Shipping Lines Co., Ltd.
-B/L Type: 3 Originals
-Signed: COSCO Shipping Agency (Tianjin) Co., Ltd.
-Date: 2024-10-18` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+No. of Packages: 8 cartons (10 units per carton)
+TOTAL UNITS: 80
+Gross Weight: 200 KG
+Net Weight: 168 KG
+Measurement: 1.6 CBM
 
-Invoice No.: TBH-2024-OCT-0392
-Invoice Date: 2024-10-14
-Payment Terms: 100% TT in advance
+FREIGHT: PREPAID
+Incoterms: FOB Singapore
+[Note: Goods routed via Singapore freight consolidator]` },
 
-SELLER
-Tianjin Bohai Steel Pipe Co., Ltd.
-No. 22 Gangwu Road, Binhai New Area, Tianjin 300461, China
+        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+
+Invoice No.: DGT-2025-0410-91
+Date: 2025-04-09
+Incoterms: FOB Singapore
+
+SELLER: Dongguan Global Tech Co. Ltd.
+Building A, Songshan Lake Hi-Tech Park
+Dongguan, Guangdong 523808, China
 
 BUYER
-Gulf Coast Industrial Supply LLC
-4200 Navigation Blvd, Houston, TX 77011, USA
+West Coast Electronics Wholesale Inc.
+2100 Sepulveda Boulevard, Suite 500
+Los Angeles, CA 90025, USA
 
-B/L: COSU7291048-24   VESSEL: COSCO SHIPPING RHINE   VOYAGE: 068E
-PORT OF LOADING: Tianjin, China
-PORT OF DISCHARGE: Houston, TX, USA
-DELIVERY TERMS: CFR Houston (Incoterms 2020)
-COUNTRY OF ORIGIN: China (P.R.)
+DESCRIPTION                              HTS CODE      QTY    UNIT PRICE    TOTAL
+Laptop Computer 15.6-inch (Model DG-i5)  8471.30.0100  80 pcs  USD 25.00  USD 2,000.00
 
-LINE ITEMS
-Qty          Description                               HTS Code      Unit      Total
-2,000 pcs    Seamless Carbon Steel Pipe, API 5L Gr.B   7304.19.1020  $48.50    $97,000.00
-             OD: 4 inches, Wall thickness: 0.237 in
-             Length: 20 ft per pipe, plain ends
+QUANTITY: 80 units
+TOTAL INVOICE VALUE: USD 2,000.00
 
-DECLARED GROSS WEIGHT: 8,200 KG (per invoice)
-NOTE: Weight declared by shipper. Independent survey not performed.
-VOLUME: 42.0 CBM
-TOTAL INVOICE VALUE (CFR): USD 97,000.00
+Country of Origin: China
+Currency: USD
+Payment: TT advance
 
-Signed: Li Wei, Sales Manager
-Date: 2024-10-14   [Company Seal]` },
-      { filename: 'packing_list.txt', text: `PACKING LIST
+[NOTE: Declared value reflects "sample pricing" for consolidation purposes.
+ Final commercial value to be confirmed at destination.]` },
 
-Ref: TBH-PL-2024-OCT-0392  (Invoice TBH-2024-OCT-0392)
-Date: 2024-10-14
+        { filename: 'packing_list.txt', text: `PACKING LIST
 
-Shipper: Tianjin Bohai Steel Pipe Co., Ltd., Tianjin, China
-Consignee: Gulf Coast Industrial Supply LLC, Houston, TX
+Ref No.: DGT-PL-2025-0410-91
+Corresponding B/L: OOLU-SIN-2025-0091144
+Date: 2025-04-09
 
-DETAILED PACKAGE BREAKDOWN
-Bundle No.  Qty/Bundle  Pipe Dia.  Length    Unit Wt    Bundle Wt
-001-100     10 pcs      4"         20 ft      58 KG       580 KG
-101-200     10 pcs      4"         20 ft      58 KG       580 KG
-            (200 bundles @ 10 pipes each = 2,000 total pipes)
+Shipper: Dongguan Global Tech Co. Ltd., Dongguan, China
+Consignee: West Coast Electronics Wholesale Inc., Los Angeles, CA USA
 
-WEIGHT CALCULATION (per packing list):
-Individual pipe weight: 58 KG
-Pipes per bundle: 10
-Total bundles: 260 (note: includes 60 bonus replacement bundles per contract amendment)
-Total calculated gross weight: 260 x 58 x 10 / 10 = 15,080 KG
-(Package count on B/L shows 200 bundles, but 260 bundles physically packed)
+CTN     CONTENTS                            QTY/CTN   TOTAL
+001-008 Laptop Computer DG-i5 15.6-inch     10 pcs    80 units
 
-Total declared: 2,600 pipes
-Gross weight per packing list: 15,080 KG
-Note: Discrepancy between B/L weight (8,200 KG) and packing list weight (15,080 KG).
+TOTAL CARTONS: 8
+TOTAL UNITS: 80
+GROSS WEIGHT: 200 KG
+NET WEIGHT: 168 KG
+VOLUME: 1.6 CBM
 
-[NO AUTHORIZED SIGNATURE ON PACKING LIST]` }
-    ]
-  },
+HTS Code: 8471.30.0100
+Country of Origin: China
+Marks and Numbers: WCEW-LAX-APR25 / Carton 001-008
 
-  // 3 · OFAC Sanctioned Shipper — Electronic Components via UAE
-  {
-    label: 'OFAC Sanctioned Entity — Electronic Components via UAE',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `BILL OF LADING
+[Port of export: Singapore (re-consolidated from Dongguan factory)]` }
+      ]
+    },
 
-B/L No.: DUBAEXP-2024-0445
-Date: 2024-11-08
+    // S2 · China Cold-Rolled Steel — Shipper Mismatch + Section 301 + AD/CVD
+    // Flags: SHIPPER_SELLER_MISMATCH (auto-flag) + SECTION_301 List 3 25% (0.22) + ADCVD A-570-029 (0.20)
+    // Score: 0.48  Decision: FLAG_FOR_INSPECTION (mismatch alone triggers it)
+    {
+      label: 'Cold-Rolled Steel — China [Shipper Mismatch + Section 301 + AD/CVD A-570-029]',
+      documents: [
+        { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING — NEGOTIABLE
 
-SHIPPER
-Farzan Export & Trading Company
-No. 12, Karegar Avenue, Valiasr Sq.
-Tehran 1414714411, Islamic Republic of Iran
+B/L No.: CMDU-SHA-2025-0044822
+Date of Issue: 2025-05-06
+
+SHIPPER: Shanghai Brilliant Steel Mfg Co Ltd
+2200 Jiangpu Road, Yangpu District
+Shanghai 200082, China
 
 CONSIGNEE
-Al Majed General Trading LLC
-Office 801, Al Futtaim Tower
-Sheikh Zayed Road, Dubai 54321, UAE
+Gulf Steel Service Centers Inc.
+5800 Almeda Road, Suite 100
+Houston, TX 77004, USA
 
 NOTIFY PARTY
-Al Majed General Trading LLC (same as consignee)
+Gulf Steel Service Centers Inc. (same as consignee)
 
-VESSEL / VOYAGE: MSC ANTWERP / 112E
-PORT OF LOADING: Port of Jebel Ali, Dubai, UAE (AEJEA)
-(Note: Original point of origin: Tehran, Iran -- trans-shipped Dubai)
-PORT OF DISCHARGE: Port of New York / Newark (USNYC)
-ON BOARD DATE: 2024-11-08   ETA: 2024-11-28
-
-DESCRIPTION OF GOODS
-Commodity:    Inertial Navigation Components, Gyroscopic Sensors
-HTS Code:     9014.20.2000
-Country of Origin: Iran (as per shipper declaration)
-No. of Packages: 12 wooden crates
-Total Units:  480 units
-Gross Weight: 1,440 KG
-Measurement:  8.8 CBM
-Marks & Numbers: AMG-DXB-NOV24 / CR/1-12
-
-FREIGHT: CFR New York
-CARRIER: Mediterranean Shipping Company S.A.
-B/L Type: 3 Originals Issued
-Signed: MSC UAE Ltd., as agents for the Carrier
-Date: 2024-11-08` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
-
-Invoice No.: FET-INV-2024-1108
-Invoice Date: 2024-11-05
-Payment Terms: Cash Against Documents (CAD), HSBC Dubai
-
-SELLER
-Farzan Export & Trading Company
-No. 12, Karegar Avenue, Valiasr Sq., Tehran, Iran
-SWIFT/Bank: [routed through intermediary]
-
-BUYER
-Al Majed General Trading LLC
-Office 801, Al Futtaim Tower, Sheikh Zayed Road, Dubai, UAE
-
-B/L: DUBAEXP-2024-0445   VESSEL: MSC ANTWERP   VOYAGE: 112E
-PORT OF LOADING: Jebel Ali, Dubai, UAE
-PORT OF DISCHARGE: New York / Newark, USA
-DELIVERY TERMS: CFR New York (Incoterms 2020)
-ORIGIN: Islamic Republic of Iran
-
-LINE ITEMS
-Qty    Description                                     HTS Code      Unit $    Total
-480    MEMS Gyroscopic Inertial Sensor Module          9014.20.2000  $280.00   $134,400.00
-       Precision navigation grade, 3-axis
-       Military-grade specifications, EAR99 listed
-       Model: FET-INS-G300X
-       Manufacturer: Farzan Export & Trading Co., Tehran, Iran
-       End-use certification: [not provided]
-
-TOTAL INVOICE VALUE: USD 134,400.00
-No end-use certificate provided.
-Signed: Reza Farzan, Managing Director
-Date: 2024-11-05` }
-    ]
-  },
-
-  // 4 · Undervalued Luxury Watches — Switzerland → New York
-  {
-    label: 'Undervalued Luxury Goods — Swiss Timepieces to New York',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING - ORIGINAL
-
-B/L Number: MSCUZRH2024-0918
-Date of Issue: 2024-11-20
-
-SHIPPER / EXPORTER
-Geneve Horlogerie Export SA
-7 Rue du Rhone, 1204 Geneva, Switzerland
-
-CONSIGNEE
-Manhattan Luxury Imports LLC
-745 Fifth Avenue, Suite 600
-New York, NY 10151, USA
-
-NOTIFY PARTY
-Schenker USA Inc., JFK Airport Branch
-145-68 156th Street, Jamaica, NY 11434
-
-VESSEL / VOYAGE: MSC GRANDIOSA / 120W
-PORT OF LOADING: Port of Le Havre, France (FRLEA)
-(Pre-carriage: Geneva, Switzerland to Le Havre by road)
-PORT OF DISCHARGE: Port of New York / Newark (USNYC)
-ON BOARD DATE: 2024-11-20   ETA: 2024-12-04
+VESSEL: CMA CGM MARCO POLO   VOYAGE: 0224W
+PORT OF LOADING: Shanghai, China
+PORT OF DISCHARGE: Port of Houston, TX USA
+ON BOARD DATE: 2025-05-10   ETA: 2025-06-04
 
 DESCRIPTION OF GOODS
-Commodity:    Wrist Watches, Quartz movement, battery, metal case
-HTS Code:     9102.11.4500
-Country of Origin: Switzerland
-No. of Packages: 10 cartons (50 units per carton)
-Total Units:  500 units
-Gross Weight: 85 KG
-Measurement:  0.4 CBM
-Marks & Numbers: MLI-CH-NOV24 / C/1-10
+Commodity: Cold-rolled steel coils, full-hard, 1.0mm thickness
+HTS Code: 7209.16.0030
+Country of Origin: China
 
-FREIGHT: CIF New York
-CARRIER: Mediterranean Shipping Company S.A.
-B/L Type: 3 Originals
-Date: 2024-11-20` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+No. of Packages: 22 coils (in open-top containers)
+TOTAL UNITS: 22
+Gross Weight: 440,000 KG
+Net Weight: 440,000 KG
+Measurement: 86.0 CBM
 
-Invoice No.: GHE-2024-NOV-0048
-Invoice Date: 2024-11-18
-Payment Terms: Wire transfer, 100% prepaid
+FREIGHT: COLLECT
+Incoterms: CFR Houston` },
 
-SELLER
-Geneve Horlogerie Export SA
-7 Rue du Rhone, 1204 Geneva, Switzerland
+        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
 
-BUYER
-Manhattan Luxury Imports LLC
-745 Fifth Avenue, Suite 600, New York, NY 10151, USA
+Invoice No.: BMP-2025-INV-0504
+Date: 2025-05-04
 
-B/L: MSCUZRH2024-0918   VESSEL: MSC GRANDIOSA   VOYAGE: 120W
-PORT OF LOADING: Le Havre, France (pre-carriage Geneva, Switzerland)
-PORT OF DISCHARGE: New York / Newark, USA
-DELIVERY TERMS: CIF New York (Incoterms 2020)
-COUNTRY OF ORIGIN: Switzerland
-
-LINE ITEMS
-No.  Description                                HTS Code      Qty    Unit USD   Total
- 1   Wrist Watch, automatic, stainless steel    9102.11.4500  500    $28.00    $14,000.00
-     Reference: GHE-W-CLASSIC-AUTO-SS
-     Movement: Swiss Made automatic, 25 jewels
-     Case: 316L stainless steel, sapphire crystal
-     Strap: Genuine leather / stainless bracelet
-     NOTE: "Sample merchandise - not for resale" per shipper notation
-     (Unit price $28 declared; market comparable retail CHF 4,200-8,500)
-     Market comparables: Swiss Made automatic watches typically $800-$6,000 wholesale
-
-TOTAL GROSS WEIGHT: 85 KG   VOLUME: 0.4 CBM
-TOTAL DECLARED VALUE: USD 14,000.00
-
-Signed: P. Dubois, Export Director
-Date: 2024-11-18` }
-    ]
-  },
-
-  // 5 · Country of Origin Mismatch — Semiconductors (Section 301 Risk)
-  {
-    label: 'Country of Origin Mismatch — Semiconductors [Section 301 Risk]',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING - ORIGINAL
-
-B/L Number: EVGRTPE2024-1109
-Date of Issue: 2024-11-09
-
-SHIPPER / EXPORTER
-Taiwan Semiconductor Trading Corp.
-3F, No. 88, Sec. 2, Dunhua South Road
-Taipei 10602, Taiwan (R.O.C.)
-
-CONSIGNEE
-Silicon Valley Components Inc.
-3000 Patrick Henry Drive
-Santa Clara, CA 95054, USA
-
-NOTIFY PARTY
-UPS Supply Chain Solutions, SFO Airport
-1415 North McDonnell Road, South San Francisco, CA 94080
-
-VESSEL / VOYAGE: EVER LIBRA / 084E
-PORT OF LOADING: Kaohsiung Container Terminal, Taiwan (TWKHH)
-PORT OF DISCHARGE: Port of Long Beach, CA (USLGB)
-ON BOARD DATE: 2024-11-09   ETA: 2024-12-01
-
-DESCRIPTION OF GOODS
-Commodity:    Logic Integrated Circuits (microprocessors)
-HTS Code:     8542.39.0001
-Country of Origin (as declared on B/L): Taiwan
-No. of Packages: 40 cartons
-Total Units:  80,000 pcs
-Gross Weight: 920 KG
-Measurement:  5.2 CBM
-Marks & Numbers: SVC-TW-NOV24 / C/1-40
-
-FREIGHT: CIF Long Beach
-CARRIER: Evergreen Marine Corp. (Taiwan) Ltd.
-B/L Type: 3 Originals
-Signed: Evergreen Shipping Agency (Taiwan) Corp.
-Date: 2024-11-09` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
-
-Invoice No.: TSTC-2024-1105-INV
-Invoice Date: 2024-11-05
-Payment Terms: Letter of Credit
-
-SELLER
-Taiwan Semiconductor Trading Corp.
-3F, No. 88, Sec. 2, Dunhua South Road, Taipei 10602, Taiwan
-
-** NOTE: Goods physically manufactured and sourced from:
-   Shenzhen Integrated Circuit Manufacturing Co., Ltd.
-   Building 3, Science Park, Nanshan District
-   Shenzhen, Guangdong 518057, CHINA (P.R.C.)
-**
+SELLER: Bright Metal Products Trading
+Room 2208, Jing'an Kerry Centre
+1515 Nanjing West Road, Shanghai, China
 
 BUYER
-Silicon Valley Components Inc.
-3000 Patrick Henry Drive, Santa Clara, CA 95054, USA
+Gulf Steel Service Centers Inc.
+5800 Almeda Road, Suite 100
+Houston, TX 77004, USA
 
-B/L: EVGRTPE2024-1109   VESSEL: EVER LIBRA   VOYAGE: 084E
-PORT OF LOADING: Kaohsiung, Taiwan
-PORT OF DISCHARGE: Long Beach, CA, USA
-DELIVERY TERMS: CIF Long Beach (Incoterms 2020)
-COUNTRY OF ORIGIN (INVOICE): China (P.R.C.) -- Note: conflicts with B/L declaration of Taiwan
+DESCRIPTION                                    HTS CODE      QTY       UNIT PRICE     TOTAL
+Cold-Rolled Steel Coil 1.0mm (CRC-FH-1000)    7209.16.0030  440 MT    USD 530/MT   USD 233,200.00
 
-LINE ITEMS
-Qty          Description                              HTS Code      Unit $    Total
-80,000 pcs   Logic IC Microprocessor, 64-bit ARM      8542.39.0001  $2.85   $228,000.00
-             Manufactured in Shenzhen, China
-             Shipped via Taiwan for consolidation
+QUANTITY: 22 units
+TOTAL INVOICE VALUE: USD 233,200.00
 
-TOTAL INVOICE VALUE (CIF): USD 228,000.00
+Country of Origin: China
+Currency: USD
+Payment: TT 30 days
+Incoterms: CFR Houston
 
-Section 301 tariffs apply to goods of Chinese origin at HTS 8542.39.
-Applicable List 3 tariff rate: 25%.
-Signed: Victor Chang, Trading Manager
-Date: 2024-11-05` }
-    ]
-  },
+[Note: This invoice is issued by the trading house on behalf of the mill.
+ Mill of origin: Shanghai Brilliant Steel — all product shipped ex-mill.]` },
 
-  // 6 · Xinjiang Cotton — Cotton Apparel (UFLPA Forced Labor Risk)
-  {
-    label: 'Xinjiang Origin — Cotton Apparel [UFLPA Forced Labor Risk]',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING - ORIGINAL
+        { filename: 'packing_list.txt', text: `PACKING LIST / WEIGHT CERTIFICATE
 
-B/L Number: OOLU8841032-24
-Date of Issue: 2024-10-25
+Ref No.: BMP-PL-2025-0504
+Corresponding B/L: CMDU-SHA-2025-0044822
+Date: 2025-05-05
 
-SHIPPER / EXPORTER
-Xinjiang Aksu Jinhe Textile Co., Ltd.
-No. 88 Tianshan Avenue, Economic Development Zone
-Aksu, Xinjiang Uyghur Autonomous Region 843000
-P.R. China
+Issued by: Bright Metal Products Trading, Shanghai, China
+Consignee: Gulf Steel Service Centers Inc., Houston, TX USA
+
+COIL    GRADE   THICKNESS   WIDTH    LENGTH(M)   COIL WT (KG)
+001     SPCCH   1.0mm       1250mm   2,400m      20,200
+002     SPCCH   1.0mm       1250mm   2,380m      20,000
+[Coils 003-022 same specification — individual weights on mill certificate]
+
+TOTAL COILS: 22
+TOTAL WEIGHT: 440,000 KG (net, per mill weight certificates attached)
+HTS Code: 7209.16.0030
+Country of Origin: China (mill: Shanghai Brilliant Steel Mfg Co Ltd)
+
+[IMPORTANT — AD/CVD NOTICE: These goods are subject to active antidumping
+ order A-570-029 (cold-rolled steel from China) and may be subject to
+ Section 301 List 3 tariffs. Importer is responsible for all applicable duties.]` }
+      ]
+    },
+
+    // S3 · China Cotton Apparel via Ho Chi Minh — Transshipment + Section 301
+    // Flags: TRANSSHIPMENT (0.28, pol=VN != origin=CN) + SECTION_301 List 4A 7.5% (0.22)
+    // Score: 0.50  Decision: FLAG_FOR_INSPECTION (transshipment alone triggers it)
+    {
+      label: 'Cotton Apparel — China via Ho Chi Minh [Transshipment + Section 301 UFLPA Risk]',
+      documents: [
+        { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING — NEGOTIABLE
+
+B/L No.: MSCU-HCM-2025-0071339
+Date of Issue: 2025-06-15
+
+SHIPPER: Guangzhou Textile Exports Co. Ltd.
+No. 12 Xingang East Road, Haizhu District
+Guangzhou, Guangdong 510300, China
 
 CONSIGNEE
-American Apparel Wholesale Corp.
-1407 Broadway, Suite 2800
+American Linen Wholesale Corp.
+240 West 37th Street, 12th Floor
 New York, NY 10018, USA
 
 NOTIFY PARTY
-Livingston International Inc.
-300 Meadowview Road, Champlain, NY 12919
+American Linen Wholesale Corp. (same as consignee)
 
-VESSEL / VOYAGE: OOCL HONG KONG / 088E
-PORT OF LOADING: Shanghai Yangshan Deep Water Port (CNSHA)
-PORT OF DISCHARGE: Port of New York / Newark (USNYC)
-ON BOARD DATE: 2024-10-25   ETA: 2024-11-22
-
-DESCRIPTION OF GOODS
-Commodity:    Men's Cotton Knit T-Shirts
-HTS Code:     6109.10.0060
-Country of Origin: China (Xinjiang Uyghur Autonomous Region)
-No. of Packages: 500 cartons (120 garments per carton)
-Total Units:  60,000 garments
-Gross Weight: 9,000 KG
-Measurement:  38.5 CBM
-Marks & Numbers: AWC-XJ-OCT24 / C/001-500
-
-FREIGHT: FOB Shanghai
-CARRIER: OOCL Limited
-B/L Type: 3 Originals
-Signed: OOCL (China) Shipping Co., Ltd., Shanghai
-Date: 2024-10-25` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
-
-Invoice No.: XJAJ-2024-OCT-0212
-Invoice Date: 2024-10-20
-Payment Terms: T/T 30 days
-
-SELLER
-Xinjiang Aksu Jinhe Textile Co., Ltd.
-No. 88 Tianshan Avenue, Aksu, Xinjiang 843000, China
-(Vertically integrated: cotton farming, ginning, spinning, weaving, garment mfg.
-  Cotton sourced: Aksu Prefecture, Xinjiang -- 100% Xinjiang cotton content)
-
-BUYER
-American Apparel Wholesale Corp.
-1407 Broadway, Suite 2800, New York, NY 10018, USA
-
-B/L: OOLU8841032-24   VESSEL: OOCL HONG KONG   VOYAGE: 088E
-PORT OF LOADING: Shanghai, China
-PORT OF DISCHARGE: New York / Newark, USA
-DELIVERY TERMS: FOB Shanghai (Incoterms 2020)
-COUNTRY OF ORIGIN: China (Xinjiang Uyghur Autonomous Region)
-
-LINE ITEMS
-Qty           Description                               HTS Code      Unit $     Total
-60,000 pcs    Men's T-Shirt, 100% Xinjiang cotton       6109.10.0060  $3.20    $192,000.00
-              Short sleeve, crew neck, S/M/L/XL assorted
-              Fabric: 180 g/sqm single jersey
-              Fiber: 100% combed cotton, Xinjiang origin
-              Aksu Prefecture cotton content confirmed by gin certificate
-
-TOTAL GROSS WEIGHT: 9,000 KG   VOLUME: 38.5 CBM
-TOTAL INVOICE VALUE (FOB): USD 192,000.00
-
-NOTE: All cotton fiber sourced from Aksu Prefecture, Xinjiang, China.
-UFLPA rebuttable presumption applies to goods produced in whole or in part
-in the Xinjiang Uyghur Autonomous Region.
-Signed: Zhang Lei, Export Manager
-Date: 2024-10-20   [Company Seal]` }
-    ]
-  },
-
-  // 7 · AD/CVD Evasion — Cold-Rolled Steel via Vietnam
-  {
-    label: 'AD/CVD Evasion — Cold-Rolled Steel via Vietnam [China Transshipment]',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING - ORIGINAL
-
-B/L Number: YMLU7710284-24
-Date of Issue: 2024-09-05
-
-SHIPPER / EXPORTER
-Vina Steel Processing Co., Ltd.
-Lot B-12, VSIP Industrial Park Phase II
-Thuan An City, Binh Duong Province, Vietnam
-
-CONSIGNEE
-Southeast Steel Service Center LLC
-2800 Industrial Boulevard, Memphis, TN 38118, USA
-
-NOTIFY PARTY
-Radiant Logistics Partners LLC
-2000 Market Street, Suite 110, Memphis, TN 38104
-
-VESSEL / VOYAGE: YM WELLBEING / 061W
-PORT OF LOADING: Saigon New Port, Ho Chi Minh City, Vietnam (VNSGN)
-PORT OF DISCHARGE: Port of New Orleans, LA (USMSY)
-ON BOARD DATE: 2024-09-05   ETA: 2024-09-29
+VESSEL: MSC BEATRICE   VOYAGE: 0271W
+PORT OF LOADING: Ho Chi Minh City Port, Vietnam
+PORT OF DISCHARGE: Port of New York / Newark, NJ USA
+ON BOARD DATE: 2025-06-19   ETA: 2025-07-08
 
 DESCRIPTION OF GOODS
-Commodity:    Cold-Rolled Steel Flat Products in Coils (uncoated)
-HTS Code:     7209.16.0030
-Country of Origin: Vietnam (as declared by shipper)
-No. of Packages: 18 coils
-Gross Weight: 162,000 KG
-Measurement:  185.0 CBM
-Marks & Numbers: SSSC-VN-SEP24 / COIL-01-18
-
-FREIGHT: CFR New Orleans
-CARRIER: Yang Ming Marine Transport Corporation
-B/L Type: 3 Originals
-Date: 2024-09-05` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
-
-Invoice No.: VSP-2024-SEP-0091
-Invoice Date: 2024-09-01
-Payment Terms: Letter of Credit, 90 days
-
-SELLER
-Vina Steel Processing Co., Ltd.
-Lot B-12, VSIP Industrial Park, Binh Duong, Vietnam
-
-Parent Company: Baowu Steel Group Co., Ltd. (China)
-Correspondence: No. 370 Huaning Road, Pudong New Area, Shanghai 200126, China
-(Note: All raw material substrate sourced from Baowu Hot Rolling Mill, Wuhan, China)
-
-BUYER
-Southeast Steel Service Center LLC
-2800 Industrial Boulevard, Memphis, TN 38118, USA
-
-B/L: YMLU7710284-24   VESSEL: YM WELLBEING   VOYAGE: 061W
-PORT OF LOADING: Saigon New Port, Ho Chi Minh City, Vietnam
-PORT OF DISCHARGE: New Orleans, LA, USA
-DELIVERY TERMS: CFR New Orleans (Incoterms 2020)
-COUNTRY OF ORIGIN DECLARED: Vietnam
-
-LINE ITEMS
-Qty           Description                              HTS Code      Unit/MT    Total
-162 MT        Cold-Rolled Steel Coils, uncoated         7209.16.0030  $620.00  $100,440.00
-              Width: 1,219 mm, Thickness: 0.70 mm
-              Tensile strength: 270-370 MPa
-              Substrate: Chinese hot-rolled substrate, processed in Vietnam
-              Processing: slitting and annealing only (minor processing)
-
-NOTE: Hot-rolled substrate imported from Baowu Steel Group, China.
-Processing in Vietnam limited to cold-rolling and coil packaging.
-AD Order A-552-818 (Vietnam cold-rolled steel) may apply.
-AD Order A-570-029 (China cold-rolled steel) applicable to Chinese-origin substrate.
-
-TOTAL GROSS WEIGHT: 162,000 KG (162 MT)
-TOTAL INVOICE VALUE (CFR): USD 100,440.00
-
-Signed: Nguyen Van Minh, Director of Sales
-Date: 2024-09-01   [Company Seal -- Parent Co: Baowu Steel Group, Shanghai]` }
-    ]
-  },
-
-  // 8 · Shipper Name Inconsistency — LED Lighting (Typo Evasion Technique)
-  {
-    label: 'Shipper Identity Inconsistency — Name Discrepancy Across Documents',
-    documents: [
-      { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING - ORIGINAL
-
-B/L Number: ZIMUSEA2024-0779
-Date of Issue: 2024-10-30
-
-SHIPPER / EXPORTER
-Shenzhen Brilliance Technology Co., Ltd.
-Unit 12, Tower B, Skyworth Semiconductor Park
-Baoan District, Shenzhen, Guangdong 518133, China
-
-CONSIGNEE
-Lighting Solutions America LLC
-8400 NW 36th Street, Suite 200
-Doral, FL 33166, USA
-
-NOTIFY PARTY
-Lighting Solutions America LLC (same as consignee)
-
-VESSEL / VOYAGE: ZIM BIRMINGHAM / 041W
-PORT OF LOADING: Yantian International Container Terminal (CNYTN)
-PORT OF DISCHARGE: Port of Miami, FL (USMIA)
-ON BOARD DATE: 2024-10-30   ETA: 2024-11-21
-
-DESCRIPTION OF GOODS
-Commodity:    LED Light Panels and Retrofit Kits
-HTS Code:     9405.40.8440
+Commodity: Cotton bed linen sets — flat sheets, fitted sheets, pillowcases
+HTS Code: 6302.31.5020
 Country of Origin: China
-No. of Packages: 300 cartons
-Total Units:  9,000 units
-Gross Weight: 5,400 KG
-Measurement:  34.0 CBM
-Marks & Numbers: LSA-SZ-OCT24 / C/1-300
+[Note: Goods transshipped via Ho Chi Minh City — originally consolidated
+ at Guangzhou factory, forwarded to Vietnam for vessel loading]
 
-FREIGHT: CIF Miami
-CARRIER: ZIM Integrated Shipping Services Ltd.
-B/L Type: 3 Originals
-Signed: ZIM China Ltd., Shenzhen Branch
-Date: 2024-10-30` },
-      { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+No. of Packages: 800 master cartons
+TOTAL UNITS: 800
+Gross Weight: 12,400 KG
+Net Weight: 11,200 KG
+Measurement: 62.0 CBM
 
-Invoice No.: SBT-INV-2024-10-0441
-Invoice Date: 2024-10-26
-Payment Terms: Wire transfer, 50% deposit + 50% on BL
+FREIGHT: PREPAID
+Incoterms: FOB Ho Chi Minh City` },
 
-SELLER
-Shenzhen Brillance Technology Co., Ltd.
-(Note spelling: "Brillance" -- single 'i', one 'l' -- different from BL shipper name)
-Unit 12, Tower B, Skyworth Semiconductor Park
-Baoan District, Shenzhen 518133, China
+        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+
+Invoice No.: GTE-2025-0615-71
+Date: 2025-06-14
+Incoterms: FOB Ho Chi Minh City
+
+SELLER: Guangzhou Textile Exports Co. Ltd.
+No. 12 Xingang East Road, Haizhu District
+Guangzhou, Guangdong 510300, China
 
 BUYER
-Lighting Solutions America LLC
-8400 NW 36th Street, Suite 200, Doral, FL 33166, USA
+American Linen Wholesale Corp.
+240 West 37th Street, 12th Floor
+New York, NY 10018, USA
 
-B/L: ZIMUSEA2024-0779   VESSEL: ZIM BIRMINGHAM   VOYAGE: 041W
-PORT OF LOADING: Yantian, Shenzhen, China
-PORT OF DISCHARGE: Miami, FL, USA
-DELIVERY TERMS: CIF Miami (Incoterms 2020)
-COUNTRY OF ORIGIN: China
+DESCRIPTION                                    HTS CODE      QTY        UNIT PRICE   TOTAL
+Cotton Bed Linen Set (King, 300TC)            6302.31.5020  6,400 sets  USD 14.80  USD 94,720.00
 
-LINE ITEMS
-Qty      Description                               HTS Code      Unit $     Total
-6,000    LED Panel Light 60x60cm, 40W              9405.40.8440  $18.50   $111,000.00
-         Model: SBT-PNL-40W-6060, CCT 4000K
-3,000    LED Retrofit Downlight Kit, 15W           9405.40.8440  $12.00    $36,000.00
-         Model: SBT-RFK-15W-DL, Dimmable, 90-130V
-
-TOTAL UNITS: 9,000   GROSS WEIGHT: 5,400 KG   VOLUME: 34.0 CBM
-TOTAL INVOICE VALUE (CIF): USD 147,000.00
-
-Signed: Wang Jianfeng, Sales Director
-Date: 2024-10-26` },
-      { filename: 'packing_list.txt', text: `PACKING LIST
-
-Packing List No.: SZ BT-PL-2024-OCT-0441
-Date: 2024-10-26
-
-Shipper: SZ Brilliance Tech Ltd.
-(abbreviated from packing department -- note: differs from B/L and invoice company names)
-Consignee: Lighting Solutions America LLC, Doral, FL, USA
-B/L No.: ZIMUSEA2024-0779
-
-PACKAGE DETAIL
-Carton Range   Contents                    Qty/Ctn   Weight/Ctn   Dimensions
-C/001-200      LED Panel Light 60x60cm       30 pcs    18.0 KG    62x62x8 cm
-C/201-300      LED Retrofit Downlight Kit    30 pcs    18.0 KG    60x40x20 cm
-
-TOTALS
-Total cartons: 300
-Total units: 9,000 pcs
-Total gross weight: 5,400 KG
-Total volume: 34.0 CBM
+QUANTITY: 800 units
+TOTAL INVOICE VALUE: USD 94,720.00
 
 Country of Origin: China
-Marks: LSA-SZ-OCT24
+Cotton Origin: Xinjiang Uyghur Autonomous Region (XUAR), China
+Currency: USD
+Payment: TT 30 days
 
-Prepared by: Packing Dept.
-[Note: Company name on this document (SZ Brilliance Tech Ltd.) differs from
- Bill of Lading (Shenzhen Brilliance Technology Co., Ltd.) and Commercial Invoice
- (Shenzhen Brillance Technology Co., Ltd.) -- three different name formats]` }
-    ]
-  },
+[UFLPA NOTICE: Cotton sourced from Xinjiang region. Importer acknowledges
+ obligation to rebut the forced labor presumption under Pub. L. 117-78.]` },
+
+        { filename: 'packing_list.txt', text: `PACKING LIST
+
+Ref No.: GTE-PL-2025-0615-71
+Corresponding B/L: MSCU-HCM-2025-0071339
+Date: 2025-06-14
+
+Shipper: Guangzhou Textile Exports Co. Ltd., Guangzhou, China
+Consignee: American Linen Wholesale Corp., New York, NY USA
+
+CTN       STYLE          DESCRIPTION                          SETS/CTN  TOTAL
+001-200   BL-K300-WHT    Bed Linen Set King White 300TC       8 sets    1,600 sets
+201-400   BL-K300-ECR    Bed Linen Set King Ecru 300TC        8 sets    1,600 sets
+401-600   BL-K300-GRY    Bed Linen Set King Grey 300TC        8 sets    1,600 sets
+601-800   BL-K300-NVY    Bed Linen Set King Navy 300TC        8 sets    1,600 sets
+
+TOTAL CARTONS: 800
+TOTAL SETS: 6,400
+GROSS WEIGHT: 12,400 KG
+NET WEIGHT: 11,200 KG
+VOLUME: 62.0 CBM
+
+HTS Code: 6302.31.5020
+Country of Origin: China
+Fiber Content: 100% cotton (Xinjiang origin)
+Marks: ALWC-NYC-JUN25 / Carton 001-800
+
+[ROUTED VIA: Ho Chi Minh City, Vietnam — vessel consolidation point
+ FACTORY: Guangzhou Textile Exports, Guangdong Province, China]` }
+      ]
+    },
+
+    // S4 · China Integrated Circuits — HIGH Undervaluation + Section 301
+    // Flags: HIGH_UNDERVALUATION (unit=$0.50 < $1.00 threshold, auto-flag) + SECTION_301 List 3 25% (0.22)
+    // Score: 0.40  Decision: FLAG_FOR_INSPECTION (HIGH undervaluation alone triggers it)
+    {
+      label: 'Integrated Circuits — China [Undervalued $0.50/unit vs $2.50 benchmark + Section 301]',
+      documents: [
+        { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING — NEGOTIABLE
+
+B/L No.: OOLU-SZN-2025-0038817
+Date of Issue: 2025-03-12
+
+SHIPPER: Shenzhen MicroElectronics Supply Corp.
+Building 7, Shenzhen Software Industry Base
+Nanshan District, Shenzhen 518057, China
+
+CONSIGNEE
+Silicon Valley Components LLC
+2600 Campus Drive, Suite 200
+San Jose, CA 95131, USA
+
+NOTIFY PARTY
+Silicon Valley Components LLC (same as consignee)
+
+VESSEL: OOCL EUROPE   VOYAGE: 007E
+PORT OF LOADING: Shenzhen, China (Yantian Terminal)
+PORT OF DISCHARGE: Port of Los Angeles, CA USA
+ON BOARD DATE: 2025-03-16   ETA: 2025-04-01
+
+DESCRIPTION OF GOODS
+Commodity: CMOS Integrated Circuits — logic gate arrays
+HTS Code: 8542.31.0001
+Country of Origin: China
+
+No. of Packages: 100 boxes
+TOTAL UNITS: 10000
+Gross Weight: 120 KG
+Net Weight: 100 KG
+Measurement: 0.8 CBM
+
+FREIGHT: PREPAID
+Incoterms: CIF Los Angeles` },
+
+        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+
+Invoice No.: SME-2025-0312-38
+Date: 2025-03-11
+Incoterms: CIF Los Angeles
+
+SELLER: Shenzhen MicroElectronics Supply Corp.
+Building 7, Shenzhen Software Industry Base
+Nanshan District, Shenzhen 518057, China
+
+BUYER
+Silicon Valley Components LLC
+2600 Campus Drive, Suite 200
+San Jose, CA 95131, USA
+
+DESCRIPTION                                    HTS CODE      QTY          UNIT PRICE   TOTAL
+CMOS Integrated Circuit — Logic Gate Array    8542.31.0001  10,000 pcs   USD 0.50    USD 5,000.00
+
+QUANTITY: 10,000 units
+TOTAL INVOICE VALUE: USD 5,000.00
+
+Country of Origin: China
+Currency: USD
+Payment: TT advance 100%
+
+[NOTE: Declared value is per-unit cost for surplus/overstock lot.
+ Buyer acknowledges market retail value is substantially higher.]` },
+
+        { filename: 'packing_list.txt', text: `PACKING LIST
+
+Ref No.: SME-PL-2025-0312-38
+Corresponding B/L: OOLU-SZN-2025-0038817
+Date: 2025-03-11
+
+Shipper: Shenzhen MicroElectronics Supply Corp., Shenzhen, China
+Consignee: Silicon Valley Components LLC, San Jose, CA USA
+
+BOX     PART NO.        DESCRIPTION                        QTY/BOX   TOTAL
+001-100 IC-CMOS-74HC00  CMOS Integrated Circuit 74HC00     100 pcs   10,000 pcs
+
+TOTAL BOXES: 100
+TOTAL UNITS: 10,000 pieces integrated circuit
+GROSS WEIGHT: 120 KG
+NET WEIGHT: 100 KG
+VOLUME: 0.8 CBM
+
+HTS Code: 8542.31.0001
+Country of Origin: China
+Marks: SVC-LAX-MAR25 / Box 001-100
+
+[Section 301 Notice: HTS 8542 is subject to Section 301 List 3
+ additional tariff of 25% on China-origin integrated circuits.
+ AD/CVD: No active order applicable to this HTS for CN.]` }
+      ]
+    },
+
+    // S5 · China Solar Panels via Taiwan — Transshipment + AD/CVD + Section 301
+    // Flags: TRANSSHIPMENT (0.28, pol=TW != origin=CN) + SECTION_301 List 3 25% (0.22) + ADCVD A-570-979 (0.20)
+    // Score: 0.70  Decision: FLAG_FOR_INSPECTION (transshipment alone triggers it)
+    {
+      label: 'Solar Panels — China via Taiwan [Transshipment + AD/CVD A-570-979 + Section 301]',
+      documents: [
+        { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING — NEGOTIABLE
+
+B/L No.: HLCU-KHH-2025-0062215
+Date of Issue: 2025-07-22
+
+SHIPPER: Wuhan Solar Power Technology Corp.
+Optics Valley Hi-Tech Industrial Park
+East Lake New Technology Zone
+Wuhan, Hubei 430073, China
+
+CONSIGNEE
+Southwest Renewable Energy Distributors LLC
+4800 North Scottsdale Road, Suite 1500
+Scottsdale, AZ 85251, USA
+
+NOTIFY PARTY
+Southwest Renewable Energy Distributors LLC (same as consignee)
+
+VESSEL: HAPAG TAIPEI   VOYAGE: 031E
+PORT OF LOADING: Kaohsiung, Taiwan
+PORT OF DISCHARGE: Port of Los Angeles, CA USA
+ON BOARD DATE: 2025-07-26   ETA: 2025-08-11
+
+DESCRIPTION OF GOODS
+Commodity: Crystalline silicon photovoltaic modules (solar panels), 400W
+HTS Code: 8541.40.6020
+Country of Origin: China
+
+No. of Packages: 40 pallets (25 panels per pallet)
+TOTAL UNITS: 1000
+Gross Weight: 26,000 KG
+Net Weight: 24,000 KG
+Measurement: 60.0 CBM
+
+FREIGHT: PREPAID
+Incoterms: CIF Los Angeles
+[Note: Goods consolidated and loaded at Kaohsiung per shipper's routing instructions]` },
+
+        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+
+Invoice No.: WSP-2025-0722-62
+Date: 2025-07-21
+Incoterms: CIF Los Angeles
+
+SELLER: Wuhan Solar Power Technology Corp.
+Optics Valley Hi-Tech Industrial Park
+Wuhan, Hubei 430073, China
+
+BUYER
+Southwest Renewable Energy Distributors LLC
+4800 North Scottsdale Road, Suite 1500
+Scottsdale, AZ 85251, USA
+
+DESCRIPTION                                        HTS CODE      QTY         UNIT PRICE    TOTAL
+Crystalline Silicon PV Module 400W (WSPT-400M)    8541.40.6020  1,000 pcs   USD 98.00  USD 98,000.00
+
+QUANTITY: 1000 units
+TOTAL INVOICE VALUE: USD 98,000.00
+
+Country of Origin: China
+Currency: USD
+Payment: LC at sight
+
+[AD/CVD Notice: Subject to antidumping order A-570-979 (crystalline silicon
+ PV cells/modules from China). Importer must deposit AD duty at applicable rate.
+ Section 301 List 3 tariff (25%) also applies to HTS 8541.40 from China.]` },
+
+        { filename: 'packing_list.txt', text: `PACKING LIST
+
+Ref No.: WSP-PL-2025-0722-62
+Corresponding B/L: HLCU-KHH-2025-0062215
+Date: 2025-07-21
+
+Shipper: Wuhan Solar Power Technology Corp., Wuhan, China
+Consignee: Southwest Renewable Energy Distributors LLC, Scottsdale, AZ USA
+
+PALLET   MODULE MODEL   DESCRIPTION                    QTY/PLT   TOTAL
+001-040  WSPT-400M      Crystalline Si PV Module 400W  25 pcs    1,000 pcs
+
+TOTAL PALLETS: 40
+TOTAL UNITS: 1,000
+GROSS WEIGHT: 26,000 KG
+NET WEIGHT: 24,000 KG
+VOLUME: 60.0 CBM
+
+HTS Code: 8541.40.6020
+Country of Origin: China
+Marks: SRED-LAX-JUL25 / Pallet 001-040
+Packing: Panels interleaved with EVA foam, shrink-wrapped per pallet
+
+[ROUTING NOTE: Goods consolidated at Kaohsiung, Taiwan (KHH) for vessel loading.
+ Factory of manufacture: Wuhan, Hubei Province, China.
+ This routing does not change the country of origin.]` }
+      ]
+    },
+
+    // S6 · China Smartphones — Shipper Mismatch + HIGH Undervaluation + Section 301
+    // Flags: SHIPPER_SELLER_MISMATCH (auto-flag) + HIGH_UNDERVALUATION (unit=$15 < $24, auto-flag) + SECTION_301 List 4A 7.5% (0.22)
+    // Score: 0.46  Decision: FLAG_FOR_INSPECTION (mismatch + undervaluation both trigger independently)
+    {
+      label: 'Smartphones — China [Shipper Mismatch + Undervalued $15/unit + Section 301]',
+      documents: [
+        { filename: 'bill_of_lading.txt', text: `OCEAN BILL OF LADING — NEGOTIABLE
+
+B/L No.: COSCO-GZH-2025-0085503
+Date of Issue: 2025-09-08
+
+SHIPPER: Shenzhen HiTech Electronics Factory
+Building 3, Longhua Manufacturing Complex
+Longhua District, Shenzhen 518109, China
+
+CONSIGNEE
+Mobile Devices USA Wholesale Inc.
+15 Park Row, Suite 1800
+New York, NY 10038, USA
+
+NOTIFY PARTY
+Mobile Devices USA Wholesale Inc. (same as consignee)
+
+VESSEL: COSCO SHIPPING ROSE   VOYAGE: 0088W
+PORT OF LOADING: Guangzhou, China (Nansha Terminal)
+PORT OF DISCHARGE: Port of New York / Newark, NJ USA
+ON BOARD DATE: 2025-09-12   ETA: 2025-10-08
+
+DESCRIPTION OF GOODS
+Commodity: Smartphone, Android, 6.7-inch OLED, 128GB
+HTS Code: 8517.12.0050
+Country of Origin: China
+
+No. of Packages: 20 cartons (10 units per carton)
+TOTAL UNITS: 200
+Gross Weight: 100 KG
+Net Weight: 80 KG
+Measurement: 0.6 CBM
+
+FREIGHT: PREPAID
+Incoterms: FOB Guangzhou` },
+
+        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
+
+Invoice No.: GMD-2025-0906-85
+Date: 2025-09-06
+
+SELLER: Guangdong Mobile Devices Corp.
+Unit 2201, Innovation Tower
+Tianhe District, Guangzhou 510623, China
+
+BUYER
+Mobile Devices USA Wholesale Inc.
+15 Park Row, Suite 1800
+New York, NY 10038, USA
+
+DESCRIPTION                                      HTS CODE      QTY      UNIT PRICE   TOTAL
+Smartphone Android 6.7in OLED 128GB (GX-Pro7)   8517.12.0050  200 pcs  USD 15.00  USD 3,000.00
+
+QUANTITY: 200 units
+TOTAL INVOICE VALUE: USD 3,000.00
+
+Country of Origin: China
+Currency: USD
+Payment: TT advance
+
+[Note: Declared value reflects cost price for B2B clearance batch.
+ Retail price of identical model: USD 189 to USD 249 per unit.]` },
+
+        { filename: 'packing_list.txt', text: `PACKING LIST
+
+Ref No.: GMD-PL-2025-0906-85
+Corresponding B/L: COSCO-GZH-2025-0085503
+Date: 2025-09-06
+
+Shipper (Factory): Shenzhen HiTech Electronics Factory, Shenzhen, China
+Seller (Trading): Guangdong Mobile Devices Corp., Guangzhou, China
+Consignee: Mobile Devices USA Wholesale Inc., New York, NY USA
+
+CTN     MODEL       DESCRIPTION                          QTY/CTN   TOTAL
+001-020 GX-Pro7-BLK Smartphone Android 6.7in 128GB Black  10 pcs   200 pcs
+
+TOTAL CARTONS: 20
+TOTAL UNITS: 200 smartphones
+GROSS WEIGHT: 100 KG
+NET WEIGHT: 80 KG
+VOLUME: 0.6 CBM
+
+HTS Code: 8517.12.0050
+Country of Origin: China
+
+[DISCREPANCY NOTE: Shipper on B/L is Shenzhen HiTech Electronics Factory;
+ Invoice seller is Guangdong Mobile Devices Corp. — different legal entities.
+ Buyer should clarify chain of title before CBP entry filing.]` }
+      ]
+    }
 
   ],  // end suspicious pool
 
-  // ── INCOMPLETE SHIPMENTS (6 scenarios) ────────────────────────────────
+  // ── INCOMPLETE SHIPMENTS ─────────────────────────────────────────────────
+  // Design target: decision = REQUEST_MORE_INFORMATION
+  // Each scenario has 3+ critical missing fields (keywords: "fda prior notice",
+  // "country of origin", "hts", "illegible", "manufacturer", "isf") OR
+  // uses the (illegible + no_hts) or (illegible + no_origin) shortcut paths.
+  // Only 1-2 documents provided — insufficient for definitive assessment.
+  // ---------------------------------------------------------------------------
   incomplete: [
 
-    // 1 · Multiple Missing Fields — Frozen Seafood, Bangladesh
+    // I1 · Bangladesh Frozen Seafood — FDA + 6-digit HTS + ISF missing
+    // Critical fields: FDA Prior Notice (food/seafood) + HTS 6-digit only + ISF no IOR
+    // Critical count: 3 → REQUEST_MORE_INFORMATION
     {
-      label: 'Multiple Missing Fields — Frozen Seafood Bangladesh',
+      label: 'Frozen Seafood — Bangladesh [FDA Notice + Incomplete HTS + ISF Missing]',
       documents: [
-        { filename: 'bill_of_lading_partial.txt', text: `BILL OF LADING (COPY - NOT NEGOTIABLE)
+        { filename: 'bill_of_lading.txt', text: `BILL OF LADING (COPY — NOT NEGOTIABLE)
 
-B/L No.: [ILLEGIBLE - water damaged]
+B/L No.: [ILLEGIBLE — water damage to upper portion]
 Date: 2024-11-[illegible]
 
 SHIPPER
-Indian Ocean Seafood Processors
-[address: illegible]
-Dhaka [or Chittagong?]
+Indian Ocean Seafood Processors Ltd.
+Kalurghat Industrial Area
+Chittagong, Bangladesh
 
 CONSIGNEE
-American Seafood Distributors
+American Seafood Distributors LLC
 [full address not provided on this copy]
 
 NOTIFY PARTY: Same as consignee
 
-VESSEL: [vessel name smudged]
-VOYAGE: [illegible]
+VESSEL: [name smudged — partially legible]
+VOYAGE: [not legible]
 PORT OF LOADING: Chittagong Port, Bangladesh
 PORT OF DISCHARGE: Port of New York / Newark
-ON BOARD DATE: 2024-11-04
 
-DESCRIPTION
-Frozen Shrimp (processed)
-HS Code: 0306.17 [6-digit only]
+DESCRIPTION OF GOODS
+Frozen Shrimp, shell-on headless, IQF processed
+HS Code: 0306.17
 
 Packages: 500 master cartons
-Gross Weight: 10,500 KG (approx.)
+Gross Weight: 10,500 KG (approximate)
 Net Weight: [not stated]
-Measurement: [not stated]
-Temperature: -18C (frozen)
+Temperature Requirement: -18 degrees C (frozen)
 
-FREIGHT: [prepaid or collect - not specified]
-Note: 1 original, 2 copies
-Carrier signature: [present but illegible]`
-      },
-      {
-        filename: 'commercial_invoice.txt',
-        text: `INVOICE
+FREIGHT: [prepaid or collect — not specified]
+[Carrier signature present but partially illegible]` },
 
-Invoice No.: ASD-NOV2024
+        { filename: 'commercial_invoice.txt', text: `INVOICE
+
+Invoice No.: ASD-NOV2024-011
 Date: 2024-11-01
 
-From: Indian Ocean Seafood Processors, Bangladesh
-To: American Seafood Distributors, USA
+From: Indian Ocean Seafood Processors Ltd., Chittagong, Bangladesh
+To: American Seafood Distributors LLC, New York, USA
 
-Goods: Frozen Shrimp, shell-on, headless, IQF
-       Species: Penaeus vannamei (White leg shrimp)
+GOODS DESCRIPTION
+Frozen Shrimp (Penaeus vannamei — White Leg), IQF, shell-on headless
+Species: Penaeus vannamei
 
-Quantity: 500 cartons x 20 kg = 10,000 kg net
-Unit Price: $3.20 per kg
-Total: $32,000
+Quantity: 500 cartons x 20 kg net = 10,000 kg net
+Unit Price: USD 3.20 per kg
+TOTAL INVOICE VALUE: USD 32,000.00
 
-[Currency not specified - assumed USD]
-[Country of origin: NOT STATED]
-[HTS code: NOT STATED]
-[Manufacturer/Processing plant: NOT STATED]
-[No FDA establishment registration number]
-[No HACCP plan reference]
-[No export health certificate reference]
-[No USDA/NMFS documentation attached]
+[COUNTRY OF ORIGIN: Bangladesh]
+[HTS Code: 0306.17 — 6-digit only, full HTSUS subheading not provided]
+[FDA Prior Notice: NOT FILED — shipper states "buyer to arrange"]
+[USDA/NMFS health certificate: NOT ATTACHED — missing from package]
+[No HACCP plan reference provided]
 
+Currency: USD (assumed)
 Payment: Wire transfer
 Bank: [not specified]
 
 Signature: A. Rahman, Manager
-[No company stamp, no date on signature line]`
-      }
-    ]
-  },
+[No company stamp; no date on signature line]` }
+      ]
+    },
 
-    // 2 · Missing Country of Origin — Medical Devices, Malaysia → Miami
+    // I2 · Medical Devices Malaysia — Missing COO + 6-digit HTS + ISF
+    // Critical fields: Country of origin undetermined + HTS 6-digit only + ISF no IOR
+    // Critical count: 3 → REQUEST_MORE_INFORMATION
     {
-      label: 'Missing Country of Origin — Medical Devices Malaysia to Miami',
+      label: 'Medical Devices — Malaysia [No Country of Origin + Incomplete HTS + ISF Missing]',
       documents: [
         { filename: 'bill_of_lading.txt', text: `BILL OF LADING
 Carrier: Maersk Line
-B/L No.: MAEU-KUL-2024-8843
-Date of Issue: 2024-10-18
+B/L No.: MAEU-KUL-2025-8843
+Date: 2025-03-18
 
-SHIPPER
-Penang MedTech Manufacturing Sdn Bhd
+SHIPPER: Penang MedTech Manufacturing Sdn Bhd
 Lot 22, Bayan Lepas Industrial Park Phase IV
 11900 Bayan Lepas, Penang, Malaysia
-Tel: +60-4-644-8821
 
 CONSIGNEE
 HealthCore Medical Supply Inc.
 3301 NW 87th Avenue, Suite 400
 Miami, FL 33172, USA
 
-NOTIFY PARTY
-Same as consignee
+NOTIFY PARTY: Same as consignee
 
-VESSEL: Maersk Enfield        VOYAGE: ME-412W
+VESSEL: Maersk Enfield   VOYAGE: ME-412W
 PORT OF LOADING: Port Klang, Malaysia
 PORT OF DISCHARGE: Port of Miami, FL USA
-ON BOARD DATE: 2024-10-22
-PLACE OF RECEIPT: Penang, Malaysia
+ON BOARD DATE: 2025-03-22
 
 DESCRIPTION OF GOODS
-HS Code: 9018.90.7560
 Sterile surgical instruments and medical procedure kits
-Freight: Prepaid
+HTS Code: 9018.90
+Made in: [NOT STATED ON THIS B/L — see commercial invoice]
 
 Packages: 120 cartons
 Gross Weight: 1,840 KG
 Net Weight: 1,620 KG
-Measurement: 9.4 CBM
-
-MARKS: HCM-MIA-OCT24 / Made in: [NOT STATED ON B/L]
 
 FREIGHT: PREPAID
-Released: To order of shipper
+Incoterms: CIF Miami
 Original B/L: 3 originals issued` },
+
         { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
 
-Invoice No.: PMM-2024-0887
-Date: 2024-10-17
+Invoice No.: PMM-2025-0317-887
+Date: 2025-03-17
 Incoterms: CIF Miami
 
-SELLER
-Penang MedTech Manufacturing Sdn Bhd
+SELLER: Penang MedTech Manufacturing Sdn Bhd
 Lot 22, Bayan Lepas Industrial Park Phase IV
-11900 Bayan Lepas, Penang, Malaysia
+Penang, Malaysia
 
 BUYER
 HealthCore Medical Supply Inc.
 3301 NW 87th Avenue, Suite 400
 Miami, FL 33172, USA
 
-DESCRIPTION                    QTY        UNIT PRICE      TOTAL
-Sterile Surgical Drape Kit     4,000 sets  $8.40/set      $33,600.00
-Procedure Tray — Basic Setup   2,200 sets  $12.60/set     $27,720.00
-Disposable Scalpel Handle Kit    800 sets  $6.80/set       $5,440.00
-Sterile Gauze Pack (100ct)     1,500 pkgs  $4.20/pkg       $6,300.00
+DESCRIPTION                        QTY        UNIT PRICE    TOTAL
+Sterile Surgical Drape Kit         4,000 sets  USD 8.40      USD 33,600.00
+Procedure Tray Basic Setup         2,200 sets  USD 12.60     USD 27,720.00
+Disposable Scalpel Handle Kit        800 sets  USD 6.80       USD 5,440.00
 
-                                         SUBTOTAL:        $73,060.00
-                                         FREIGHT:          $2,140.00
-                                         INSURANCE:          $183.00
-                                         TOTAL CIF:       $75,383.00
+QUANTITY: 7000 units
+TOTAL INVOICE VALUE: USD 66,760.00
 
+[COUNTRY OF ORIGIN: NOT DECLARED ON THIS INVOICE — buyer advised to check with shipper]
+[HTS Code: 9018.90 — 6-digit classification only, full HTSUS subheading not determined]
+[FDA 510(k) registration numbers: NOT PROVIDED]
 Currency: USD
-Payment: 30-day net from BL date
-HS Code: 9018.90.7560
-
-[COUNTRY OF ORIGIN: NOT DECLARED ON THIS INVOICE]
-[Note: FDA 510(k) registration numbers not provided]
 
 Authorized Signature: Lee Wei Jian, Export Manager
-Company Seal: [STAMPED]` }
+Company Seal: [AFFIXED]` }
       ]
     },
 
-    // 3 · Missing Commercial Invoice — Machine Parts, Taiwan → Los Angeles
+    // I3 · Taiwan Machine Parts — Illegible B/L + No HTS + ISF
+    // Shortcut path: (has_illegible AND has_no_hts) → REQUEST_MORE_INFORMATION directly
+    // Also: ISF critical → supports n_critical_missing >= 3
     {
-      label: 'Missing Commercial Invoice — Machine Parts Taiwan to Los Angeles',
+      label: 'Machine Parts — Taiwan [Water-Damaged Illegible B/L + No HTS + ISF Missing]',
       documents: [
-        { filename: 'bill_of_lading.txt', text: `BILL OF LADING
-Carrier: Evergreen Marine Corporation
-B/L No.: EGLV-TPE-2024-55291
-Date of Issue: 2024-09-12
+        { filename: 'bill_of_lading.txt', text: `BILL OF LADING — WATER DAMAGED — CERTAIN FIELDS ILLEGIBLE
+
+[WARNING: This bill of lading was subjected to water damage during
+ maritime transit. Key fields are partially or fully illegible.
+ A replacement legible original must be obtained before CBP processing.]
+
+B/L No.: [ILLEGIBLE — ink run, unreadable]
+Date: [illegible]
 
 SHIPPER
 Taiwan Precision Machining Corp.
@@ -4053,316 +3741,132 @@ No. 88, Gongye 2nd Road
 Taichung Industrial District
 Taichung City 407, Taiwan (R.O.C.)
 
-CONSIGNEE TO ORDER OF
+CONSIGNEE
 Pacific Industrial Distributors LLC
 2200 East Artesia Boulevard
 Long Beach, CA 90805, USA
 
-NOTIFY PARTY
-Pacific Industrial Distributors LLC
-(same address as consignee)
-
-VESSEL: Ever Govern            VOYAGE: 0042-028E
-PORT OF LOADING: Keelung, Taiwan
+VESSEL: [smudged — not legible]
+VOYAGE: [illegible]
+PORT OF LOADING: Kaohsiung, Taiwan
 PORT OF DISCHARGE: Port of Los Angeles, CA USA
-ON BOARD DATE: 2024-09-16
-PLACE OF RECEIPT: Taichung CFS
 
 DESCRIPTION OF GOODS
 CNC Machined Components — Aluminum Alloy
-HS Code: 8466.93.5300
+[HTS Code: water damaged — not legible]
 Country of Origin: Taiwan
 
 Packages: 85 wooden crates
-Gross Weight: 12,440 KG
-Net Weight: 11,200 KG
-Measurement: 38.6 CBM
+Gross Weight: [illegible — ink run]
+Net Weight: [not legible]
 
-FREIGHT: PREPAID
-B/L Type: Negotiable — 3 originals issued
+[CARRIER SIGNATURE: damaged and illegible]
+[Note: Replacement B/L has been requested from carrier — not yet received]` },
 
-[NOTE: Commercial invoice not attached to this filing.
- Shipper states invoice to follow under separate cover.]` },
         { filename: 'packing_list.txt', text: `PACKING LIST
 
-Ref No.: TPMC-PL-2024-0912
-Corresponding B/L: EGLV-TPE-2024-55291
-Date: 2024-09-11
+Ref No.: TPMC-PL-2025-0312
+B/L Ref: [see damaged B/L — number illegible]
+Date: 2025-03-11
 
 Shipper: Taiwan Precision Machining Corp., Taichung, Taiwan
 Consignee: Pacific Industrial Distributors LLC, Long Beach, CA USA
 
-ITEM  DESCRIPTION                          QTY    CARTON WT   CARTON DIMS
-001   Spindle Housing — Aluminum 6061     250 pcs   3,200 KG    45x40x35 cm (25 crates)
-002   Bearing Retainer Plate — Alloy      400 pcs   2,800 KG    40x35x30 cm (20 crates)
-003   Drive Shaft Collar — T6 Aluminum    600 pcs   2,400 KG    35x30x28 cm (15 crates)
-004   Precision Coupling Flange           350 pcs   1,960 KG    50x45x40 cm (15 crates)
-005   Cam Follower Bracket — Machined     500 pcs   1,620 KG    38x32x28 cm (10 crates)
+ITEM  DESCRIPTION                          QTY    APPROX WT
+001   Spindle Housing — Aluminum 6061      250 pcs   3,200 KG
+002   Bearing Retainer Plate — Alloy 6061  400 pcs   2,800 KG
+003   Drive Shaft Collar — T6 Aluminum     600 pcs   2,400 KG
+004   Precision Coupling Flange            350 pcs   1,960 KG
+005   Cam Follower Bracket — Machined      500 pcs   1,620 KG
 
-TOTAL CARTONS: 85 wooden crates
-GROSS WEIGHT: 12,440 KG (including packaging)
-NET WEIGHT: 11,200 KG
-VOLUME: 38.6 CBM
+TOTAL ITEMS: 2,100 pieces
+ESTIMATED GROSS WEIGHT: 12,000 KG (approximate — see B/L for certified weight)
+VOLUME: 38.6 CBM (estimated)
 
-HS Code: 8466.93.5300
+[HTS CODES: To be determined — classification not yet assigned.
+ Formal entry cannot be filed until HTS classification is complete.]
 Country of Origin: Taiwan
-Marks: PID-LAX-SEP24 / Crate numbers 001-085
+Marks: PID-LAX-MAR25 / Crate 001-085
 
-Packing: Items individually wrapped in VCI poly, nested in foam,
-         secured in fumigated wooden crates (ISPM-15 compliant)
-
-Prepared by: C.H. Lin, Shipping Dept.
-[COMMERCIAL INVOICE NOT INCLUDED IN THIS PACKAGE — MISSING FROM FILING]` }
+[NOTE: Commercial invoice not available — see shipper for status.
+ This packing list is provided for preliminary customs review only.]` }
       ]
     },
 
-    // 4 · No HS Codes Declared — Industrial Equipment, India → New York
+    // I4 · India Industrial Equipment — COO NOT STATED + No HTS + ISF
+    // Critical fields: Country of origin explicitly NOT STATED + No HTS declared + ISF no IOR
+    // Critical count: 3 → REQUEST_MORE_INFORMATION
     {
-      label: 'No HS Codes Declared — Industrial Equipment India to New York',
+      label: 'Industrial Equipment — India [COO Not Stated + No HTS + ISF Missing]',
       documents: [
-        { filename: 'bill_of_lading.txt', text: `BILL OF LADING
-Carrier: Hapag-Lloyd AG
-B/L No.: HLCU-JNPT-2024-33104
-Date of Issue: 2024-08-29
+        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
 
-SHIPPER
-Bharat Heavy Engineering Works Pvt Ltd
+Invoice No.: BHEW/EXP/2025/0041
+Date: 2025-04-22
+
+SELLER: Bharat Heavy Engineering Works Pvt. Ltd.
 Plot 14-B, MIDC Industrial Area
-Taloja, Navi Mumbai 410 208
+Taloja, Navi Mumbai 410208
 Maharashtra, India
 
-CONSIGNEE
+BUYER
 Northeast Industrial Solutions Corp.
 55 Commerce Drive
 Hauppauge, NY 11788, USA
 
-NOTIFY PARTY
-Northeast Industrial Solutions Corp.
-(same as consignee)
+DESCRIPTION                                QTY    UNIT PRICE      TOTAL
+Rotary Kiln Shell Section (2.4m dia)        2 pcs  USD 28,000.00  USD 56,000.00
+Trunnion Support Frame Assembly             4 sets  USD 9,400.00  USD 37,600.00
+Girth Gear Drive Module                     2 pcs  USD 14,200.00  USD 28,400.00
+Riding Ring Forged Steel                    4 pcs   USD 7,800.00  USD 31,200.00
 
-VESSEL: Colombo Express        VOYAGE: 1246E
-PORT OF LOADING: Nhava Sheva (JNPT), India
-PORT OF DISCHARGE: Port of New York/Newark, NJ USA
-ON BOARD DATE: 2024-09-03
-PLACE OF RECEIPT: Navi Mumbai ICD
+TOTAL INVOICE VALUE: USD 153,200.00
 
-DESCRIPTION OF GOODS
-Industrial Processing Equipment — Various Components
-[HS CODE: NOT DECLARED]
-
-Country of Origin: India
-
-Packages: 14 heavy-lift crates + 6 pallets
-Gross Weight: 28,600 KG
-Net Weight: 26,400 KG
-Measurement: 84.2 CBM
-
-Special Handling: Heavy lift, OOG (out of gauge) item in crate #14
-FREIGHT: COLLECT
-Original B/L: 1 original issued (surrendered at origin)` },
-        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
-
-Invoice No.: BHEW/EXP/2024/0829
-Date: 2024-08-27
-Incoterms: CFR New York
-
-SELLER
-Bharat Heavy Engineering Works Pvt Ltd
-Plot 14-B, MIDC Industrial Area
-Taloja, Navi Mumbai 410 208, India
-IEC: 0314012345
-
-BUYER
-Northeast Industrial Solutions Corp.
-55 Commerce Drive, Hauppauge, NY 11788, USA
-
-DESCRIPTION                                QTY    UNIT PRICE       TOTAL
-Rotary Kiln Shell Section (2.4m dia)        2 pcs  $28,000/pc      $56,000
-Trunnion Support Frame Assembly             4 sets  $9,400/set      $37,600
-Girth Gear Drive Module                     2 pcs  $14,200/pc      $28,400
-Riding Ring (Tyre) — Forged Steel           4 pcs   $7,800/pc      $31,200
-Refractory Brick Lining Kit                 6 sets  $3,200/set      $19,200
-Miscellaneous Fasteners and Flanges          lot     $4,600           $4,600
-
-                              FREIGHT (CFR): included
-                              SUBTOTAL:                             $177,000
-                              TOTAL USD:                            $177,000
-
-[HTS / HS CODES: OMITTED FROM THIS INVOICE — BUYER ADVISED TO SELF-CLASSIFY]
-[No Schedule B numbers provided]
-Country of Origin: India
-Payment Terms: 50% advance, 50% on BL
-
-Signature: R. Krishnamurthy, GM Exports` }
-      ]
-    },
-
-    // 5 · ISF Missing IOR — Furniture, China → Charleston
-    {
-      label: 'ISF Filing Missing Importer of Record — Furniture China to Charleston',
-      documents: [
-        { filename: 'isf_filing.txt', text: `IMPORTER SECURITY FILING (ISF 10+2)
-CBP Filing Reference: ISF-2024-CHS-097341
-Filing Date: 2024-10-08
-Status: FILED — DEFICIENT (see notes)
-
-SELLER (Party 1)
-Guangzhou Homestyle Furniture Co., Ltd.
-Building C, Shiling Leather & Furniture Town
-Huadu District, Guangzhou, Guangdong 510850
-China
-
-BUYER (Party 2)
-Atlantic Home Furnishings Inc.
-1840 Remount Road
-North Charleston, SC 29406, USA
-
-SHIP TO PARTY (Party 3)
-Atlantic Home Furnishings Inc.
-1840 Remount Road, North Charleston, SC 29406
-
-MANUFACTURER (Party 4)
-Guangzhou Homestyle Furniture Co., Ltd.
-(same as seller)
-
-IMPORTER OF RECORD (Party 5)
-[FIELD LEFT BLANK — NOT PROVIDED]
-[REQUIRED: CBP-assigned IOR number or EIN/SSN of the entity legally
- responsible for this import transaction. Filing cannot be fully
- processed without this information.]
-
-COUNTRY OF ORIGIN (Party 6): China (CN)
-
-COMMODITY HTS NUMBERS:
-9401.61.6010 — Upholstered wood-frame chairs
-9403.50.9042 — Wood furniture for bedroom use
-
-VESSEL: CSCL Globe             VOYAGE: 0138W
-PORT OF UNLADING: Port of Charleston, SC (USCHA)
-ESTIMATED ARRIVAL: 2024-10-31
-CONTAINER: CSLU4482917 (40HC)
-
-ISF NOTES: IOR number missing. CBP may issue $5,000 penalty per
-violation. Consignee has been notified to supply IOR credentials
-before vessel arrival to avoid exam hold and liquidated damages.` },
-        { filename: 'commercial_invoice.txt', text: `COMMERCIAL INVOICE
-
-Invoice No.: GHF-2024-1841
-Date: 2024-10-05
-Incoterms: FOB Guangzhou
-
-SELLER
-Guangzhou Homestyle Furniture Co., Ltd.
-Building C, Shiling Leather & Furniture Town
-Huadu District, Guangzhou, Guangdong 510850, China
-
-BUYER
-Atlantic Home Furnishings Inc.
-1840 Remount Road
-North Charleston, SC 29406, USA
-
-DESCRIPTION                              QTY    UNIT PRICE     TOTAL
-Fabric Sofa — 3-Seater (SKU HS-301F)    60 pcs   $186/pc      $11,160
-Armchair — Matching Set (SKU HS-302F)   80 pcs    $98/pc       $7,840
-Queen Platform Bed Frame (SKU HS-501W)  40 pcs   $224/pc       $8,960
-Nightstand — Rubberwood (SKU HS-502W)   80 pcs    $68/pc       $5,440
-6-Drawer Dresser (SKU HS-503W)          40 pcs   $156/pc       $6,240
-
-                                  SUBTOTAL:                    $39,640
-                                  TOTAL FOB Guangzhou:        $39,640
+COUNTRY OF ORIGIN: NOT STATED
+[HTS / HTSUS CODES: NOT DECLARED — buyer to self-classify at port of entry]
 
 Currency: USD
-Country of Origin: China
-HTS: 9401.61.6010 / 9403.50.9042
-Payment: T/T 30 days
+Incoterms: CFR New York
+Payment: 50% advance, 50% on B/L
 
-[IMPORTER OF RECORD: NOT SPECIFIED ON INVOICE]
-[Note: US CBP requires IOR number for formal entry. See ISF deficiency notice.]
+Note: No bill of lading attached to this filing — shipper states B/L to
+follow by courier. ISF filing is pending carrier assignment.
 
-Authorized by: Zhou Mingxia, Sales Director
-Stamp: [GHF COMPANY SEAL AFFIXED]` }
-      ]
-    },
+Signature: R. Krishnamurthy, GM Exports` },
 
-    // 6 · No Declared Values — Apparel, Bangladesh → New York
-    {
-      label: 'No Declared Values — Apparel Bangladesh to New York',
-      documents: [
-        { filename: 'bill_of_lading.txt', text: `BILL OF LADING
-Carrier: MSC Mediterranean Shipping Company
-B/L No.: MSCU-CGP-2024-71048
-Date of Issue: 2024-11-14
+        { filename: 'packing_list.txt', text: `PACKING LIST / SHIPPING MARKS
 
-SHIPPER
-Dhaka Garments & Apparels Ltd.
-House 12, Road 4, Sector 3
-Uttara, Dhaka 1230, Bangladesh
+Ref: BHEW-PL-2025-0422
+Invoice Ref: BHEW/EXP/2025/0041
+Date: 2025-04-21
 
-CONSIGNEE
-Eastside Fashion Wholesale LLC
-247 West 37th Street, 8th Floor
-New York, NY 10018, USA
+Shipper: Bharat Heavy Engineering Works Pvt. Ltd., Navi Mumbai, India
+Consignee: Northeast Industrial Solutions Corp., Hauppauge, NY USA
 
-NOTIFY PARTY: Same as consignee
+CRATE   DESCRIPTION                                 WT (KG)    DIMS (CM)
+001     Rotary Kiln Shell Section Unit 1            4,200 KG   280x90x90
+002     Rotary Kiln Shell Section Unit 2            4,200 KG   280x90x90
+003-006 Trunnion Support Frame (4 sets)             7,200 KG   180x80x70 each
+007-008 Girth Gear Drive Module (2 units)           5,400 KG   160x100x80 each
+009-012 Riding Ring Forged Steel (4 pieces)         6,400 KG   200x100x60 each
 
-VESSEL: MSC Beatrice            VOYAGE: FE-219W
-PORT OF LOADING: Chittagong, Bangladesh
-PORT OF DISCHARGE: Port of New York/Newark, USA
-ON BOARD DATE: 2024-11-19
+TOTAL CRATES: 12
+TOTAL WEIGHT: 27,400 KG (estimated — certified weights on weight certificates)
+VOLUME: 68.0 CBM (estimated)
 
-DESCRIPTION OF GOODS
-Men's and Women's Woven Apparel — Assorted
-HS Code: 6205.20.2010 / 6204.62.4010
-Country of Origin: Bangladesh
+COUNTRY OF ORIGIN: NOT STATED — shipper deferred to buyer for determination
+HS CODES: NOT PROVIDED — classification to be completed by importer's broker
+Marks: NISC-NY-APR25 / Crate 001-012
+Packing: Heavy steel crates, lag-bolted; OWS handling required
 
-Packages: 380 master cartons
-Gross Weight: 4,940 KG
-Net Weight: 4,520 KG
-Measurement: 47.8 CBM
-
-FREIGHT: PREPAID
-[DECLARED VALUE: NOT STATED ON B/L]
-[CUSTOMS VALUE: SEE ACCOMPANYING INVOICE — INVOICE NOT ATTACHED]
-
-Original B/L: 3 originals issued` },
-        { filename: 'packing_list.txt', text: `PACKING LIST
-
-Ref: DGAL-PL-2024-1114
-B/L Ref: MSCU-CGP-2024-71048
-Date: 2024-11-12
-
-Shipper: Dhaka Garments & Apparels Ltd., Dhaka, Bangladesh
-Consignee: Eastside Fashion Wholesale LLC, New York, NY
-
-CARTON  STYLE NO.     DESCRIPTION                   QTY/CTN   CARTONS
-001-120 DG-M221       Men's Poplin Dress Shirt        24 pcs    120
-121-220 DG-M344       Men's Chino Trouser — Khaki     12 pcs    100
-221-310 DG-W118       Women's Woven Blouse            18 pcs     90
-311-380 DG-W229       Women's Casual Pant             10 pcs     70
-
-TOTAL CARTONS: 380
-TOTAL PIECES: 120x24 + 100x12 + 90x18 + 70x10 = 2,880 + 1,200 + 1,620 + 700 = 6,400 pcs
-GROSS WEIGHT: 4,940 KG
-NET WEIGHT: 4,520 KG
-VOLUME: 47.8 CBM
-
-Country of Origin: Bangladesh
-HS: 6205.20.2010 / 6204.62.4010
-
-[UNIT PRICE: NOT STATED ON PACKING LIST]
-[TOTAL INVOICE VALUE: NOT STATED — COMMERCIAL INVOICE MISSING FROM PACKAGE]
-[CBP FORM 7501 ENTRY VALUE: CANNOT BE DETERMINED WITHOUT INVOICE]
-[Note: Formal entry requires declared customs value per 19 CFR 152.
- Shipment may be subject to CF-28 Request for Information or hold
- pending value documentation.]
-
-Packed by: M. Hossain, Packing Supervisor` }
+[ISF STATUS: Not yet filed — awaiting vessel booking confirmation and carrier SCAC code]` }
       ]
     }
 
   ]  // end incomplete pool
 
 };  // end SCENARIO_POOLS
+
 
 // ── Randomization helpers ──────────────────────────────────────────────────
 
