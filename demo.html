@@ -1336,6 +1336,367 @@
     .dash-empty-cta:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(27,154,170,.45); }
 
     /* ======================================================
+       PDF PREVIEW PANEL
+       ====================================================== */
+
+    /* --- Container --- */
+    .pdf-preview-panel {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: .5rem;
+      animation: fade-up .3s var(--ease-out);
+    }
+
+    /* --- Header row: icon + filename + pills + status --- */
+    .pdf-preview-header {
+      display: flex; align-items: center; gap: .75rem;
+      padding: .85rem 1rem;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap; gap: .6rem;
+    }
+    .pdf-file-icon {
+      width: 32px; height: 32px; flex-shrink: 0;
+      background: rgba(155,108,214,.12);
+      border: 1px solid rgba(155,108,214,.25);
+      border-radius: 7px;
+      display: flex; align-items: center; justify-content: center;
+      color: #b794f4;
+    }
+    .pdf-meta-group {
+      display: flex; flex-direction: column; gap: .2rem; flex: 1; min-width: 0;
+    }
+    .pdf-meta-filename {
+      font-family: 'JetBrains Mono', monospace; font-size: .82rem;
+      font-weight: 600; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .pdf-meta-pills {
+      display: flex; align-items: center; gap: .4rem; flex-wrap: wrap;
+    }
+    .pdf-meta-pill {
+      display: inline-flex; align-items: center;
+      background: rgba(27,154,170,.08); border: 1px solid rgba(27,154,170,.18);
+      border-radius: 999px; padding: .1rem .55rem;
+      font-size: .68rem; font-weight: 600; color: var(--teal-300);
+      white-space: nowrap;
+    }
+
+    /* --- Extraction status badge --- */
+    .pdf-extract-badge {
+      display: inline-flex; align-items: center; gap: .35rem;
+      padding: .22rem .7rem; border-radius: 999px;
+      font-size: .72rem; font-weight: 700; letter-spacing: .03em;
+      flex-shrink: 0;
+      transition: all .25s;
+    }
+    .pdf-extract-badge.extracting {
+      background: rgba(27,154,170,.1); border: 1px solid rgba(27,154,170,.25);
+      color: var(--teal-300);
+    }
+    .pdf-extract-badge.done {
+      background: rgba(29,184,122,.1); border: 1px solid rgba(29,184,122,.3);
+      color: #34d399;
+    }
+    .pdf-extract-badge.warn {
+      background: rgba(232,168,56,.1); border: 1px solid rgba(232,168,56,.28);
+      color: var(--amber);
+    }
+    .pdf-extract-badge.error {
+      background: rgba(224,80,80,.09); border: 1px solid rgba(224,80,80,.26);
+      color: #fca5a5;
+    }
+    .pdf-badge-spinner {
+      width: 11px; height: 11px; flex-shrink: 0;
+      border: 1.5px solid rgba(77,207,223,.3); border-top-color: var(--teal-300);
+      border-radius: 50%; animation: spin .7s linear infinite;
+    }
+    .pdf-badge-check {
+      width: 12px; height: 12px; flex-shrink: 0;
+    }
+
+    /* --- Thumbnail strip --- */
+    .pdf-thumb-strip {
+      display: flex; align-items: flex-start; gap: .65rem;
+      padding: .85rem 1rem;
+      overflow-x: auto; scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+    .pdf-thumb-strip::-webkit-scrollbar { height: 4px; }
+    .pdf-thumb-strip::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    .pdf-thumb-wrap {
+      position: relative;
+      border-radius: 5px; overflow: hidden;
+      border: 1px solid var(--border);
+      flex-shrink: 0;
+      background: var(--bg-deep);
+      transition: border-color .2s;
+    }
+    .pdf-thumb-wrap:hover { border-color: var(--teal-500); }
+    .pdf-thumb-canvas {
+      display: block;
+      max-width: 120px;
+      height: auto;
+    }
+    .pdf-thumb-label {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: rgba(10,22,40,.75);
+      text-align: center; font-size: .62rem; color: var(--faint);
+      padding: .15rem 0;
+      backdrop-filter: blur(2px);
+    }
+
+    /* --- Scanning beam overlay --- */
+    .pdf-scan-beam {
+      position: absolute;
+      left: -2px; right: -2px;
+      height: 4px; top: 0;
+      pointer-events: none; z-index: 3;
+      background: linear-gradient(
+        90deg,
+        transparent 0%,
+        rgba(27,154,170,.05) 15%,
+        rgba(27,154,170,.95) 50%,
+        rgba(27,154,170,.05) 85%,
+        transparent 100%
+      );
+      box-shadow: 0 0 10px rgba(27,154,170,.7), 0 0 3px rgba(77,207,223,1);
+      animation: pdf-beam-sweep 1.9s cubic-bezier(.4,0,.6,1) infinite;
+    }
+    /* Subtle trailing glow above the beam */
+    .pdf-scan-beam::after {
+      content: '';
+      position: absolute;
+      left: 0; right: 0;
+      bottom: 1px; height: 28px;
+      background: linear-gradient(to top, transparent, rgba(27,154,170,.07));
+      pointer-events: none;
+    }
+    @keyframes pdf-beam-sweep {
+      0%   { top: -4px; opacity: 0; }
+      4%   { opacity: 1; }
+      92%  { opacity: 1; }
+      100% { top: 100%; opacity: 0; }
+    }
+
+    /* Pause beam when done */
+    .pdf-thumb-wrap.scan-done .pdf-scan-beam {
+      display: none;
+    }
+    /* Green flash on done */
+    @keyframes pdf-done-flash {
+      0%   { box-shadow: 0 0 0 0 rgba(29,184,122,.45); }
+      70%  { box-shadow: 0 0 0 5px rgba(29,184,122,0); }
+      100% { box-shadow: 0 0 0 0 rgba(29,184,122,0); }
+    }
+    .pdf-thumb-wrap.scan-done {
+      animation: pdf-done-flash .5s ease;
+      border-color: rgba(29,184,122,.4);
+    }
+
+    /* "+N more pages" chip when >5 pages */
+    .pdf-more-chip {
+      align-self: center; flex-shrink: 0;
+      background: var(--bg-card); border: 1px dashed var(--border);
+      border-radius: 7px; padding: .6rem .85rem;
+      font-size: .75rem; color: var(--muted); white-space: nowrap;
+      display: flex; flex-direction: column; align-items: center; gap: .15rem;
+    }
+    .pdf-more-chip strong { color: var(--text); font-size: .88rem; }
+
+    /* --- Edit text toggle button --- */
+    .pdf-edit-toggle {
+      display: flex; align-items: center; gap: .4rem;
+      background: none; border: none;
+      color: var(--faint); font-family: 'Inter', sans-serif;
+      font-size: .75rem; font-weight: 600; letter-spacing: .03em;
+      cursor: pointer; padding: .3rem 0 .3rem .1rem;
+      transition: color .15s;
+    }
+    .pdf-edit-toggle:hover { color: var(--teal-300); }
+    .pdf-edit-toggle svg { transition: transform .25s var(--ease-out); flex-shrink: 0; }
+    .pdf-edit-toggle.open svg { transform: rotate(180deg); }
+
+    /* --- Collapsible textarea wrapper --- */
+    .pdf-text-collapse {
+      display: grid;
+      grid-template-rows: 0fr;
+      transition: grid-template-rows .32s var(--ease-out);
+      margin-top: .3rem;
+    }
+    .pdf-text-collapse.open {
+      grid-template-rows: 1fr;
+    }
+    .pdf-text-collapse-inner {
+      overflow: hidden;
+    }
+    .pdf-text-label {
+      font-size: .68rem; font-weight: 600; color: var(--faint);
+      text-transform: uppercase; letter-spacing: .07em;
+      margin-bottom: .4rem; margin-top: .2rem;
+    }
+
+    /* ======================================================
+       AGENT PIPELINE VISUALIZER
+       ====================================================== */
+    .agent-pipeline {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.25rem 1.5rem 1rem;
+      margin: 1rem 0 0;
+    }
+    .pipeline-header {
+      font-size: .68rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .1em;
+      color: var(--faint); margin-bottom: 1rem;
+    }
+    .pipeline-track {
+      display: flex;
+      align-items: flex-start;
+    }
+    .pipeline-node {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: .4rem;
+      flex-shrink: 0;
+      width: 72px;
+    }
+    /* ---- Circle ---- */
+    .pnode-circle {
+      width: 40px; height: 40px; border-radius: 50%;
+      border: 2px solid var(--border-hi);
+      background: var(--bg-surface);
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+      transition: border-color .25s, background .25s;
+      flex-shrink: 0;
+    }
+    /* Idle: gray dot */
+    .pnode-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--border-hi);
+      flex-shrink: 0;
+      transition: transform .2s, opacity .2s;
+    }
+    .pipeline-node.active .pnode-dot,
+    .pipeline-node.complete .pnode-dot  { opacity: 0; transform: scale(0); pointer-events: none; }
+    /* Active: icon appears, pulsing teal fill */
+    .pnode-icon {
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      color: var(--teal-300);
+      opacity: 0; transform: scale(.65);
+      transition: opacity .2s, transform .2s;
+      pointer-events: none;
+    }
+    .pipeline-node.active .pnode-icon { opacity: 1; transform: scale(1); }
+    .pipeline-node.active .pnode-circle {
+      border-color: var(--teal-500);
+      animation: pnode-fill-pulse 1.4s ease-in-out infinite;
+    }
+    @keyframes pnode-fill-pulse {
+      0%, 100% { background: rgba(27,154,170,.10); }
+      50%       { background: rgba(27,154,170,.30); }
+    }
+    /* Outer ring pulse */
+    .pnode-pulse-ring {
+      position: absolute; inset: -7px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      pointer-events: none;
+    }
+    .pipeline-node.active .pnode-pulse-ring {
+      border-color: rgba(27,154,170,.4);
+      animation: pnode-ring-pulse 1.2s ease-out infinite;
+    }
+    @keyframes pnode-ring-pulse {
+      0%   { transform: scale(1); opacity: .9; }
+      100% { transform: scale(1.65); opacity: 0; }
+    }
+    /* Complete: solid teal fill + checkmark */
+    .pipeline-node.complete .pnode-circle {
+      border-color: var(--teal-500);
+      background: var(--teal-700);
+      animation: none;
+    }
+    .pipeline-node.complete .pnode-circle::after {
+      content: '\2713';
+      font-size: 16px; font-weight: 700; line-height: 1;
+      color: var(--teal-300);
+    }
+    /* Error */
+    .pipeline-node.error .pnode-circle {
+      border-color: var(--red);
+      background: rgba(224,80,80,.10);
+      animation: none;
+    }
+    .pipeline-node.error .pnode-circle::after {
+      content: '\00D7';
+      font-size: 18px; font-weight: 700; line-height: 1;
+      color: var(--red);
+    }
+    /* Label */
+    .pnode-name {
+      font-size: .59rem; font-weight: 600;
+      color: var(--faint);
+      text-align: center; line-height: 1.25;
+      text-transform: uppercase; letter-spacing: .04em;
+      transition: color .25s;
+      width: 72px;
+    }
+    .pipeline-node.active .pnode-name   { color: var(--teal-300); }
+    .pipeline-node.complete .pnode-name { color: var(--teal-400); }
+    /* Connector */
+    .pipeline-connector {
+      flex: 1; height: 2px;
+      background: var(--border);
+      position: relative; overflow: hidden;
+      margin-top: 19px; /* half of 40px circle */
+      flex-shrink: 1;
+      min-width: 6px;
+      transition: background .25s;
+    }
+    .pipeline-connector.active { background: var(--teal-700); }
+    .pipeline-connector.active::after {
+      content: '';
+      position: absolute; top: 0; left: 0;
+      height: 100%; width: 100%;
+      background: linear-gradient(90deg, var(--teal-500), var(--teal-300));
+      animation: conn-fill .4s var(--ease-out) forwards;
+    }
+    @keyframes conn-fill {
+      from { transform: scaleX(0); transform-origin: left; }
+      to   { transform: scaleX(1); transform-origin: left; }
+    }
+    .pipeline-status {
+      font-size: .74rem; color: var(--muted);
+      margin-top: .75rem; min-height: 1.1em;
+      text-align: center; letter-spacing: .01em;
+    }
+    /* Mobile: scale down pipeline gracefully */
+    @media (max-width: 640px) {
+      .agent-pipeline { padding: .85rem .85rem .7rem; }
+      .pipeline-node  { width: 54px; }
+      .pnode-name     { font-size: .56rem; width: 54px; }
+      .pnode-circle   { width: 34px; height: 34px; }
+      .pipeline-connector { margin-top: 16px; }
+    }
+    @media (max-width: 480px) {
+      /* Names hidden — only circles remain */
+      .pnode-name    { display: none; }
+      .pipeline-node { width: 34px; gap: 0; }
+      .pnode-circle  { width: 32px; height: 32px; }
+      .pnode-circle::after { font-size: 14px; }
+      .pipeline-connector { margin-top: 15px; min-width: 4px; }
+    }
+    /* Horizontal scroll for thumbnail strip on mobile */
+    .pdf-thumb-strip { touch-action: pan-x; -webkit-overflow-scrolling: touch; }
+
+    /* ======================================================
        BULK UPLOAD PANEL
        ====================================================== */
 
@@ -1897,6 +2258,13 @@
 
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (typeof pdfjsLib !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
 </head>
 <body>
 
@@ -2149,6 +2517,13 @@
       <span id="btn-text">Analyze Shipment</span>
       <span class="loading-step" id="loading-step"></span>
     </button>
+  </div>
+
+  <!-- Agent Pipeline Visualizer (PDF tabs only) -->
+  <div id="agent-pipeline" class="agent-pipeline" style="display:none">
+    <div class="pipeline-header">Multi-Agent Analysis</div>
+    <div class="pipeline-track" id="pipeline-track"></div>
+    <div class="pipeline-status" id="pipeline-status"></div>
   </div>
 
   <!-- Error -->
@@ -3040,7 +3415,9 @@ function renderPane() {
   if (!tab) return;
 
   const pane = document.getElementById('doc-pane');
-  pane.innerHTML = `
+
+  // ── Shared filename row (always present) ──────────────────────────────────
+  const filenameRowHtml = `
     <div class="filename-row">
       <span class="filename-label">Filename</span>
       <input class="filename-input" type="text" placeholder="e.g. bill_of_lading.txt"
@@ -3055,12 +3432,87 @@ function renderPane() {
     <div class="extract-status" id="fstatus-${tab.id}"></div>
     <span class="short-doc-warning" id="short-doc-warning-${tab.id}">
       &#9888; Document is very short (&lt;20 words) — results may be limited
-    </span>
-    <textarea class="doc-text" placeholder="Paste raw document text here, or upload a .pdf / .txt file above."
-              id="text-${tab.id}">${escHtml(tab.text)}</textarea>
-  `;
+    </span>`;
 
-  // Show/hide short-doc warning based on word count
+  if (tab.hasPdfPreview && tab.pdfMeta) {
+    // ── PDF PREVIEW PATH ────────────────────────────────────────────────────
+    const meta    = tab.pdfMeta;
+    const badgeState = meta.extractionState || 'extracting';
+    const badgeHtml  = _pdfBadgeHtml(badgeState, meta.badgeText);
+    const textEditOpen = !!tab.textEditOpen;
+
+    // Build thumbnail placeholders (canvases filled later by _pdfRenderThumbs)
+    const maxThumbs = Math.min(meta.pageCount, 5);
+    let thumbsHtml  = '';
+    for (let p = 1; p <= maxThumbs; p++) {
+      // If we already have a stored dataURL, use img; else emit canvas for rendering
+      const stored = meta.thumbnails && meta.thumbnails[p - 1];
+      const innerEl = stored
+        ? `<img src="${stored}" class="pdf-thumb-canvas" alt="Page ${p}">`
+        : `<canvas class="pdf-thumb-canvas" id="pdf-canvas-${tab.id}-${p}"></canvas>`;
+      thumbsHtml += `
+        <div class="pdf-thumb-wrap" id="pdf-thumb-wrap-${tab.id}-${p}">
+          ${innerEl}
+          <div class="pdf-scan-beam" id="pdf-beam-${tab.id}-${p}"></div>
+          <div class="pdf-thumb-label">p.${p}</div>
+        </div>`;
+    }
+    if (meta.pageCount > 5) {
+      thumbsHtml += `
+        <div class="pdf-more-chip">
+          <strong>+${meta.pageCount - 5}</strong>
+          more pages
+        </div>`;
+    }
+
+    pane.innerHTML = filenameRowHtml + `
+      <div class="pdf-preview-panel" id="pdf-panel-${tab.id}">
+        <div class="pdf-preview-header">
+          <div class="pdf-file-icon">
+            <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+              <polyline points="14 2 14 8 20 8"/>
+              <line x1="8" y1="13" x2="16" y2="13"/>
+              <line x1="8" y1="17" x2="13" y2="17"/>
+            </svg>
+          </div>
+          <div class="pdf-meta-group">
+            <div class="pdf-meta-filename">${escHtml(tab.filename || 'document.pdf')}</div>
+            <div class="pdf-meta-pills">
+              <span class="pdf-meta-pill">${meta.pageCount} page${meta.pageCount !== 1 ? 's' : ''}</span>
+              <span class="pdf-meta-pill">${meta.fileSizeKb} KB</span>
+            </div>
+          </div>
+          <div class="pdf-extract-badge ${badgeState}" id="pdf-badge-${tab.id}">
+            ${badgeHtml}
+          </div>
+        </div>
+        <div class="pdf-thumb-strip" id="pdf-thumbs-${tab.id}">
+          ${thumbsHtml}
+        </div>
+      </div>
+      <button class="pdf-edit-toggle${textEditOpen ? ' open' : ''}" id="pdf-toggle-${tab.id}"
+              onclick="pdfToggleEditText(${tab.id})">
+        <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5"
+             viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        <span id="pdf-toggle-label-${tab.id}">${textEditOpen ? 'Hide text ↑' : 'Edit text ↓'}</span>
+      </button>
+      <div class="pdf-text-collapse${textEditOpen ? ' open' : ''}" id="pdf-collapse-${tab.id}">
+        <div class="pdf-text-collapse-inner">
+          <div class="pdf-text-label">Extracted text — edit if needed</div>
+          <textarea class="doc-text" placeholder="Extracted text will appear here."
+                    id="text-${tab.id}">${escHtml(tab.text)}</textarea>
+        </div>
+      </div>`;
+
+  } else {
+    // ── NORMAL PATH (TXT / manual) ───────────────────────────────────────────
+    pane.innerHTML = filenameRowHtml + `
+      <textarea class="doc-text" placeholder="Paste raw document text here, or upload a .pdf / .txt file above."
+                id="text-${tab.id}">${escHtml(tab.text)}</textarea>`;
+  }
+
+  // ── Common post-render wiring ────────────────────────────────────────────
   const _checkWordCount = (text) => {
     const words = text.trim().split(/\s+/).filter(w => w.length > 0).length;
     const warn = document.getElementById('short-doc-warning-' + tab.id);
@@ -3069,26 +3521,73 @@ function renderPane() {
       else warn.classList.remove('visible');
     }
   };
-  // Check immediately on render (e.g. after file upload or scenario load)
   _checkWordCount(tab.text || '');
 
   document.getElementById('fname-' + tab.id).addEventListener('input', e => {
     tab.filename = e.target.value;
-    // Update only the tab label — do NOT call renderTabs()/renderPane() which
-    // would destroy this input element and lose focus on every keystroke.
     const tabBtn = document.querySelector(`.tab-btn[data-id="${tab.id}"] span`);
     if (tabBtn) tabBtn.textContent = tab.filename || 'Document ' + tab.id;
+    // Also update the PDF preview filename if visible
+    const metaFn = document.querySelector(`#pdf-panel-${tab.id} .pdf-meta-filename`);
+    if (metaFn) metaFn.textContent = e.target.value || 'document.pdf';
   });
-  document.getElementById('text-' + tab.id).addEventListener('input', e => {
-    tab.text = e.target.value;
-    _checkWordCount(e.target.value);
-    _setScenarioLabel('');
-  });
+
+  const textEl = document.getElementById('text-' + tab.id);
+  if (textEl) {
+    textEl.addEventListener('input', e => {
+      tab.text = e.target.value;
+      _checkWordCount(e.target.value);
+      _setScenarioLabel('');
+    });
+  }
+
   document.getElementById('ffile-' + tab.id).addEventListener('change', e => {
     const file = e.target.files[0];
     if (file) handleFileUpload(tab.id, file);
-    e.target.value = ''; // reset so re-uploading same file triggers change again
+    e.target.value = '';
   });
+}
+
+// ---------------------------------------------------------------------------
+// PDF helpers — badge HTML builder
+// ---------------------------------------------------------------------------
+function _pdfBadgeHtml(state, customText) {
+  if (state === 'extracting') {
+    return `<div class="pdf-badge-spinner"></div><span>Extracting…</span>`;
+  }
+  if (state === 'done') {
+    return `<svg class="pdf-badge-check" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="2 8 6 12 14 4"/></svg><span>${customText || 'Text extracted ✓'}</span>`;
+  }
+  if (state === 'warn') {
+    return `<span>⚠</span><span>${customText || 'Partial extraction'}</span>`;
+  }
+  if (state === 'error') {
+    return `<span>✕</span><span>${customText || 'Extraction failed'}</span>`;
+  }
+  return '';
+}
+
+// ---------------------------------------------------------------------------
+// PDF Edit Text toggle
+// ---------------------------------------------------------------------------
+function pdfToggleEditText(tabId) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  tab.textEditOpen = !tab.textEditOpen;
+
+  const collapseEl = document.getElementById('pdf-collapse-' + tabId);
+  const toggleBtn  = document.getElementById('pdf-toggle-' + tabId);
+  const labelEl    = document.getElementById('pdf-toggle-label-' + tabId);
+
+  if (collapseEl) collapseEl.classList.toggle('open', tab.textEditOpen);
+  if (toggleBtn)  toggleBtn.classList.toggle('open', tab.textEditOpen);
+  if (labelEl)    labelEl.textContent = tab.textEditOpen ? 'Hide text ↑' : 'Edit text ↓';
+
+  // If opening, sync textarea value from state in case it was modified
+  if (tab.textEditOpen) {
+    const ta = document.getElementById('text-' + tabId);
+    if (ta && tab.text) ta.value = tab.text;
+  }
 }
 
 function switchTab(id) {
@@ -3111,6 +3610,9 @@ function addTab() {
 }
 
 function removeTab(id) {
+  // Clear PDF state before removal
+  const t = tabs.find(t => t.id === id);
+  if (t) _pdfClearPreview(t);
   tabs = tabs.filter(t => t.id !== id);
   if (activeTab === id) activeTab = tabs[tabs.length - 1].id;
   renderTabs();
@@ -4846,9 +5348,149 @@ async function analyze() {
   const _warnBanner = document.getElementById('validation-warning-banner');
   if (_warnBanner) _warnBanner.classList.remove('visible');
 
-  setLoading(true);
+  // Always use the agent pipeline visualizer (PDF and plain-text tabs)
+  analyzeWithPipeline(documents);
+}
+
+// ---------------------------------------------------------------------------
+// Agent Pipeline Visualizer
+// ---------------------------------------------------------------------------
+
+const PIPELINE_AGENTS = [
+  {
+    key: 'classifier',
+    label: 'Document\nClassifier',
+    msg: 'Classifying document type\u2026',
+    icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><circle cx="11" cy="14" r="2.4"/><path d="m21 21-1.6-1.6"/></svg>',
+  },
+  {
+    key: 'parser',
+    label: 'Parser',
+    msg: 'Parsing fields and tables\u2026',
+    icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
+  },
+  {
+    key: 'validator',
+    label: 'Validation',
+    msg: 'Checking OFAC, HTS, and AD/CVD compliance\u2026',
+    icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><polyline points="9 12 11 14 15 10"/></svg>',
+  },
+  {
+    key: 'risk',
+    label: 'Risk\nEngine',
+    msg: 'Scoring risk signals\u2026',
+    icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+  },
+  {
+    key: 'decision',
+    label: 'Decision',
+    msg: 'Generating compliance decision\u2026',
+    icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3L4 7v5c0 4.4 3.4 8.5 8 9.5 4.6-1 8-5.1 8-9.5V7l-8-4z"/><path d="M8 11l3 3 5-5"/></svg>',
+  },
+  {
+    key: 'orchestrator',
+    label: 'Orchestrator',
+    msg: 'Compiling full audit chain\u2026',
+    icon: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="2"/><circle cx="5" cy="19" r="2"/><circle cx="19" cy="19" r="2"/><line x1="12" y1="7" x2="12" y2="14"/><line x1="12" y1="14" x2="5.8" y2="17.3"/><line x1="12" y1="14" x2="18.2" y2="17.3"/></svg>',
+  },
+];
+
+let _pipelineTimers = [];
+let _pipelineCurrentAgentKey = null;
+
+function buildAgentPipeline() {
+  const track = document.getElementById('pipeline-track');
+  if (!track) return;
+  let html = '';
+  PIPELINE_AGENTS.forEach((agent, i) => {
+    const labelHtml = agent.label.replace('\n', '<br>');
+    html += `<div class="pipeline-node" id="pnode-${agent.key}">
+      <div class="pnode-circle">
+        <div class="pnode-dot"></div>
+        <div class="pnode-icon">${agent.icon}</div>
+        <div class="pnode-pulse-ring"></div>
+      </div>
+      <div class="pnode-name">${labelHtml}</div>
+    </div>`;
+    if (i < PIPELINE_AGENTS.length - 1) {
+      html += `<div class="pipeline-connector" id="pconn-${i}"></div>`;
+    }
+  });
+  track.innerHTML = html;
+  const statusEl = document.getElementById('pipeline-status');
+  if (statusEl) statusEl.textContent = '';
+  _pipelineCurrentAgentKey = null;
+}
+
+function showAgentPipeline() {
+  const el = document.getElementById('agent-pipeline');
+  if (el) el.style.display = 'block';
+  const btn = document.getElementById('analyze-btn');
+  if (btn) btn.disabled = true;
+  // Replace button text — pipeline is the loading indicator
+  const btnText = document.getElementById('btn-text');
+  if (btnText) btnText.textContent = 'Analyzing\u2026';
+  // Ensure old cycling-step text is cleared
+  const stepEl = document.getElementById('loading-step');
+  if (stepEl) { stepEl.textContent = ''; stepEl.classList.remove('visible'); }
+}
+
+function hideAgentPipeline() {
+  const el = document.getElementById('agent-pipeline');
+  if (el) el.style.display = 'none';
+}
+
+function _pipelineRestoreBtn() {
+  const btn = document.getElementById('analyze-btn');
+  if (btn) btn.disabled = false;
+  const btnText = document.getElementById('btn-text');
+  if (btnText) btnText.textContent = 'Analyze Shipment';
+}
+
+function setAgentActive(key) {
+  _pipelineCurrentAgentKey = key;
+  const node = document.getElementById('pnode-' + key);
+  if (node) { node.classList.remove('complete', 'error'); node.classList.add('active'); }
+  const idx = PIPELINE_AGENTS.findIndex(a => a.key === key);
+  if (idx > 0) {
+    const conn = document.getElementById('pconn-' + (idx - 1));
+    if (conn) {
+      // Re-clone to re-trigger CSS fill animation
+      const clone = conn.cloneNode(true);
+      conn.parentNode.replaceChild(clone, conn);
+      clone.classList.add('active');
+    }
+  }
+  const agent = PIPELINE_AGENTS.find(a => a.key === key);
+  const statusEl = document.getElementById('pipeline-status');
+  if (statusEl && agent) statusEl.textContent = agent.msg;
+}
+
+function setAgentComplete(key) {
+  const node = document.getElementById('pnode-' + key);
+  if (node) { node.classList.remove('active'); node.classList.add('complete'); }
+}
+
+function _pipelineSetError(key) {
+  const targetKey = key || _pipelineCurrentAgentKey;
+  const node = document.getElementById('pnode-' + targetKey);
+  if (node) { node.classList.remove('active'); node.classList.add('error'); }
+  const statusEl = document.getElementById('pipeline-status');
+  if (statusEl) statusEl.textContent = 'Analysis failed \u2014 see error below.';
+}
+
+function _clearPipelineTimers() {
+  _pipelineTimers.forEach(t => clearTimeout(t));
+  _pipelineTimers = [];
+}
+
+async function analyzeWithPipeline(documents) {
+  _clearPipelineTimers();
+  buildAgentPipeline();
+  showAgentPipeline();
   hideError();
   hideRejectionScreen();
+
   const _rEl = document.getElementById('results');
   _rEl.classList.remove('visible');
   _rEl.style.display = '';
@@ -4856,39 +5498,152 @@ async function analyze() {
   document.getElementById('report-status').textContent = '';
   document.getElementById('report-status').className = '';
 
-  try {
-    const res = await fetch(apiUrl() + '/api/v1/analyze', authedJson('POST', { documents }));
+  const agentKeys   = PIPELINE_AGENTS.map(a => a.key);
+  const LAST_IDX    = agentKeys.length - 1;  // 5 = orchestrator
+  let   stepIdx     = 0;      // index of next agent to activate
+  let   fetchResolved = false;
+  let   fetchData   = null;
+  let   fetchError  = null;
+  let   aborted     = false;
+  const startTime   = Date.now();
 
-    if (res.status === 401) { handle401(); return; }
+  // ---- Fire the real API call immediately ----
+  const fetchPromise = fetch(apiUrl() + '/api/v1/analyze', authedJson('POST', { documents }))
+    .then(async (res) => {
+      if (res.status === 401) { aborted = true; handle401(); return null; }
+      if (res.status === 422) {
+        const err = await res.json().catch(() => ({}));
+        const detail = err.detail || {};
+        if (detail.code === 'DOCUMENT_VALIDATION_FAILED' && detail.rejected_documents) {
+          fetchData = { _rejection: true, docs: detail.rejected_documents };
+          return fetchData;
+        }
+        throw new Error((detail.message) || JSON.stringify(detail) || 'Unprocessable request');
+      }
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ detail: res.statusText }));
+        throw new Error((err.detail && err.detail.message) || err.detail || `HTTP ${res.status}`);
+      }
+      fetchData = await res.json();
+      return fetchData;
+    })
+    .catch(e => { fetchError = e; })
+    .finally(() => { fetchResolved = true; });
 
-    if (res.status === 422) {
-      const err = await res.json().catch(() => ({}));
-      const detail = err.detail || {};
-      if (detail.code === 'DOCUMENT_VALIDATION_FAILED' && detail.rejected_documents) {
-        showRejectionScreen(detail.rejected_documents);
+  // ---- Called once when fetch resolves (success or error) ----
+  function _finishPipeline() {
+    _clearPipelineTimers();
+
+    if (aborted) {
+      hideAgentPipeline();
+      _pipelineRestoreBtn();
+      return;
+    }
+
+    if (fetchError) {
+      _pipelineSetError(_pipelineCurrentAgentKey);
+      setTimeout(() => {
+        hideAgentPipeline();
+        _pipelineRestoreBtn();
+        const msg = fetchError.message || '';
+        if (msg.includes('Failed to fetch') || msg.includes('NetworkError')) {
+          showError('Cannot reach the API. Make sure the server is running:\n\nuvicorn api.app:app --reload --port 8000');
+        } else {
+          showError(msg || 'Unknown error');
+        }
+      }, 700);
+      return;
+    }
+
+    // Build a fast-forward sequence: complete current → skip to orchestrator → done.
+    // stepIdx is the count of agents activated so far; (stepIdx-1) is currently active.
+    const currentActive = stepIdx - 1;
+
+    // Sequence items: each is {action:'activate'|'complete', idx:Number}
+    const seq = [];
+    if (currentActive >= 0 && currentActive <= LAST_IDX) {
+      seq.push({ action: 'complete', idx: currentActive });
+    }
+    // Activate+complete any agents between current and orchestrator
+    for (let i = Math.max(0, stepIdx); i < LAST_IDX; i++) {
+      seq.push({ action: 'activate', idx: i });
+      seq.push({ action: 'complete', idx: i });
+    }
+    // Orchestrator: activate (brief visible pause) then complete
+    seq.push({ action: 'activate', idx: LAST_IDX });
+    seq.push({ action: 'complete', idx: LAST_IDX });
+
+    let seqPos = 0;
+    function runSeq() {
+      if (seqPos >= seq.length) {
+        // Fully lit — show status, pause, then reveal results
+        const statusEl = document.getElementById('pipeline-status');
+        if (statusEl) statusEl.textContent = 'Analysis complete.';
+        setTimeout(() => {
+          hideAgentPipeline();
+          _pipelineRestoreBtn();
+          if (fetchData && fetchData._rejection) {
+            showRejectionScreen(fetchData.docs);
+          } else if (fetchData) {
+            renderResults(fetchData);
+          }
+        }, 300);
         return;
       }
-      // Generic 422 (e.g. pydantic validation error)
-      throw new Error((detail.message) || JSON.stringify(detail) || 'Unprocessable request');
+      const { action, idx } = seq[seqPos++];
+      if (action === 'activate') {
+        setAgentActive(agentKeys[idx]);
+        // Give orchestrator a longer breath before completing
+        setTimeout(runSeq, idx === LAST_IDX ? 380 : 80);
+      } else {
+        setAgentComplete(agentKeys[idx]);
+        setTimeout(runSeq, 80);
+      }
     }
 
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error((err.detail && err.detail.message) || err.detail || `HTTP ${res.status}`);
-    }
-
-    const data = await res.json();
-    renderResults(data);
-
-  } catch (e) {
-    if (e.message.includes('Failed to fetch') || e.message.includes('NetworkError')) {
-      showError('Cannot reach the API. Make sure the server is running:\n\nuvicorn api.app:app --reload --port 8000');
-    } else {
-      showError(e.message);
-    }
-  } finally {
-    setLoading(false);
+    runSeq();
   }
+
+  // ---- Timer-driven pre-fetch animation ----
+  // Agents 0 → (LAST_IDX-1) advance on adaptive timers.
+  // Orchestrator (LAST_IDX) only activates via _finishPipeline, after fetch resolves.
+  function advanceStep() {
+    if (stepIdx > 0) setAgentComplete(agentKeys[stepIdx - 1]);
+    if (stepIdx >= agentKeys.length) return;
+
+    setAgentActive(agentKeys[stepIdx]);
+    const justActivated = stepIdx;
+    stepIdx++;
+
+    // Decision (index 4) is the last timer-driven step — attach finish handler and stop
+    if (justActivated === LAST_IDX - 1) {
+      fetchPromise.then(_finishPipeline);
+      return;
+    }
+    // Safety guard: orchestrator should never be reached via this path
+    if (justActivated >= LAST_IDX) {
+      fetchPromise.then(_finishPipeline);
+      return;
+    }
+
+    // Adaptive delay: average interval so far keeps progression proportional to elapsed time.
+    // If fetch already resolved, fast-forward at 100 ms per step.
+    const elapsed = Date.now() - startTime;
+    let delay;
+    if (fetchResolved) {
+      delay = 100;
+    } else {
+      // completedTransitions = number of step-to-step gaps so far
+      const completedTransitions = justActivated; // 0 on first activation
+      const avg = completedTransitions > 0 ? elapsed / completedTransitions : 0;
+      delay = Math.max(700, Math.min(3000, avg));
+    }
+
+    _pipelineTimers.push(setTimeout(advanceStep, delay));
+  }
+
+  advanceStep();
+  await fetchPromise;
 }
 
 let _loadingStepTimers = [];
@@ -5271,38 +6026,295 @@ async function handleFileUpload(tabId, file) {
   if (!tab) return;
 
   const isPdf = file.name.toLowerCase().endsWith('.pdf') || file.type === 'application/pdf';
-  const statusEl = document.getElementById('fstatus-' + tabId);
-  const badgeEl  = document.getElementById('fbadge-' + tabId);
-  const fnameEl  = document.getElementById('fname-' + tabId);
-  const textEl   = document.getElementById('text-' + tabId);
 
-  // Show loading state; hide stale badge
-  if (badgeEl) badgeEl.className = 'file-badge';
-  statusEl.className = 'extract-status loading';
-  statusEl.innerHTML = isPdf
-    ? '<div class="extract-spinner"></div><span>PDF detected \u2014 extracting text for analysis\u2026</span>'
-    : '<div class="extract-spinner"></div><span>Reading file\u2026</span>';
+  // Auto-fill filename state (before re-render so it's available for panel)
+  if (!tab.filename) {
+    tab.filename = file.name;
+    const tabBtn = document.querySelector(`.tab-btn[data-id="${tabId}"] span`);
+    if (tabBtn) tabBtn.textContent = file.name;
+  }
+
+  if (isPdf && typeof pdfjsLib !== 'undefined') {
+    // ── PDF MAGIC PATH ──────────────────────────────────────────────────────
+    await _pdfHandleUpload(tabId, file);
+  } else {
+    // ── TXT / FALLBACK PATH (unchanged behavior) ────────────────────────────
+    _pdfClearPreview(tab);
+
+    const statusEl = document.getElementById('fstatus-' + tabId);
+    const badgeEl  = document.getElementById('fbadge-' + tabId);
+    const fnameEl  = document.getElementById('fname-' + tabId);
+    const textEl   = document.getElementById('text-' + tabId);
+
+    if (badgeEl) badgeEl.className = 'file-badge';
+    statusEl.className = 'extract-status loading';
+    statusEl.innerHTML = isPdf
+      ? '<div class="extract-spinner"></div><span>PDF detected \u2014 extracting text for analysis\u2026</span>'
+      : '<div class="extract-spinner"></div><span>Reading file\u2026</span>';
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch(apiUrl() + '/api/v1/extract-text', authedForm(formData));
+      if (res.status === 401) { handle401(); return; }
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        const detail = err.detail || {};
+        throw { code: (typeof detail === 'object' ? detail.code : null),
+                message: (typeof detail === 'object' ? detail.message : null) || `HTTP ${res.status}` };
+      }
+
+      const data = await res.json();
+
+      if (textEl) { textEl.value = data.text; tab.text = data.text; }
+
+      if (fnameEl && !fnameEl.value) {
+        fnameEl.value = file.name;
+        tab.filename = file.name;
+        const tabBtn = document.querySelector(`.tab-btn[data-id="${tabId}"] span`);
+        if (tabBtn) tabBtn.textContent = file.name;
+      }
+
+      if (badgeEl) {
+        badgeEl.textContent = isPdf ? `PDF \u2022 ${data.page_count}p` : 'TXT';
+        badgeEl.className = 'file-badge visible' + (isPdf ? ' pdf' : '');
+      }
+
+      if (data.warnings && data.warnings.length) {
+        statusEl.className = 'extract-status error';
+        statusEl.innerHTML = `<span>&#9888;</span><span>${escHtml(data.warnings[0])}</span>`;
+      } else {
+        statusEl.className = 'extract-status';
+        statusEl.innerHTML = '';
+      }
+
+    } catch (err) {
+      const code = err.code || '';
+      let userMsg;
+      if (code === 'SCANNED_PDF')        userMsg = 'This PDF is a scanned image with no machine-readable text. Use OCR software to make it searchable, then try again.';
+      else if (code === 'PASSWORD_PROTECTED') userMsg = 'This PDF is password-protected. Remove the password and re-upload.';
+      else if (code === 'CORRUPT_PDF')   userMsg = 'This PDF appears to be corrupt or malformed. Try exporting a fresh copy.';
+      else if (code === 'FILE_TOO_LARGE') userMsg = 'File exceeds the 10 MB limit. Please upload a smaller file.';
+      else if (code === 'TOO_MANY_PAGES') userMsg = 'PDF has too many pages (max 50). Split the document and try again.';
+      else if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')))
+        userMsg = 'Cannot reach the API. Make sure the server is running.';
+      else userMsg = err.message || 'Could not extract text from this file.';
+
+      statusEl.className = 'extract-status error';
+      statusEl.innerHTML = `<span>&#9888;</span><span>${escHtml(userMsg)}</span>`;
+      if (badgeEl) badgeEl.className = 'file-badge';
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// PDF upload — full magic path (PDF.js + server)
+// ---------------------------------------------------------------------------
+async function _pdfHandleUpload(tabId, file) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+
+  // Mark a generation token — if the user uploads another file while this is
+  // running, the stale upload silently bails out.
+  const uploadGen = (tab._pdfUploadGen = (tab._pdfUploadGen || 0) + 1);
+
+  const sizeKb = Math.round(file.size / 1024);
+
+  // 1. Load the PDF into PDF.js
+  let pdfDoc;
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  } catch (e) {
+    _pdfClearPreview(tab);
+    tab.hasPdfPreview = false;
+    renderPane();
+
+    // Distinguish password-protected from other failures
+    const isPassword = e && (
+      e.name === 'PasswordException' ||
+      (typeof pdfjsLib !== 'undefined' && pdfjsLib.PasswordResponses &&
+       e.code === pdfjsLib.PasswordResponses.NEED_PASSWORD)
+    );
+
+    if (isPassword) {
+      // Show inline error and don't hit the server — user must type text manually
+      const statusEl = document.getElementById('fstatus-' + tabId);
+      if (statusEl) {
+        statusEl.className = 'extract-status error';
+        statusEl.innerHTML = `<span>&#9888;</span><span>PDF is password protected \u2014 please enter text manually.</span>`;
+      }
+    } else {
+      // Corrupt / unsupported PDF — let the server try
+      _pdfServerExtract(tabId, file, false);
+    }
+    return;
+  }
+
+  if (tab._pdfUploadGen !== uploadGen) return; // superseded
+
+  const pageCount = pdfDoc.numPages;
+
+  // 2. Initialise tab PDF state and show the preview panel
+  tab.hasPdfPreview = true;
+  tab.pdfMeta = {
+    pageCount,
+    fileSizeKb: sizeKb,
+    thumbnails: [],           // populated below
+    extractionState: 'extracting',
+    badgeText: null,
+  };
+  renderPane();   // renders panel with empty canvases
+
+  // 3. Render thumbnails into the canvases (up to 5 pages)
+  const maxThumbs = Math.min(pageCount, 5);
+  for (let p = 1; p <= maxThumbs; p++) {
+    if (tab._pdfUploadGen !== uploadGen) return;
+    try {
+      const dataUrl = await _pdfRenderThumb(pdfDoc, p, tabId);
+      if (tab.pdfMeta) tab.pdfMeta.thumbnails[p - 1] = dataUrl;
+      // Replace canvas with img to persist through future renderPane calls
+      const canvas = document.getElementById(`pdf-canvas-${tabId}-${p}`);
+      if (canvas) {
+        const img = document.createElement('img');
+        img.className = 'pdf-thumb-canvas';
+        img.alt = 'Page ' + p;
+        img.src = dataUrl;
+        canvas.replaceWith(img);
+      }
+    } catch (e) {
+      console.warn('[PDF.js] Thumb render failed p.' + p, e);
+    }
+  }
+
+  // 4. Extract text client-side (all pages) and populate textarea
+  let clientText = '';
+  try {
+    clientText = await _pdfExtractTextAllPages(pdfDoc, uploadGen, tab);
+  } catch (e) {
+    console.warn('[PDF.js] Text extraction failed:', e);
+  }
+
+  if (tab._pdfUploadGen !== uploadGen) return;
+
+  if (clientText.trim()) {
+    tab.text = clientText.trim();
+    const ta = document.getElementById('text-' + tabId);
+    if (ta) ta.value = tab.text;
+  }
+
+  // 5. Fire off the server extraction in parallel (server result is more accurate)
+  _pdfServerExtract(tabId, file, true, uploadGen);
+}
+
+// ---------------------------------------------------------------------------
+// Render one PDF page to canvas and return a JPEG dataURL
+// ---------------------------------------------------------------------------
+async function _pdfRenderThumb(pdfDoc, pageNum, tabId) {
+  const page     = await pdfDoc.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 0.22 }); // ~120px wide on A4
+
+  const canvas  = document.getElementById(`pdf-canvas-${tabId}-${pageNum}`);
+  if (!canvas) {
+    // Off-screen render if canvas no longer in DOM
+    const offscreen = document.createElement('canvas');
+    offscreen.width  = viewport.width;
+    offscreen.height = viewport.height;
+    await page.render({ canvasContext: offscreen.getContext('2d'), viewport }).promise;
+    return offscreen.toDataURL('image/jpeg', 0.75);
+  }
+
+  canvas.width  = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+  return canvas.toDataURL('image/jpeg', 0.75);
+}
+
+// ---------------------------------------------------------------------------
+// Extract text from all pages using PDF.js getTextContent
+// ---------------------------------------------------------------------------
+async function _pdfExtractTextAllPages(pdfDoc, uploadGen, tab) {
+  let full = '';
+  for (let p = 1; p <= pdfDoc.numPages; p++) {
+    if (tab._pdfUploadGen !== uploadGen) return '';   // stale upload
+    const page    = await pdfDoc.getPage(p);
+    const content = await page.getTextContent();
+    const pageText = content.items
+      .map(item => item.str)
+      .join(' ')
+      .replace(/\s{3,}/g, '\n');   // collapse long runs of spaces into newlines
+    if (pageText.trim()) full += pageText + '\n\n';
+  }
+  return full.trim();
+}
+
+// ---------------------------------------------------------------------------
+// Server-side extraction (POST /api/v1/extract-text)
+// Called after PDF.js preview is already shown.
+// ---------------------------------------------------------------------------
+async function _pdfServerExtract(tabId, file, hasPdfPreview, uploadGen) {
+  const tab = tabs.find(t => t.id === tabId);
+  if (!tab) return;
+
+  // Safety timeout — beam never runs more than 15 seconds
+  const beamTimeout = hasPdfPreview
+    ? setTimeout(() => _pdfSetScanDone(tabId), 15000)
+    : null;
 
   const formData = new FormData();
   formData.append('file', file);
 
   try {
     const res = await fetch(apiUrl() + '/api/v1/extract-text', authedForm(formData));
+
+    // Check if superseded
+    if (hasPdfPreview && uploadGen !== undefined && tab._pdfUploadGen !== uploadGen) return;
+
+    if (beamTimeout) clearTimeout(beamTimeout);
+
     if (res.status === 401) { handle401(); return; }
 
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       const detail = err.detail || {};
-      throw { code: (typeof detail === 'object' ? detail.code : null),
-              message: (typeof detail === 'object' ? detail.message : null) || `HTTP ${res.status}` };
+      const code   = typeof detail === 'object' ? detail.code : null;
+      const msg    = typeof detail === 'object' ? detail.message : detail;
+
+      if (hasPdfPreview) {
+        // Map error codes to friendly badge text
+        const badgeText = code === 'SCANNED_PDF'
+          ? 'No text found \u2014 enter text manually'
+          : code === 'PASSWORD_PROTECTED'
+          ? 'Password protected \u2014 enter text manually'
+          : 'Extraction failed';
+
+        // If we have client-side text already, treat as warn; else error
+        const state = (tab.text && tab.text.trim()) ? 'warn' : 'error';
+        if (tab.pdfMeta) { tab.pdfMeta.extractionState = state; tab.pdfMeta.badgeText = badgeText; }
+        _pdfSetScanDone(tabId, state, badgeText);
+      } else {
+        const statusEl = document.getElementById('fstatus-' + tabId);
+        if (statusEl) {
+          statusEl.className = 'extract-status error';
+          statusEl.innerHTML = `<span>&#9888;</span><span>${escHtml(msg || 'Could not extract text.')}</span>`;
+        }
+      }
+      return;
     }
 
     const data = await res.json();
 
-    // Populate textarea and tab state
-    if (textEl) { textEl.value = data.text; tab.text = data.text; }
+    // Server text wins — overwrite client-side extraction
+    if (data.text && data.text.trim()) {
+      tab.text = data.text;
+      const ta = document.getElementById('text-' + tabId);
+      if (ta) ta.value = data.text;
+    }
 
-    // Auto-fill filename if the user hasn't typed one yet
+    // Update filename badge if no filename yet
+    const fnameEl = document.getElementById('fname-' + tabId);
     if (fnameEl && !fnameEl.value) {
       fnameEl.value = file.name;
       tab.filename = file.name;
@@ -5310,45 +6322,109 @@ async function handleFileUpload(tabId, file) {
       if (tabBtn) tabBtn.textContent = file.name;
     }
 
-    // Show file type badge
-    if (badgeEl) {
-      badgeEl.textContent = isPdf ? `PDF \u2022 ${data.page_count}p` : 'TXT';
-      badgeEl.className = 'file-badge visible' + (isPdf ? ' pdf' : '');
-    }
+    if (hasPdfPreview) {
+      // Update page count from server (may be more accurate than PDF.js)
+      if (data.page_count && tab.pdfMeta) tab.pdfMeta.pageCount = data.page_count;
 
-    // Show non-fatal warnings (e.g. mixed scanned/text pages) in status bar
-    if (data.warnings && data.warnings.length) {
-      statusEl.className = 'extract-status error';
-      statusEl.innerHTML = `<span>&#9888;</span><span>${escHtml(data.warnings[0])}</span>`;
+      const state = (data.warnings && data.warnings.length) ? 'warn' : 'done';
+      const badgeText = state === 'warn'
+        ? 'Partial extraction — review text'
+        : 'Text extracted ✓';
+
+      if (tab.pdfMeta) { tab.pdfMeta.extractionState = state; tab.pdfMeta.badgeText = badgeText; }
+      _pdfSetScanDone(tabId, state, badgeText);
+
+      // Also hide the old status bar (we use the badge now)
+      const statusEl = document.getElementById('fstatus-' + tabId);
+      if (statusEl) { statusEl.className = 'extract-status'; statusEl.innerHTML = ''; }
+
+      // Show the file-badge (PDF pill in the filename row)
+      const badgeEl = document.getElementById('fbadge-' + tabId);
+      if (badgeEl) {
+        badgeEl.textContent = `PDF \u2022 ${data.page_count || tab.pdfMeta.pageCount}p`;
+        badgeEl.className = 'file-badge visible pdf';
+      }
+
     } else {
-      // Clear the loading state on success
-      statusEl.className = 'extract-status';
-      statusEl.innerHTML = '';
+      // Non-PDF or PDF.js unavailable path — use old status bar
+      const statusEl = document.getElementById('fstatus-' + tabId);
+      const badgeEl  = document.getElementById('fbadge-' + tabId);
+
+      if (badgeEl) {
+        badgeEl.textContent = `PDF \u2022 ${data.page_count}p`;
+        badgeEl.className = 'file-badge visible pdf';
+      }
+      if (data.warnings && data.warnings.length) {
+        statusEl.className = 'extract-status error';
+        statusEl.innerHTML = `<span>&#9888;</span><span>${escHtml(data.warnings[0])}</span>`;
+      } else {
+        statusEl.className = 'extract-status';
+        statusEl.innerHTML = '';
+      }
     }
 
   } catch (err) {
-    const code = err.code || '';
-    let userMsg;
-    if (code === 'SCANNED_PDF') {
-      userMsg = 'This PDF is a scanned image with no machine-readable text. Use OCR software to make it searchable, then try again.';
-    } else if (code === 'PASSWORD_PROTECTED') {
-      userMsg = 'This PDF is password-protected. Remove the password and re-upload.';
-    } else if (code === 'CORRUPT_PDF') {
-      userMsg = 'This PDF appears to be corrupt or malformed. Try exporting a fresh copy.';
-    } else if (code === 'FILE_TOO_LARGE') {
-      userMsg = 'File exceeds the 10 MB limit. Please upload a smaller file.';
-    } else if (code === 'TOO_MANY_PAGES') {
-      userMsg = 'PDF has too many pages (max 50). Split the document and try again.';
-    } else if (err.message && (err.message.includes('Failed to fetch') || err.message.includes('NetworkError'))) {
-      userMsg = 'Cannot reach the API. Make sure the server is running.';
+    if (beamTimeout) clearTimeout(beamTimeout);
+    if (hasPdfPreview) {
+      const hasClientText = tab.text && tab.text.trim();
+      const state     = hasClientText ? 'warn' : 'error';
+      const badgeText = hasClientText
+        ? 'Server unavailable — using browser extraction'
+        : 'Cannot reach server';
+      if (tab.pdfMeta) { tab.pdfMeta.extractionState = state; tab.pdfMeta.badgeText = badgeText; }
+      _pdfSetScanDone(tabId, state, badgeText);
     } else {
-      userMsg = err.message || 'Could not extract text from this file.';
+      const statusEl = document.getElementById('fstatus-' + tabId);
+      if (statusEl) {
+        statusEl.className = 'extract-status error';
+        statusEl.innerHTML = `<span>&#9888;</span><span>Cannot reach the API. Make sure the server is running.</span>`;
+      }
     }
-
-    statusEl.className = 'extract-status error';
-    statusEl.innerHTML = `<span>&#9888;</span><span>${escHtml(userMsg)}</span>`;
-    if (badgeEl) badgeEl.className = 'file-badge'; // hide badge on failure
   }
+}
+
+// ---------------------------------------------------------------------------
+// Stop the scanning beam on all thumbnails and update the badge
+// ---------------------------------------------------------------------------
+function _pdfSetScanDone(tabId, state, badgeText) {
+  state = state || 'done';
+
+  // Stop beam on all thumbs
+  document.querySelectorAll(`#pdf-thumbs-${tabId} .pdf-thumb-wrap`).forEach(w => {
+    w.classList.add('scan-done');
+  });
+
+  // Update badge
+  const badgeEl = document.getElementById('pdf-badge-' + tabId);
+  if (badgeEl) {
+    badgeEl.className = 'pdf-extract-badge ' + state;
+    badgeEl.innerHTML = _pdfBadgeHtml(state, badgeText || null);
+  }
+
+  // Auto-reveal the edit textarea when there is no extractable text (error state)
+  // so the officer can immediately type or paste text without hunting for the toggle
+  if (state === 'error') {
+    const tab = tabs.find(t => t.id === tabId);
+    if (tab && !(tab.text && tab.text.trim())) {
+      tab.textEditOpen = true;
+      const collapseEl = document.getElementById('pdf-collapse-' + tabId);
+      const toggleBtn  = document.getElementById('pdf-toggle-' + tabId);
+      const labelEl    = document.getElementById('pdf-toggle-label-' + tabId);
+      if (collapseEl) collapseEl.classList.add('open');
+      if (toggleBtn)  toggleBtn.classList.add('open');
+      if (labelEl)    labelEl.textContent = 'Hide text \u2191';
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Clear PDF preview state on a tab (used before re-rendering as plain textarea)
+// ---------------------------------------------------------------------------
+function _pdfClearPreview(tab) {
+  tab.hasPdfPreview  = false;
+  tab.pdfMeta        = null;
+  tab.pdfFile        = null;
+  tab.textEditOpen   = false;
 }
 
 // ---------------------------------------------------------------------------
