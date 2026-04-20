@@ -358,6 +358,7 @@ class ReportGenerator:
             # Subsequent pages: findings, compliance, pattern, steps
             self._section_findings()
             self._section_compliance_grid()
+            self._section_sustainability()
             self._section_pattern_intelligence()
             self._section_next_steps()
             # Final page: officer review + disclaimer
@@ -788,6 +789,127 @@ class ReportGenerator:
                  self._MARGIN_LEFT + self._USABLE_W, pdf.get_y())
         pdf.ln(5)
         pdf.set_text_color(*_C_NEAR_BLACK)
+
+    def _section_sustainability(self) -> None:
+        """Sustainability Assessment section — grade, risk signals, certifications."""
+        rating = self._payload.get("sustainability_rating")
+        if not rating:
+            return
+
+        grade = rating.get("grade", "N/A") if isinstance(rating, dict) else getattr(rating, "grade", "N/A")
+        if grade == "N/A":
+            return
+
+        pdf = self._pdf
+        self._section_heading("SUSTAINABILITY ASSESSMENT")
+
+        def _get(key: str, default=None):
+            if isinstance(rating, dict):
+                return rating.get(key, default)
+            return getattr(rating, key, default)
+
+        # Grade badge row
+        _GRADE_COLORS: dict[str, tuple[int, int, int]] = {
+            "A": (29, 184, 122),
+            "B": (27, 168, 168),
+            "C": (232, 168, 56),
+            "D": (224, 80, 80),
+        }
+        grade_color = _GRADE_COLORS.get(grade, _C_MID_GRAY)
+
+        x = self._MARGIN_LEFT
+        y = pdf.get_y()
+
+        # Grade square
+        sq = 18
+        pdf.set_fill_color(*grade_color)
+        pdf.rect(x, y, sq, sq, style="F")
+        pdf.set_font("Helvetica", "B", 14)
+        pdf.set_text_color(*_C_WHITE)
+        pdf.set_xy(x, y + 2)
+        pdf.cell(sq, sq - 4, grade, align="C", ln=False)
+
+        # Grade label + risk pills (same row, right of square)
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_text_color(*_C_NEAR_BLACK)
+        pdf.set_xy(x + sq + 4, y + 1)
+        grade_labels = {
+            "A": "Strong sustainability profile",
+            "B": "Good sustainability profile",
+            "C": "Moderate sustainability concerns",
+            "D": "Significant sustainability gaps",
+        }
+        pdf.cell(self._USABLE_W - sq - 4, 5, grade_labels.get(grade, ""), ln=True)
+
+        pdf.set_font("Helvetica", "", 8)
+        pdf.set_text_color(*_C_MID_GRAY)
+        pdf.set_x(x + sq + 4)
+        inherent = _get("inherent_risk_level", "N/A")
+        country  = _get("country_risk_level",  "N/A")
+        product  = _get("product_risk_level",  "N/A")
+        pdf.cell(
+            self._USABLE_W - sq - 4, 5,
+            f"Inherent Risk: {inherent}   Country Risk: {country}   Product Risk: {product}",
+            ln=True,
+        )
+        pdf.ln(max(0, (y + sq + 2) - pdf.get_y()))
+
+        pdf.set_text_color(*_C_NEAR_BLACK)
+        pdf.ln(3)
+
+        # Signals
+        signals = _get("signals", []) or []
+        if signals:
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_x(x)
+            pdf.cell(self._USABLE_W, 5, "Sustainability Signals:", ln=True)
+            pdf.set_font("Helvetica", "", 8)
+            pdf.set_text_color(*_C_MID_GRAY)
+            for sig in signals[:8]:
+                if pdf.get_y() > 265:
+                    pdf.add_page()
+                pdf.set_x(x + 3)
+                pdf.cell(self._USABLE_W - 3, 4.5, f"\u2022 {self._t(sig)}", ln=True)
+            pdf.set_text_color(*_C_NEAR_BLACK)
+            pdf.ln(2)
+
+        # Detected certifications
+        detected = _get("certifications_detected", []) or []
+        missing  = _get("certifications_missing",  []) or []
+
+        if detected:
+            if pdf.get_y() > 255:
+                pdf.add_page()
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_x(x)
+            pdf.cell(self._USABLE_W, 5, "Certifications Detected:", ln=True)
+            pdf.set_font("Helvetica", "", 8)
+            pdf.set_text_color(29, 184, 122)
+            for cert in detected:
+                if pdf.get_y() > 265:
+                    pdf.add_page()
+                pdf.set_x(x + 3)
+                pdf.cell(self._USABLE_W - 3, 4.5, f"\u2713 {self._t(cert)}", ln=True)
+            pdf.set_text_color(*_C_NEAR_BLACK)
+            pdf.ln(2)
+
+        if missing:
+            if pdf.get_y() > 255:
+                pdf.add_page()
+            pdf.set_font("Helvetica", "B", 8)
+            pdf.set_x(x)
+            pdf.cell(self._USABLE_W, 5, "Recommended Certifications:", ln=True)
+            pdf.set_font("Helvetica", "", 8)
+            pdf.set_text_color(200, 140, 40)
+            for cert in missing[:10]:
+                if pdf.get_y() > 265:
+                    pdf.add_page()
+                pdf.set_x(x + 3)
+                pdf.cell(self._USABLE_W - 3, 4.5, f"\u26a0 {self._t(cert)}", ln=True)
+            pdf.set_text_color(*_C_NEAR_BLACK)
+            pdf.ln(2)
+
+        pdf.ln(2)
 
     def _section_pattern_intelligence(self) -> None:
         """Pattern intelligence signals and blend weight information."""

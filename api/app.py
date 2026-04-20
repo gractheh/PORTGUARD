@@ -1484,6 +1484,10 @@ def list_modules(current_org: dict = Depends(get_current_organization)):
     """
     org_id: str = current_org["organization_id"]
 
+    # Bootstrap default modules for orgs created before default-enabled was introduced
+    if _module_config_db is not None:
+        _module_config_db.bootstrap_defaults(org_id)
+
     # Get org-specific enabled states from DB
     org_states: dict[str, bool] = (
         _module_config_db.get_all_module_states(org_id)

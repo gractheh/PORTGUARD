@@ -1145,11 +1145,11 @@
     /* --- KPI Cards --- */
     .kpi-row {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
+      grid-template-columns: repeat(6, 1fr);
       gap: 1rem; margin-bottom: 1.5rem;
     }
-    @media (max-width: 900px) { .kpi-row { grid-template-columns: repeat(3, 1fr); } }
-    @media (max-width: 600px) { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
+    @media (max-width: 1100px) { .kpi-row { grid-template-columns: repeat(3, 1fr); } }
+    @media (max-width: 600px)  { .kpi-row { grid-template-columns: repeat(2, 1fr); } }
 
     .kpi-card {
       background: var(--bg-card); border: 1px solid var(--border);
@@ -2558,6 +2558,75 @@
     }
     .save-indicator.visible { opacity: 1; }
 
+    /* ---- Sustainability badge ---- */
+    .sustain-badge {
+      display: inline-flex; align-items: center; gap: .35rem;
+      padding: .3rem .75rem; border-radius: 999px;
+      font-size: .75rem; font-weight: 700; letter-spacing: .04em;
+      border: 1.5px solid currentColor; white-space: nowrap;
+      margin-top: .25rem;
+    }
+    .sustain-badge-A { color: #1DB87A; background: rgba(29,184,122,.12); }
+    .sustain-badge-B { color: #1BA8A8; background: rgba(27,168,168,.12); }
+    .sustain-badge-C { color: #E8A838; background: rgba(232,168,56,.12); }
+    .sustain-badge-D { color: #E05050; background: rgba(224,80,80,.12); }
+    .sustain-badge-NA{ color: var(--faint); background: rgba(255,255,255,.05); }
+
+    /* ---- Sustainability card ---- */
+    .sustain-grade-display {
+      display: flex; align-items: center; gap: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    .sustain-grade-letter {
+      font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+      font-size: 3rem; font-weight: 800; line-height: 1;
+      width: 72px; height: 72px; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .sustain-grade-letter.grade-A { color: #1DB87A; background: rgba(29,184,122,.12); border: 2px solid rgba(29,184,122,.35); }
+    .sustain-grade-letter.grade-B { color: #1BA8A8; background: rgba(27,168,168,.12); border: 2px solid rgba(27,168,168,.35); }
+    .sustain-grade-letter.grade-C { color: #E8A838; background: rgba(232,168,56,.12);  border: 2px solid rgba(232,168,56,.35); }
+    .sustain-grade-letter.grade-D { color: #E05050; background: rgba(224,80,80,.12);   border: 2px solid rgba(224,80,80,.35); }
+    .sustain-grade-letter.grade-NA{ color: var(--faint); background: rgba(255,255,255,.04); border: 2px solid var(--border); font-size: 1.4rem; }
+    .sustain-grade-meta { flex: 1; }
+    .sustain-grade-label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--faint); margin-bottom: .25rem; }
+    .sustain-signals { list-style: none; padding: 0; margin: 0 0 .75rem; }
+    .sustain-signals li { font-size: .82rem; color: var(--muted); padding: .18rem 0; }
+    .sustain-signals li::before { content: '·'; margin-right: .4rem; color: var(--faint); }
+    .sustain-risk-row {
+      display: flex; gap: .5rem; flex-wrap: wrap; margin-bottom: 1rem;
+    }
+    .sustain-risk-pill {
+      font-size: .7rem; font-weight: 600; padding: .2rem .6rem;
+      border-radius: 4px; border: 1px solid;
+    }
+    .sustain-risk-pill.LOW    { color: #1DB87A; border-color: rgba(29,184,122,.4); background: rgba(29,184,122,.08); }
+    .sustain-risk-pill.MEDIUM { color: #E8A838; border-color: rgba(232,168,56,.4); background: rgba(232,168,56,.08); }
+    .sustain-risk-pill.HIGH   { color: #E05050; border-color: rgba(224,80,80,.4);  background: rgba(224,80,80,.08);  }
+    .sustain-risk-pill.UNKNOWN{ color: var(--faint); border-color: var(--border); background: transparent; }
+    .sustain-risk-pill.NA     { color: var(--faint); border-color: var(--border); background: transparent; }
+    .cert-section-title {
+      font-size: .68rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .1em; color: var(--faint); margin: .75rem 0 .35rem;
+    }
+    .cert-list { list-style: none; padding: 0; margin: 0 0 .5rem; display: flex; flex-wrap: wrap; gap: .35rem; }
+    .cert-chip {
+      display: inline-flex; align-items: center; gap: .3rem;
+      font-size: .72rem; padding: .22rem .6rem; border-radius: 999px; border: 1px solid;
+    }
+    .cert-chip.detected { color: #1DB87A; border-color: rgba(29,184,122,.4); background: rgba(29,184,122,.08); }
+    .cert-chip.missing  { color: #E8A838; border-color: rgba(232,168,56,.4);  background: rgba(232,168,56,.08);  }
+    .cert-chip.detected::before { content: '✓ '; }
+    .cert-chip.missing::before  { content: '⚠ '; }
+    .sustain-modules-title { font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--faint); margin: .75rem 0 .35rem; }
+    .sustain-modules-list { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0; padding: 0; list-style: none; }
+    .sustain-module-chip {
+      font-size: .7rem; padding: .18rem .55rem; border-radius: 4px;
+      background: rgba(27,154,170,.1); border: 1px solid rgba(27,154,170,.25);
+      color: var(--teal-300);
+    }
+
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -2823,10 +2892,12 @@
   <h1 class="pg-fade-up" style="animation-delay:.16s">Automated Import<br>Compliance Screening</h1>
   <p class="pg-fade-up" style="animation-delay:.24s">Paste your shipping documents and get an instant compliance decision, risk score, and actionable findings.</p>
   <div class="hero-stats pg-fade-up" style="animation-delay:.32s">
-    <div class="stat-pill"><strong>333</strong> Section 301 HTS prefixes</div>
+    <div class="stat-pill"><strong>333</strong> Section 301 tariff HTS prefixes</div>
     <div class="stat-pill"><strong>14</strong> active AD/CVD orders</div>
     <div class="stat-pill"><strong>10</strong> OFAC sanctions programs</div>
-    <div class="stat-pill"><strong>72</strong> HTS chapters mapped to PGA</div>
+    <div class="stat-pill"><strong>72</strong> PGA-mapped HTS chapters</div>
+    <div class="stat-pill"><strong>50+</strong> optional certification frameworks</div>
+    <div class="stat-pill"><strong>5</strong> compliance layers</div>
   </div>
 </div>
 
@@ -2918,6 +2989,7 @@
         <div>
           <div class="decision-name" id="decision-name"></div>
           <div class="decision-sub" id="decision-sub"></div>
+          <span id="sustainability-badge" style="display:none"></span>
         </div>
       </div>
       <div class="decision-meta">
@@ -2993,6 +3065,12 @@
     <div class="card" style="margin-bottom:1rem" id="findings-card">
       <div class="card-title">Findings &amp; Inconsistencies</div>
       <ul class="findings-list" id="findings-list"></ul>
+    </div>
+
+    <!-- Sustainability & Certifications -->
+    <div class="card" id="sustainability-card" style="margin-bottom:1rem;display:none">
+      <div class="card-title">Sustainability &amp; Certifications</div>
+      <div id="sustain-content"></div>
     </div>
 
     <!-- Next steps -->
@@ -3124,6 +3202,7 @@
       <div class="kpi-card"><div class="kpi-label">Fraud Rate</div><div class="kpi-value skel skel"></div><div class="kpi-sub skel skel"></div></div>
       <div class="kpi-card"><div class="kpi-label">Confirmed Fraud</div><div class="kpi-value skel skel"></div><div class="kpi-sub skel skel"></div></div>
       <div class="kpi-card"><div class="kpi-label">Avg Risk Score</div><div class="kpi-value skel skel"></div><div class="kpi-sub skel skel"></div></div>
+      <div class="kpi-card"><div class="kpi-label">Avg Sustainability</div><div class="kpi-value skel skel"></div><div class="kpi-sub skel skel"></div></div>
       <div class="kpi-card"><div class="kpi-label">Pattern History</div><div class="kpi-value skel skel"></div><div class="kpi-sub skel skel"></div></div>
     </div>
 
@@ -4001,6 +4080,7 @@ const SCENARIO_POOLS = {
   clean: [
 
     // C1 · Japan LCD Monitors → Long Beach · score 0.00 → APPROVE
+    // Sustainability: RBA member + conflict minerals declaration → Grade A
     {
       label: 'LCD Monitors — Japan to Long Beach (Yokohama → LAX)',
       documents: [
@@ -4099,11 +4179,46 @@ Country of Origin: Japan
 Marks and Numbers: PTD-LAX-MAY25 / Carton 001-012
 Packing: Each unit foam-padded and boxed; master cartons double-wall corrugated
 
-Prepared by: Shipping Dept., Nippon Visual Corp.` }
+Prepared by: Shipping Dept., Nippon Visual Corp.` },
+
+        { filename: 'supplier_compliance_declaration.txt', text: `SUPPLIER COMPLIANCE & SUSTAINABILITY DECLARATION
+
+Issued by: Nippon Visual Corp.
+4-18 Minato Mirai, Nishi-ku, Yokohama, Kanagawa 220-0012, Japan
+Declaration Date: 2025-05-10
+Reference B/L: YRKT-2025-0044187
+
+RESPONSIBLE BUSINESS ALLIANCE (RBA) MEMBERSHIP
+Nippon Visual Corp. is a member of the Responsible Business Alliance (formerly EICC).
+RBA VAP Audit ID: RBA-VAP-2024-JPN-8841
+Last verified audit: March 2025 — CONFORMANT
+All Tier 1 suppliers are required to be RBA members or undergo equivalent audits.
+
+CONFLICT MINERALS DECLARATION (Dodd-Frank Section 1502)
+Nippon Visual Corp. hereby declares that reasonable country of origin inquiry (RCOI)
+has been conducted for all 3TG minerals (tantalum, tin, tungsten, gold) in products
+covered by this shipment.
+RMAP Certification: RMAP-2024-NVC-0412 (Responsible Minerals Assurance Process)
+DRC Conflict-Free status: CONFIRMED — all smelters are RMAP-certified or equivalent.
+This declaration satisfies the requirements of Dodd-Frank Section 1502.
+
+QUALITY MANAGEMENT
+ISO 9001:2015 Certification No.: QMS cert ISO9001:2015-JPN-NVC-0331
+Certifying Body: Bureau Veritas Japan
+Valid through: 2026-08-30
+
+ENVIRONMENTAL
+ISO 14001:2015 Environmental Management System certified.
+EMS cert ISO14001:2015-NVC-0331 — Bureau Veritas Japan.
+
+Authorized Signatory: K. Tanaka, Export Compliance Officer
+Signature: [SIGNED AND STAMPED]
+Date: 2025-05-10` }
       ]
     },
 
     // C2 · Germany Automotive Components → Savannah · score 0.00 → APPROVE
+    // Sustainability: ISO 9001:2015 + ISO 14001:2015 cert numbers → Grade A
     {
       label: 'Automotive Components — Germany to Savannah (Hamburg → SAV)',
       documents: [
@@ -4210,11 +4325,19 @@ and comply with the origin rules specified.
 Country of Origin: Germany
 
 Signature of Exporter: [SIGNED]
-Customs Authority Endorsement: Hamburg ZA-2025-144   [STAMPED]` }
+Customs Authority Endorsement: Hamburg ZA-2025-144   [STAMPED]
+
+SUPPLIER QUALITY & ENVIRONMENTAL CERTIFICATIONS
+ISO 9001:2015 Certification: QMS cert ISO9001:2015-DE-BAP-7731
+ISO 14001:2015 Certification: EMS cert ISO14001:2015-DE-BAP-7731
+Certifying Body: TÜV SÜD Management Service GmbH
+Both certifications valid through: 2027-02-28
+Scope: Design, manufacture, and distribution of automotive sealing and gasket products` }
       ]
     },
 
     // C3 · Ireland Pharmaceuticals → Houston · score 0.00 → APPROVE
+    // Sustainability: ISO 9001:2015 + EU GMP → Grade A
     {
       label: 'Pharmaceutical APIs — Ireland to Houston (Dublin → HOU)',
       documents: [
@@ -4308,6 +4431,9 @@ REGULATORY COMPLIANCE
 European Pharmacopoeia (Ph. Eur.) 10th Edition
 ICH Q7 Good Manufacturing Practice
 FDA Drug Establishment Registration No.: 301-11492
+ISO 9001:2015 Quality Management System: QMS cert ISO9001:2015-IE-LBP-2244
+Certifying Body: SGS Ireland Ltd — Valid through 2026-11-30
+ISO 14001:2015 Environmental Management: EMS cert ISO14001:2015-IE-LBP-2244
 
 ANALYTICAL RESULTS
 Test                         Specification       Result          Status
@@ -4329,6 +4455,7 @@ HTS Code: 3004.20.0020` }
     },
 
     // C4 · South Korea Conveyor Equipment → Seattle · score 0.00 → APPROVE
+    // Sustainability: ISO 9001:2015 + CE marking Declaration of Conformity → Grade A
     {
       label: 'Conveyor Equipment — South Korea to Seattle (Busan → SEA)',
       documents: [
@@ -4428,11 +4555,24 @@ Country of Origin: South Korea
 Marks and Numbers: PNAI-SEA-MAR25 / Crate 001-003
 Packing: Steel frame, bolted and braced; OWS (overweight shipment) handling required
 
-Prepared by: K.Y. Choi, Logistics Dept., Daewon Industrial Systems Corp.` }
+Prepared by: K.Y. Choi, Logistics Dept., Daewon Industrial Systems Corp.
+
+CERTIFICATIONS & COMPLIANCE DOCUMENTATION
+ISO 9001:2015 Quality Management System
+Certificate No.: QMS cert ISO9001:2015-KR-DIS-5580
+Certifying Body: Korea Testing Laboratory (KTL)
+Valid through: 2026-07-31
+
+CE MARKING — EU MACHINERY DIRECTIVE 2006/42/EC
+Declaration of Conformity No.: DoC KR-2025-DIS-M42
+Notified Body: 0044 (BSI Group — UK Approved Body)
+CE 0044 marking applied to all units covered by this shipment.
+Products comply with EU Machinery Directive 2006/42/EC and applicable EN standards.` }
       ]
     },
 
     // C5 · Netherlands Specialty Chemicals → Charleston · score 0.00 → APPROVE
+    // Sustainability: EU REACH + US TSCA + ISO 14001 → Grade B
     {
       label: 'Specialty Chemicals — Netherlands to Charleston (Rotterdam → CHS)',
       documents: [
@@ -4543,11 +4683,31 @@ Packing Group: III      Proper Shipping Name: HYPOCHLORITE SOLUTION
 Marine Pollutant: No
 
 Country of Origin: Netherlands
-HTS Code: 3808.94.5000` }
+HTS Code: 3808.94.5000
+
+REGULATORY COMPLIANCE DECLARATIONS
+EU REACH Regulation (EC) 1907/2006:
+  Substance (sodium hypochlorite, CAS 7681-52-9) is registered under REACH.
+  REACH Registration No.: 01-2119488166-29-0001
+  No SVHC (Substance of Very High Concern) above 0.1% w/w threshold.
+  EU conformity confirmed — product meets all REACH requirements.
+
+US TSCA Compliance:
+  All chemical substances in this product are listed on the TSCA Inventory.
+  TSCA Section 5(e) consent order: Not applicable.
+  No PMN (Pre-Manufacture Notice) required — existing chemical substances only.
+  US TSCA compliance confirmed by Holland Chem Solutions BV.
+
+ISO 14001:2015 Environmental Management System:
+  EMS cert ISO14001:2015-NL-HCS-3391
+  Certifying Body: Lloyd's Register EMEA, Rotterdam
+  Valid through: 2026-10-15
+  Scope: Manufacture and distribution of industrial chemical solutions.` }
       ]
     },
 
     // C6 · Vietnam Woven Polyester Fabrics → New York · score 0.00 → APPROVE
+    // Sustainability: WRAP Gold + BCI cotton reference → Grade A (Vietnam apparel = low risk with certs)
     {
       label: 'Woven Polyester Fabric — Vietnam to New York (Ho Chi Minh → NYC)',
       documents: [
@@ -4647,7 +4807,39 @@ Country of Origin: Vietnam
 Marks and Numbers: NTWL-NYC-AUG25 / Roll 001-250
 Packing: Each roll wound on cardboard core, wrapped in polyethylene film
 
-Prepared by: Packing Dept., Saigon Premium Fabrics Corp.` }
+Prepared by: Packing Dept., Saigon Premium Fabrics Corp.` },
+
+        { filename: 'factory_compliance_certificate.txt', text: `FACTORY COMPLIANCE & SUSTAINABILITY CERTIFICATE
+
+Issued by: Saigon Premium Fabrics Corp.
+Lot 8B, Tan Thuan Export Processing Zone, District 7, Ho Chi Minh City, Vietnam
+Certificate Date: 2025-08-12
+
+WRAP CERTIFICATION — WORLDWIDE RESPONSIBLE ACCREDITED PRODUCTION
+Certificate Number: WRAP Gold 482917
+Certification Level: GOLD (highest tier)
+Audit Date: January 2025
+Certifying Agent: Bureau Veritas Vietnam
+WRAP Platinum principle compliance: Confirmed — all 12 WRAP principles met.
+Valid through: 2026-01-31
+
+SOCIAL ACCOUNTABILITY
+SMETA 4-pillar audit completed: March 2025
+SMETA cert SMETA 4-pillar audit ID: VN-SMETA-2025-0173
+Sedex member since 2019.
+
+BETTER COTTON INITIATIVE (BCI)
+While this shipment contains 100% polyester, our cotton-blend product lines are
+sourced exclusively from BCI licensed suppliers.
+BCI license number: BCI-VN-48812 (applies to cotton-blend fabric lines)
+
+ENVIRONMENTAL
+ISO 14001:2015 certified factory — EMS cert ISO14001:2015-VN-SPF-0814
+Certifying Body: Bureau Veritas Vietnam. Valid through: 2026-09-30.
+
+Authorized Signatory: N.T. Linh, Compliance Director
+Signature: [SIGNED AND STAMPED]
+Date: 2025-08-12` }
       ]
     }
 
@@ -4666,6 +4858,7 @@ Prepared by: Packing Dept., Saigon Premium Fabrics Corp.` }
     // S1 · China Laptops via Singapore — Transshipment + Section 301 + Undervaluation
     // Flags: TRANSSHIPMENT (0.28) + SECTION_301 List 3 (0.22) + HIGH_UNDERVALUATION (0.18)
     // Score: 0.68  Decision: FLAG_FOR_INSPECTION (transshipment alone triggers it)
+    // Sustainability: No RBA / no conflict minerals statement / electronics = HIGH risk → Grade D
     {
       label: 'Laptops — China via Singapore [Transshipment + Undervalued + Section 301]',
       documents: [
@@ -4757,13 +4950,23 @@ HTS Code: 8471.30.0100
 Country of Origin: China
 Marks and Numbers: WCEW-LAX-APR25 / Carton 001-008
 
-[Port of export: Singapore (re-consolidated from Dongguan factory)]` }
+[Port of export: Singapore (re-consolidated from Dongguan factory)]
+
+SUPPLIER COMPLIANCE STATUS
+RBA / Responsible Business Alliance membership: NOT CONFIRMED
+No RBA VAP audit on record for Dongguan Global Tech Co. Ltd.
+Conflict minerals declaration (Dodd-Frank Section 1502): NOT PROVIDED
+No RMAP certification or equivalent conflict-free minerals disclosure available.
+No ISO 9001 quality management certification on file.
+No ethical sourcing audit (SMETA, SA8000) completed.
+[Buyer's compliance team has requested documentation — not yet received]` }
       ]
     },
 
     // S2 · China Cold-Rolled Steel — Shipper Mismatch + Section 301 + AD/CVD
     // Flags: SHIPPER_SELLER_MISMATCH (auto-flag) + SECTION_301 List 3 25% (0.22) + ADCVD A-570-029 (0.20)
     // Score: 0.48  Decision: FLAG_FOR_INSPECTION (mismatch alone triggers it)
+    // Sustainability: Chinese steel, no ISO certs, shipper mismatch → Grade C
     {
       label: 'Cold-Rolled Steel — China [Shipper Mismatch + Section 301 + AD/CVD A-570-029]',
       documents: [
@@ -4852,13 +5055,19 @@ Country of Origin: China (mill: Shanghai Brilliant Steel Mfg Co Ltd)
 
 [IMPORTANT — AD/CVD NOTICE: These goods are subject to active antidumping
  order A-570-029 (cold-rolled steel from China) and may be subject to
- Section 301 List 3 tariffs. Importer is responsible for all applicable duties.]` }
+ Section 301 List 3 tariffs. Importer is responsible for all applicable duties.]
+
+SUSTAINABILITY NOTE
+ISO 9001 certification: NOT PROVIDED for Shanghai Brilliant Steel or Bright Metal Products
+ISO 14001 environmental management: NOT CONFIRMED
+No responsible sourcing or environmental audit documentation available for either entity.` }
       ]
     },
 
     // S3 · China Cotton Apparel via Ho Chi Minh — Transshipment + Section 301
     // Flags: TRANSSHIPMENT (0.28, pol=VN != origin=CN) + SECTION_301 List 4A 7.5% (0.22)
     // Score: 0.50  Decision: FLAG_FOR_INSPECTION (transshipment alone triggers it)
+    // Sustainability: Xinjiang cotton + no WRAP + no BCI → Grade D
     {
       label: 'Cotton Apparel — China via Ho Chi Minh [Transshipment + Section 301 UFLPA Risk]',
       documents: [
@@ -4956,13 +5165,22 @@ Fiber Content: 100% cotton (Xinjiang origin)
 Marks: ALWC-NYC-JUN25 / Carton 001-800
 
 [ROUTED VIA: Ho Chi Minh City, Vietnam — vessel consolidation point
- FACTORY: Guangzhou Textile Exports, Guangdong Province, China]` }
+ FACTORY: Guangzhou Textile Exports, Guangdong Province, China]
+
+SUSTAINABILITY & COMPLIANCE NOTE
+WRAP certification: NOT HELD — factory has not undergone WRAP audit
+Better Cotton Initiative (BCI): NOT APPLICABLE — cotton sourced outside BCI
+Fairtrade certification: NONE
+Social audit (SMETA/SA8000): NOT ON FILE for Guangzhou Textile Exports
+Cotton origin verified as Xinjiang (XUAR) — subject to UFLPA rebuttable presumption
+No responsible sourcing declarations available from supplier` }
       ]
     },
 
     // S4 · China Integrated Circuits — HIGH Undervaluation + Section 301
     // Flags: HIGH_UNDERVALUATION (unit=$0.50 < $1.00 threshold, auto-flag) + SECTION_301 List 3 25% (0.22)
     // Score: 0.40  Decision: FLAG_FOR_INSPECTION (HIGH undervaluation alone triggers it)
+    // Sustainability: Electronics from China, no RBA/conflict minerals → Grade C/D
     {
       label: 'Integrated Circuits — China [Undervalued $0.50/unit vs $2.50 benchmark + Section 301]',
       documents: [
@@ -5054,11 +5272,19 @@ Marks: SVC-LAX-MAR25 / Box 001-100
 
 [Section 301 Notice: HTS 8542 is subject to Section 301 List 3
  additional tariff of 25% on China-origin integrated circuits.
- AD/CVD: No active order applicable to this HTS for CN.]` }
+ AD/CVD: No active order applicable to this HTS for CN.]
+
+COMPLIANCE NOTE — SUSTAINABILITY & RESPONSIBLE SOURCING
+RBA (Responsible Business Alliance) membership: NOT CONFIRMED
+Conflict minerals declaration (Dodd-Frank Section 1502): NOT PROVIDED
+No RMAP or equivalent conflict-free certification for 3TG minerals.
+No ISO 9001 quality management certificate provided.
+No ethical sourcing audit documentation available.` }
       ]
     },
 
     // S5 · China Solar Panels via Taiwan — Transshipment + AD/CVD + Section 301
+    // Sustainability: No sustainability certs for solar panels routed via Taiwan → Grade C/D
     // Flags: TRANSSHIPMENT (0.28, pol=TW != origin=CN) + SECTION_301 List 3 25% (0.22) + ADCVD A-570-979 (0.20)
     // Score: 0.70  Decision: FLAG_FOR_INSPECTION (transshipment alone triggers it)
     {
@@ -5156,11 +5382,18 @@ Packing: Panels interleaved with EVA foam, shrink-wrapped per pallet
 
 [ROUTING NOTE: Goods consolidated at Kaohsiung, Taiwan (KHH) for vessel loading.
  Factory of manufacture: Wuhan, Hubei Province, China.
- This routing does not change the country of origin.]` }
+ This routing does not change the country of origin.]
+
+SUSTAINABILITY NOTE
+No sustainability certifications provided for this shipment.
+No conflict minerals (3TG) disclosure for photovoltaic cell production.
+No environmental management system certification (ISO 14001) on file.
+No social compliance audit documentation for Chinese solar manufacturing facility.` }
       ]
     },
 
     // S6 · China Smartphones — Shipper Mismatch + HIGH Undervaluation + Section 301
+    // Sustainability: Electronics from China, shipper mismatch, no RBA/conflict minerals → Grade D
     // Flags: SHIPPER_SELLER_MISMATCH (auto-flag) + HIGH_UNDERVALUATION (unit=$15 < $24, auto-flag) + SECTION_301 List 4A 7.5% (0.22)
     // Score: 0.46  Decision: FLAG_FOR_INSPECTION (mismatch + undervaluation both trigger independently)
     {
@@ -5253,7 +5486,16 @@ Country of Origin: China
 
 [DISCREPANCY NOTE: Shipper on B/L is Shenzhen HiTech Electronics Factory;
  Invoice seller is Guangdong Mobile Devices Corp. — different legal entities.
- Buyer should clarify chain of title before CBP entry filing.]` }
+ Buyer should clarify chain of title before CBP entry filing.]
+
+COMPLIANCE & SUSTAINABILITY STATUS
+RBA membership: NOT CONFIRMED for either Shenzhen HiTech Electronics Factory
+  or Guangdong Mobile Devices Corp.
+Conflict minerals declaration (Dodd-Frank Section 1502): MISSING — no 3TG
+  disclosure provided by either entity for this electronics shipment.
+No RMAP or equivalent certification for tantalum, tin, tungsten, or gold.
+No ISO 9001 quality certification on file.
+No ethical trade audit (SMETA, SA8000) available for manufacturing facility.` }
       ]
     }
 
@@ -6267,6 +6509,9 @@ function renderResults(data) {
     grid.appendChild(div);
   });
 
+  // Sustainability rating badge + card
+  renderSustainability(data);
+
   // Pattern Intelligence + Feedback
   renderPatternIntelligence(data);
   renderFeedbackUI(data);
@@ -6293,6 +6538,95 @@ function renderResults(data) {
       resultsEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 100);
   });
+}
+
+// ---------------------------------------------------------------------------
+// Sustainability Rating display
+// ---------------------------------------------------------------------------
+
+const _SUSTAIN_GRADE_LABELS = {
+  A: 'Strong sustainability profile — verified certifications, low risk factors',
+  B: 'Good sustainability profile — meets most sustainability indicators',
+  C: 'Moderate sustainability concerns — some high-risk factors present',
+  D: 'Significant sustainability gaps — high inherent risk, limited certifications',
+  'N/A': 'Sustainability rating not applicable for this commodity type',
+};
+
+function renderSustainability(data) {
+  const badge  = document.getElementById('sustainability-badge');
+  const card   = document.getElementById('sustainability-card');
+  const rating = data.sustainability_rating;
+
+  // If no rating, hide both elements and return
+  if (!rating || rating.grade === 'N/A') {
+    badge.style.display = 'none';
+    card.style.display = 'none';
+    return;
+  }
+
+  const grade = rating.grade;
+  const gradeKey = grade === 'N/A' ? 'NA' : grade;
+
+  // --- Decision banner badge ---
+  badge.className = `sustain-badge sustain-badge-${gradeKey}`;
+  badge.textContent = `♻ Sustainability: ${grade}`;
+  badge.style.display = 'inline-flex';
+
+  // --- Sustainability card ---
+  const signals   = rating.signals || [];
+  const detected  = rating.certifications_detected || [];
+  const missing   = rating.certifications_missing   || [];
+  const findings  = data.module_findings || [];
+  const triggered = findings.filter(f => f.triggered).map(f => f.module_name);
+
+  const inherentClass = (rating.inherent_risk_level || 'NA').replace('/', '');
+  const countryClass  = (rating.country_risk_level  || 'NA').replace('/', '');
+  const productClass  = (rating.product_risk_level  || 'NA').replace('/', '');
+
+  let html = `
+    <div class="sustain-grade-display">
+      <div class="sustain-grade-letter grade-${gradeKey}">${grade}</div>
+      <div class="sustain-grade-meta">
+        <div class="sustain-grade-label">Sustainability Grade</div>
+        <div style="font-size:.88rem;color:var(--text);margin-bottom:.5rem">${escHtml(_SUSTAIN_GRADE_LABELS[grade] || '')}</div>
+        <div class="sustain-risk-row">
+          <span class="sustain-risk-pill ${inherentClass}">Inherent Risk: ${rating.inherent_risk_level || 'N/A'}</span>
+          <span class="sustain-risk-pill ${countryClass}">Country Risk: ${rating.country_risk_level || 'N/A'}</span>
+          <span class="sustain-risk-pill ${productClass}">Product Risk: ${rating.product_risk_level || 'N/A'}</span>
+        </div>
+      </div>
+    </div>
+  `;
+
+  if (signals.length > 0) {
+    html += `<ul class="sustain-signals">` +
+      signals.map(s => `<li>${escHtml(s)}</li>`).join('') +
+      `</ul>`;
+  }
+
+  if (detected.length > 0) {
+    html += `<div class="cert-section-title">Certifications Detected</div>
+      <ul class="cert-list">` +
+      detected.map(c => `<li class="cert-chip detected">${escHtml(c)}</li>`).join('') +
+      `</ul>`;
+  }
+
+  if (missing.length > 0) {
+    html += `<div class="cert-section-title">Recommended Certifications</div>
+      <ul class="cert-list">` +
+      missing.map(c => `<li class="cert-chip missing">${escHtml(c)}</li>`).join('') +
+      `</ul>`;
+  }
+
+  if (triggered.length > 0) {
+    html += `<div class="sustain-modules-title">Screening Modules Triggered</div>
+      <ul class="sustain-modules-list">` +
+      triggered.map(m => `<li class="sustain-module-chip">${escHtml(m)}</li>`).join('') +
+      `</ul>`;
+  }
+
+  document.getElementById('sustain-content').innerHTML = html;
+  card.style.display = 'block';
 }
 
 function toggleShipmentData() {
@@ -7270,6 +7604,20 @@ function _renderKpis(s) {
   // Thresholds in 0–1 scale
   const riskClass = avgRiskRaw > 0.65 ? 'danger' : avgRiskRaw > 0.40 ? 'warn' : '';
 
+  // Sustainability grade summary
+  const gradeMap  = s.sustainability_grade_counts || {};
+  const gradedCount = (gradeMap.A||0) + (gradeMap.B||0) + (gradeMap.C||0) + (gradeMap.D||0);
+  let sustainDisplay = '—';
+  let sustainSub     = 'no graded shipments yet';
+  if (gradedCount > 0) {
+    // Weighted score: A=4, B=3, C=2, D=1
+    const weightedSum = (gradeMap.A||0)*4 + (gradeMap.B||0)*3 + (gradeMap.C||0)*2 + (gradeMap.D||0)*1;
+    const avgScore    = weightedSum / gradedCount;
+    sustainDisplay = avgScore >= 3.5 ? 'A' : avgScore >= 2.5 ? 'B' : avgScore >= 1.5 ? 'C' : 'D';
+    sustainSub = `A:${gradeMap.A||0} B:${gradeMap.B||0} C:${gradeMap.C||0} D:${gradeMap.D||0}`;
+  }
+  const sustainClass = sustainDisplay === 'A' ? 'good' : sustainDisplay === 'B' ? '' : sustainDisplay === 'C' ? 'warn' : sustainDisplay === 'D' ? 'danger' : '';
+
   document.getElementById('kpi-row').innerHTML = `
     <div class="kpi-card">
       <div class="kpi-label">Total Shipments</div>
@@ -7290,6 +7638,11 @@ function _renderKpis(s) {
       <div class="kpi-label">Avg Risk Score</div>
       <div class="kpi-value ${riskClass}">${avgRisk}</div>
       <div class="kpi-sub">pattern score ${avgPattern} / 100</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Avg Sustainability</div>
+      <div class="kpi-value ${sustainClass}">${sustainDisplay}</div>
+      <div class="kpi-sub">${sustainSub}</div>
     </div>
     <div class="kpi-card">
       <div class="kpi-label">Pattern History</div>

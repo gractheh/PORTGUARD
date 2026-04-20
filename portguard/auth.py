@@ -289,24 +289,40 @@ class AuthDB:
         except _SQLAlchemyError as exc:
             raise RuntimeError(f"Failed to create organization: {exc}") from exc
 
-    def _init_org_modules(self, conn, org_id: str, now: str) -> None:
-        """Insert default disabled rows for all toggleable modules.
+    # Modules enabled by default for all new organizations.
+    # Layer 1 modules are always-on and not stored here; these are the
+    # subset of toggleable (Layer 2-5) modules that cover the most common
+    # compliance scenarios out of the box.
+    _DEFAULT_ENABLED_MODULES: frozenset = frozenset({
+        "FSC_COC",           # Layer 2 — Forest / Paper products
+        "RAINFOREST_ALLIANCE",  # Layer 2 — Agricultural commodities
+        "RSPO",              # Layer 2 — Palm oil / derivatives
+        "WRAP",              # Layer 3 — Apparel / footwear factories
+        "CONFLICT_MINERALS", # Layer 3 — Electronics / metals
+        "ISO_9001",          # Layer 4 — Universal quality management
+        "CE_MARKING",        # Layer 4 — EU/UK electrical & machinery
+    })
 
-        Called inside the org-creation transaction so a failed org creation
-        never leaves orphaned module rows.
+    def _init_org_modules(self, conn, org_id: str, now: str) -> None:
+        """Insert default rows for all toggleable modules.
+
+        Modules in ``_DEFAULT_ENABLED_MODULES`` are enabled (1); all others
+        start disabled (0).  Called inside the org-creation transaction so a
+        failed org creation never leaves orphaned module rows.
         """
         try:
             from portguard.data.certification_modules import ALL_TOGGLEABLE_MODULES
             raw_sql = (
                 "INSERT OR IGNORE INTO organization_modules "
                 "(organization_id, module_id, enabled, set_by) "
-                "VALUES (:org_id, :module_id, 0, 'system_default')"
+                "VALUES (:org_id, :module_id, :enabled, 'system_default')"
             )
             adapted = adapt_stmt(raw_sql, self._dialect)
             for module in ALL_TOGGLEABLE_MODULES:
+                enabled = 1 if module.module_id in self._DEFAULT_ENABLED_MODULES else 0
                 conn.execute(
                     text(adapted),
-                    {"org_id": org_id, "module_id": module.module_id},
+                    {"org_id": org_id, "module_id": module.module_id, "enabled": enabled},
                 )
         except Exception as exc:
             # Non-fatal — log and continue.  The org row is already inserted;

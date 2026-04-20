@@ -315,26 +315,41 @@ class DashboardAnalytics:
             avg_risk    = (avg_risk_row[0]["avg_risk"] or 0.0)  if avg_risk_row else 0.0
             avg_pattern = (avg_risk_row[0]["avg_pattern"])       if avg_risk_row else None
 
+            grade_rows = self._query(
+                """
+                SELECT sustainability_grade, COUNT(*) AS cnt
+                FROM   shipment_history
+                WHERE  organization_id = ?
+                  AND  sustainability_grade IS NOT NULL
+                  AND  sustainability_grade != 'N/A'
+                GROUP  BY sustainability_grade
+                """,
+                (organization_id,),
+            )
+            grade_counts: dict[str, int] = {r["sustainability_grade"]: r["cnt"] for r in grade_rows}
+
             return {
-                "total_shipments":      total_shipments,
-                "total_confirmed_fraud": confirmed_fraud,
-                "total_cleared":        cleared,
-                "total_unresolved":     unresolved,
-                "fraud_rate":           fraud_rate,
-                "avg_risk_score":       avg_risk,
-                "avg_pattern_score":    avg_pattern,
+                "total_shipments":           total_shipments,
+                "total_confirmed_fraud":      confirmed_fraud,
+                "total_cleared":             cleared,
+                "total_unresolved":          unresolved,
+                "fraud_rate":                fraud_rate,
+                "avg_risk_score":            avg_risk,
+                "avg_pattern_score":         avg_pattern,
+                "sustainability_grade_counts": grade_counts,
             }
 
         except Exception as exc:
             logger.warning("get_summary_stats() failed: %s", exc)
             return {
-                "total_shipments":      0,
-                "total_confirmed_fraud": 0,
-                "total_cleared":        0,
-                "total_unresolved":     0,
-                "fraud_rate":           0.0,
-                "avg_risk_score":       0.0,
-                "avg_pattern_score":    None,
+                "total_shipments":           0,
+                "total_confirmed_fraud":      0,
+                "total_cleared":             0,
+                "total_unresolved":          0,
+                "fraud_rate":                0.0,
+                "avg_risk_score":            0.0,
+                "avg_pattern_score":         None,
+                "sustainability_grade_counts": {},
             }
 
     def get_decision_breakdown(self, organization_id: str = "__system__") -> dict:

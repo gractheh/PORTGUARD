@@ -50,6 +50,72 @@ class ModuleConfigDB:
     def _utcnow() -> str:
         return datetime.now(timezone.utc).isoformat()
 
+    # Modules that should be enabled by default for new or un-configured orgs.
+    # Kept in sync with AuthDB._DEFAULT_ENABLED_MODULES.
+    DEFAULT_ENABLED_MODULES: frozenset = frozenset({
+        "FSC_COC",
+        "RAINFOREST_ALLIANCE",
+        "RSPO",
+        "WRAP",
+        "CONFLICT_MINERALS",
+        "ISO_9001",
+        "CE_MARKING",
+    })
+
+    def bootstrap_defaults(self, org_id: str) -> None:
+        """Enable the default module set for an org that has no enabled modules.
+
+        Idempotent — only runs if the org currently has zero enabled modules
+        AND has existing rows that all have ``enabled_at IS NULL`` (i.e. they
+        were inserted by the old all-disabled default before this change).
+        Safe to call on every startup or settings load.
+        """
+        if self._engine is None:
+            return
+        try:
+            from portguard.db import adapt_stmt
+            with self._engine.begin() as conn:
+                # Count enabled modules for this org
+                enabled_count = conn.execute(
+                    text(
+                        "SELECT COUNT(*) FROM organization_modules "
+                        "WHERE organization_id = :org_id AND enabled = 1"
+                    ),
+                    {"org_id": org_id},
+                ).scalar() or 0
+                if enabled_count > 0:
+                    return  # Already has some enabled — respect current state
+
+                # Count rows that were never explicitly enabled (never-touched defaults)
+                never_set = conn.execute(
+                    text(
+                        "SELECT COUNT(*) FROM organization_modules "
+                        "WHERE organization_id = :org_id AND enabled_at IS NULL"
+                    ),
+                    {"org_id": org_id},
+                ).scalar() or 0
+                if never_set == 0:
+                    return  # Org either has no rows or intentionally disabled everything
+
+                # Bootstrap: enable the default set
+                now = self._utcnow()
+                for module_id in self.DEFAULT_ENABLED_MODULES:
+                    upd = (
+                        "UPDATE organization_modules SET enabled = 1, set_by = 'system_default', "
+                        "enabled_at = :now WHERE organization_id = :org_id AND module_id = :module_id"
+                    )
+                    conn.execute(
+                        text(adapt_stmt(upd, self._dialect)),
+                        {"now": now, "org_id": org_id, "module_id": module_id},
+                    )
+                logger.info(
+                    "ModuleConfigDB: bootstrapped %d default modules for org %s",
+                    len(self.DEFAULT_ENABLED_MODULES),
+                    org_id,
+                )
+        except Exception as exc:
+            logger.warning("ModuleConfigDB.bootstrap_defaults failed for %s: %s", org_id, exc)
+
     def get_enabled_modules(self, org_id: str) -> list[str]:
         """Return list of enabled module IDs for the given organization.
 
