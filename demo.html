@@ -1451,34 +1451,63 @@
     /* --- Scanning beam overlay --- */
     .pdf-scan-beam {
       position: absolute;
-      left: -2px; right: -2px;
-      height: 4px; top: 0;
+      left: 0; right: 0;
+      /* translateY-based animation: starts above the container, sweeps to bottom.
+         Using transform instead of top keeps this on the GPU compositor thread. */
+      top: 0;
+      height: 2px;
+      background: #00e5ff;
+      /* Multi-layer glow: tight bright core → medium bloom → soft outer falloff */
+      box-shadow:
+        0 0 4px  2px  rgba(0, 229, 255, 0.60),
+        0 0 10px 4px  rgba(0, 229, 255, 0.35),
+        0 0 20px 8px  rgba(0, 229, 255, 0.15),
+        0 0 35px 12px rgba(0, 229, 255, 0.06);
       pointer-events: none; z-index: 3;
-      background: linear-gradient(
-        90deg,
-        transparent 0%,
-        rgba(27,154,170,.05) 15%,
-        rgba(27,154,170,.95) 50%,
-        rgba(27,154,170,.05) 85%,
-        transparent 100%
-      );
-      box-shadow: 0 0 10px rgba(27,154,170,.7), 0 0 3px rgba(77,207,223,1);
-      animation: pdf-beam-sweep 1.9s cubic-bezier(.4,0,.6,1) infinite;
+      will-change: transform;
+      animation: pdf-beam-sweep 1.9s cubic-bezier(.4, 0, .6, 1) infinite;
     }
-    /* Subtle trailing glow above the beam */
+    /* Trailing wake: soft teal fog that lingers behind the beam */
     .pdf-scan-beam::after {
       content: '';
       position: absolute;
       left: 0; right: 0;
-      bottom: 1px; height: 28px;
-      background: linear-gradient(to top, transparent, rgba(27,154,170,.07));
+      /* Wake sits ABOVE the beam line (negative top offset) and tapers upward */
+      bottom: 0;
+      height: 40px;
+      background: linear-gradient(
+        to top,
+        rgba(0, 229, 255, 0.10) 0%,
+        rgba(0, 229, 255, 0.04) 40%,
+        transparent 100%
+      );
+      pointer-events: none;
+    }
+    /* Page flash: a full-page white sheen that rides with the beam, selling the
+       "light sweeping across paper" effect.  Uses the same animation duration
+       so it stays locked to the beam position. */
+    .pdf-scan-beam::before {
+      content: '';
+      position: absolute;
+      left: 0; right: 0;
+      /* Extends 80px above the beam so it's visible as the beam approaches */
+      top: -80px;
+      height: 80px;
+      background: linear-gradient(
+        to top,
+        rgba(255, 255, 255, 0.07) 0%,
+        rgba(255, 255, 255, 0.03) 50%,
+        transparent 100%
+      );
       pointer-events: none;
     }
     @keyframes pdf-beam-sweep {
-      0%   { top: -4px; opacity: 0; }
+      /* Start just above the visible area so there's no hard pop-in */
+      0%   { transform: translateY(-6px);   opacity: 0; }
       4%   { opacity: 1; }
       92%  { opacity: 1; }
-      100% { top: 100%; opacity: 0; }
+      /* Overshoot slightly past 100% to avoid clipping at the bottom edge */
+      100% { transform: translateY(calc(var(--thumb-h, 200px) + 6px)); opacity: 0; }
     }
 
     /* Pause beam when done */
@@ -1625,6 +1654,8 @@
     }
     .pipeline-node.complete .pnode-circle::after {
       content: '\2713';
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
       font-size: 16px; font-weight: 700; line-height: 1;
       color: var(--teal-300);
     }
@@ -1636,6 +1667,8 @@
     }
     .pipeline-node.error .pnode-circle::after {
       content: '\00D7';
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
       font-size: 18px; font-weight: 700; line-height: 1;
       color: var(--red);
     }
