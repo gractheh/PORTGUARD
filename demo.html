@@ -2290,6 +2290,274 @@
       50% { transform: translateY(-6px); }
     }
 
+    /* ====================================================================
+       SETTINGS GEAR BUTTON
+       ==================================================================== */
+    .settings-gear-btn {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,.11);
+      color: var(--muted);
+      width: 32px; height: 32px;
+      border-radius: 7px; cursor: pointer;
+      display: none; align-items: center; justify-content: center;
+      transition: all .2s;
+      flex-shrink: 0;
+    }
+    .settings-gear-btn:hover {
+      background: rgba(27,154,170,.12);
+      border-color: var(--teal-700);
+      color: var(--teal-300);
+    }
+    .settings-gear-btn.active {
+      background: rgba(27,154,170,.16);
+      border-color: var(--teal-500);
+      color: var(--teal-300);
+    }
+    .settings-gear-btn svg { display: block; }
+
+    /* ====================================================================
+       SETTINGS DRAWER
+       ==================================================================== */
+    #settings-backdrop {
+      position: fixed; inset: 0; z-index: 8000;
+      background: rgba(0,0,0,.55);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      opacity: 0; pointer-events: none;
+      transition: opacity .28s var(--ease-out);
+    }
+    #settings-backdrop.open {
+      opacity: 1; pointer-events: auto;
+    }
+
+    #settings-drawer {
+      position: fixed; top: 0; right: 0; bottom: 0;
+      z-index: 8001;
+      width: min(540px, 100vw);
+      background: var(--bg-deep);
+      border-left: 1px solid rgba(27,154,170,.18);
+      box-shadow: -24px 0 80px rgba(0,0,0,.5);
+      display: flex; flex-direction: column;
+      transform: translateX(100%);
+      transition: transform .32s var(--ease-out);
+      overflow: hidden;
+    }
+    #settings-drawer.open {
+      transform: translateX(0);
+    }
+
+    /* Drawer header */
+    .drawer-header {
+      padding: 1.4rem 1.5rem 1rem;
+      border-bottom: 1px solid rgba(27,154,170,.12);
+      display: flex; align-items: flex-start; justify-content: space-between;
+      gap: 1rem; flex-shrink: 0;
+    }
+    .drawer-header-left { flex: 1; min-width: 0; }
+    .drawer-title {
+      font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+      font-size: 1.1rem; font-weight: 700; color: var(--text);
+      margin-bottom: .28rem;
+    }
+    .drawer-subtitle {
+      font-size: .8rem; color: var(--muted); line-height: 1.5;
+    }
+    .drawer-active-badge {
+      display: inline-flex; align-items: center; gap: .35rem;
+      background: rgba(27,154,170,.13); border: 1px solid rgba(27,154,170,.25);
+      color: var(--teal-300); font-size: .72rem; font-weight: 600;
+      padding: .18rem .6rem; border-radius: 99px; margin-top: .5rem;
+      letter-spacing: .03em;
+    }
+    .drawer-close-btn {
+      background: transparent; border: 1px solid rgba(255,255,255,.1);
+      color: var(--muted); border-radius: 7px;
+      width: 30px; height: 30px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0; transition: all .18s;
+    }
+    .drawer-close-btn:hover {
+      background: rgba(224,80,80,.1); border-color: rgba(224,80,80,.3);
+      color: #fca5a5;
+    }
+
+    /* Drawer scrollable body */
+    .drawer-body {
+      flex: 1; overflow-y: auto; overflow-x: hidden;
+      overscroll-behavior: contain;
+    }
+    .drawer-body::-webkit-scrollbar { width: 4px; }
+    .drawer-body::-webkit-scrollbar-track { background: transparent; }
+    .drawer-body::-webkit-scrollbar-thumb {
+      background: var(--border-hi); border-radius: 99px;
+    }
+
+    /* Preset bar */
+    .drawer-presets {
+      padding: 1rem 1.5rem .75rem;
+      border-bottom: 1px solid rgba(27,154,170,.08);
+    }
+    .drawer-presets-label {
+      font-size: .72rem; font-weight: 600; color: var(--faint);
+      letter-spacing: .06em; text-transform: uppercase; margin-bottom: .55rem;
+    }
+    .drawer-preset-row {
+      display: flex; flex-wrap: wrap; gap: .4rem;
+    }
+    .preset-btn {
+      background: var(--bg-card); border: 1px solid var(--border);
+      color: var(--muted); font-size: .75rem; font-weight: 600;
+      padding: .3rem .75rem; border-radius: 6px; cursor: pointer;
+      transition: all .18s; letter-spacing: .02em; white-space: nowrap;
+    }
+    .preset-btn:hover {
+      background: rgba(27,154,170,.1); border-color: var(--teal-700);
+      color: var(--teal-300);
+    }
+    .preset-btn.applying {
+      opacity: .6; cursor: wait;
+    }
+
+    /* Layer sections */
+    .drawer-layer {
+      border-bottom: 1px solid rgba(27,154,170,.08);
+    }
+    .drawer-layer-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: .9rem 1.5rem;
+      cursor: pointer;
+      user-select: none;
+      transition: background .15s;
+    }
+    .drawer-layer-header:hover { background: rgba(255,255,255,.025); }
+    .drawer-layer-left { display: flex; align-items: center; gap: .7rem; }
+    .layer-num {
+      width: 22px; height: 22px; border-radius: 6px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: .7rem; font-weight: 700; flex-shrink: 0;
+    }
+    .layer-1 .layer-num { background: rgba(27,154,170,.18); color: var(--teal-300); }
+    .layer-2 .layer-num { background: rgba(29,184,122,.15); color: #1DB87A; }
+    .layer-3 .layer-num { background: rgba(155,108,214,.15); color: #9B6CD6; }
+    .layer-4 .layer-num { background: rgba(232,168,56,.15); color: var(--amber); }
+    .layer-5 .layer-num { background: rgba(192,57,43,.12); color: #E07070; }
+    .drawer-layer-name {
+      font-size: .88rem; font-weight: 600; color: var(--text);
+    }
+    .layer-count-badge {
+      font-size: .7rem; font-weight: 600; color: var(--faint);
+      background: var(--bg-card); border: 1px solid var(--border);
+      padding: .1rem .45rem; border-radius: 99px;
+    }
+    .layer-count-badge.has-enabled {
+      background: rgba(27,154,170,.12); border-color: rgba(27,154,170,.25);
+      color: var(--teal-300);
+    }
+    .drawer-layer-right { display: flex; align-items: center; gap: .7rem; }
+    .layer-chevron {
+      color: var(--faint); transition: transform .2s var(--ease-out);
+      flex-shrink: 0;
+    }
+    .layer-chevron.open { transform: rotate(180deg); }
+
+    /* Layer body — module list */
+    .drawer-layer-body {
+      display: none;
+      padding: 0 1.5rem .75rem;
+    }
+    .drawer-layer-body.open { display: block; }
+
+    /* Layer 1 — locked modules */
+    .locked-modules-list {
+      display: flex; flex-direction: column; gap: 0;
+    }
+    .locked-module-row {
+      display: flex; align-items: center; gap: .7rem;
+      padding: .5rem .75rem;
+      background: rgba(255,255,255,.02);
+      border: 1px solid transparent;
+      border-radius: 8px; margin-bottom: 4px;
+      opacity: .65;
+    }
+    .lock-icon { color: var(--faint); flex-shrink: 0; }
+    .locked-module-name {
+      font-size: .82rem; font-weight: 600; color: var(--muted); flex: 1;
+    }
+    .locked-tag {
+      font-size: .65rem; font-weight: 600; color: var(--faint);
+      background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07);
+      padding: .1rem .45rem; border-radius: 4px; letter-spacing: .03em;
+    }
+    .locked-note {
+      font-size: .75rem; color: var(--faint); padding: .5rem .75rem .25rem;
+      display: flex; align-items: center; gap: .4rem;
+    }
+
+    /* Optional module cards */
+    .module-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 9px; padding: .75rem 1rem;
+      margin-bottom: .45rem;
+      display: flex; align-items: flex-start; gap: .9rem;
+      transition: border-color .18s;
+    }
+    .module-card:hover { border-color: var(--border-hi); }
+    .module-card.enabled { border-color: rgba(27,154,170,.28); }
+    .module-card-body { flex: 1; min-width: 0; }
+    .module-card-name {
+      font-size: .85rem; font-weight: 600; color: var(--text);
+      margin-bottom: .2rem;
+    }
+    .module-card-desc {
+      font-size: .75rem; color: var(--muted); line-height: 1.45;
+      margin-bottom: .45rem;
+    }
+    .module-card-meta {
+      display: flex; flex-wrap: wrap; gap: .3rem;
+    }
+    .module-hs-tag {
+      font-size: .65rem; font-weight: 600; color: var(--faint);
+      background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07);
+      padding: .1rem .4rem; border-radius: 4px; letter-spacing: .02em;
+    }
+
+    /* Toggle switch */
+    .toggle-wrap {
+      flex-shrink: 0; padding-top: .1rem;
+      display: flex; align-items: center; gap: .45rem;
+    }
+    .toggle {
+      position: relative; width: 36px; height: 20px;
+      cursor: pointer; display: inline-block; flex-shrink: 0;
+    }
+    .toggle input { display: none; }
+    .toggle-track {
+      position: absolute; inset: 0;
+      background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: 99px;
+      transition: background .2s, border-color .2s;
+    }
+    .toggle-thumb {
+      position: absolute; top: 3px; left: 3px;
+      width: 12px; height: 12px;
+      background: var(--faint);
+      border-radius: 50%;
+      transition: transform .2s var(--ease-out), background .2s;
+    }
+    .toggle input:checked + .toggle-track { background: var(--teal-700); border-color: var(--teal-500); }
+    .toggle input:checked + .toggle-track + .toggle-thumb {
+      transform: translateX(16px); background: var(--teal-300);
+    }
+
+    /* Save indicator */
+    .save-indicator {
+      font-size: .7rem; font-weight: 600; color: var(--teal-300);
+      opacity: 0; transition: opacity .25s;
+      white-space: nowrap;
+    }
+    .save-indicator.visible { opacity: 1; }
+
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -2462,9 +2730,57 @@
       <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       <span class="header-org-name" id="header-org-name"></span>
     </div>
+    <button class="settings-gear-btn" id="settings-gear-btn" onclick="openSettingsDrawer()" title="Screening Modules" aria-label="Screening Modules settings">
+      <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.75" viewBox="0 0 24 24">
+        <circle cx="12" cy="12" r="3"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
     <button class="logout-btn" id="logout-btn" onclick="handleLogout()" style="display:none">Sign Out</button>
   </div>
 </header>
+
+<!-- ===================== SETTINGS DRAWER ===================== -->
+<div id="settings-backdrop" onclick="closeSettingsDrawer()"></div>
+<aside id="settings-drawer" role="dialog" aria-modal="true" aria-label="Screening Modules Settings">
+
+  <!-- Drawer header -->
+  <div class="drawer-header">
+    <div class="drawer-header-left">
+      <div class="drawer-title">Screening Modules</div>
+      <div class="drawer-subtitle">Customize which certification frameworks PortGuard screens for. Core compliance modules are always active.</div>
+      <div class="drawer-active-badge" id="drawer-active-badge">
+        <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" fill="currentColor"/></svg>
+        <span id="drawer-active-count">6</span> modules active
+      </div>
+    </div>
+    <button class="drawer-close-btn" onclick="closeSettingsDrawer()" aria-label="Close settings">
+      <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+      </svg>
+    </button>
+  </div>
+
+  <!-- Scrollable body -->
+  <div class="drawer-body" id="drawer-body">
+
+    <!-- Industry presets -->
+    <div class="drawer-presets">
+      <div class="drawer-presets-label">Industry Presets</div>
+      <div class="drawer-preset-row">
+        <button class="preset-btn" onclick="applyPreset('paper')">📦 Packaging &amp; Paper</button>
+        <button class="preset-btn" onclick="applyPreset('apparel')">👕 Apparel &amp; Footwear</button>
+        <button class="preset-btn" onclick="applyPreset('electronics')">⚡ Electronics &amp; Tech</button>
+        <button class="preset-btn" onclick="applyPreset('food')">🌿 Food &amp; Agriculture</button>
+        <button class="preset-btn" onclick="applyPreset('minerals')">⛏ Minerals &amp; Metals</button>
+      </div>
+    </div>
+
+    <!-- Module layers — populated by JS -->
+    <div id="drawer-layers"></div>
+
+  </div>
+</aside>
 
 <!-- ===================== SECTION NAV ===================== -->
 <nav class="section-nav" id="section-nav" style="display:none">
@@ -3219,6 +3535,11 @@ function hideAuthOverlay() {
   // Show section navigation now that user is authenticated
   const nav = document.getElementById('section-nav');
   if (nav) nav.style.display = 'flex';
+  // Show settings gear button
+  const gear = document.getElementById('settings-gear-btn');
+  if (gear) gear.style.display = 'flex';
+  // Load modules into drawer (background, no spinner)
+  loadModules();
 }
 
 // ---------------------------------------------------------------------------
@@ -3391,11 +3712,15 @@ async function handleRegister(e) {
 async function handleLogout() {
   if (!_authToken) { showAuthOverlay(); return; }
   if (typeof _dashCleanup === 'function') _dashCleanup();
+  closeSettingsDrawer();
   try {
     await fetch(apiUrl() + '/api/v1/auth/logout', authedJson('POST'));
   } catch (_) { /* best-effort */ }
   _authToken   = null;
   _authOrgName = null;
+  _modulesCache = null;
+  const gear = document.getElementById('settings-gear-btn');
+  if (gear) gear.style.display = 'none';
   showAuthOverlay();
 }
 
@@ -8229,6 +8554,345 @@ renderTabs();
 
 // Show auth overlay immediately on page load — app requires authentication.
 showAuthOverlay();
+
+// ===========================================================================
+// SETTINGS DRAWER — Screening Modules
+// ===========================================================================
+
+let _modulesCache    = null;   // raw API response from GET /api/v1/modules
+let _moduleToggles   = {};     // { moduleId: bool } — pending or committed state
+let _toggleTimers    = {};     // debounce handles per module
+const _TOGGLE_DEBOUNCE = 500;  // ms
+
+// Industry preset definitions  ──  module IDs to enable
+const _PRESETS = {
+  paper:       ['FSC_COC', 'PEFC', 'SFI', 'ISO_9001', 'ISO_14001'],
+  apparel:     ['WRAP', 'BCI_COTTON', 'SA8000', 'LEATHER_WORKING_GROUP', 'FAIRTRADE'],
+  electronics: ['RBA', 'CONFLICT_MINERALS', 'BIS_EAR', 'ISO_27001', 'RMI_RMAP'],
+  food:        ['RAINFOREST_ALLIANCE', 'RSPO', 'MSC', 'FAIRTRADE', 'CITES'],
+  minerals:    ['CONFLICT_MINERALS', 'KIMBERLEY_PROCESS', 'RMI_RMAP', 'OECD_DUE_DILIGENCE', 'BIS_EAR'],
+};
+
+// HTS chapter labels for "Applies to:" tags
+const _HTS_LABELS = {
+  '01':'Live Animals','02':'Meat','03':'Seafood','06':'Plants','07':'Vegetables',
+  '08':'Fruit','09':'Coffee/Cocoa','10':'Grain','12':'Oilseeds','15':'Edible Oils',
+  '16':'Prepared Seafood','17':'Sugar','18':'Cocoa Products','20':'Misc Food',
+  '21':'Food Prep.','26':'Ores/Minerals','28':'Inorganic Chem.','29':'Organic Chem.',
+  '30':'Pharma','33':'Cosmetics','38':'Chemical Products','39':'Plastics','40':'Rubber',
+  '41':'Leather (raw)','42':'Leather Articles','44':'Wood/Timber','47':'Pulp',
+  '48':'Paper','49':'Print','52':'Cotton','53':'Textiles','54':'Man-made Filaments',
+  '55':'Man-made Staple','61':'Knit Apparel','62':'Woven Apparel','63':'Textile Articles',
+  '64':'Footwear','71':'Gems/Jewelry','72':'Iron/Steel','73':'Steel Articles',
+  '74':'Copper','75':'Nickel','76':'Aluminum','78':'Lead','79':'Zinc','80':'Tin',
+  '81':'Other Metals','84':'Machinery','85':'Electronics','87':'Vehicles',
+  '90':'Optics/Medical','93':'Firearms','94':'Furniture','95':'Toys/Games','97':'Art',
+};
+
+function _htsCh(chapters) {
+  if (!chapters || chapters.length === 0) return 'All products';
+  return chapters.slice(0,4).map(c => _HTS_LABELS[c] || ('HTS '+c)).join(', ')
+    + (chapters.length > 4 ? ` +${chapters.length - 4}` : '');
+}
+
+// ── Open / close ─────────────────────────────────────────────────────────────
+
+function openSettingsDrawer() {
+  document.getElementById('settings-drawer').classList.add('open');
+  document.getElementById('settings-backdrop').classList.add('open');
+  document.getElementById('settings-gear-btn').classList.add('active');
+  document.body.style.overflow = 'hidden';
+  // Reload if we don't have fresh data
+  if (!_modulesCache) loadModules();
+}
+
+function closeSettingsDrawer() {
+  document.getElementById('settings-drawer').classList.remove('open');
+  document.getElementById('settings-backdrop').classList.remove('open');
+  const gear = document.getElementById('settings-gear-btn');
+  if (gear) gear.classList.remove('active');
+  document.body.style.overflow = '';
+}
+
+// Close on Escape
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && document.getElementById('settings-drawer').classList.contains('open')) {
+    closeSettingsDrawer();
+  }
+});
+
+// ── Load modules from API ─────────────────────────────────────────────────────
+
+async function loadModules() {
+  if (!_authToken) return;
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/modules', {
+      headers: { Authorization: 'Bearer ' + _authToken }
+    });
+    if (!res.ok) { if (res.status === 401) handle401(); return; }
+    const data = await res.json();
+    _modulesCache = data;
+    // Sync local toggle state from server
+    data.layers.forEach(layer => {
+      layer.modules.forEach(mod => {
+        _moduleToggles[mod.module_id] = mod.enabled;
+      });
+    });
+    renderDrawer(data);
+  } catch (e) {
+    console.warn('[PortGuard] loadModules failed:', e);
+  }
+}
+
+// ── Render ────────────────────────────────────────────────────────────────────
+
+function renderDrawer(data) {
+  updateActiveBadge(data.total_enabled);
+  const container = document.getElementById('drawer-layers');
+  if (!container) return;
+  container.innerHTML = data.layers.map(layer => renderLayer(layer)).join('');
+}
+
+function renderLayer(layer) {
+  const isL1 = layer.layer === 1;
+  const enabledInLayer = layer.modules.filter(m => m.enabled).length;
+  const badgeCls = enabledInLayer > 0 ? 'layer-count-badge has-enabled' : 'layer-count-badge';
+  const badgeTxt = isL1
+    ? `${layer.modules.length} always on`
+    : `${enabledInLayer} / ${layer.modules.length} on`;
+
+  const bodyContent = isL1 ? renderLockedLayer(layer) : renderToggleableLayer(layer);
+
+  return `
+<div class="drawer-layer layer-${layer.layer}" id="drawer-layer-${layer.layer}">
+  <div class="drawer-layer-header" onclick="toggleLayerCollapse(${layer.layer})">
+    <div class="drawer-layer-left">
+      <div class="layer-num">${layer.layer}</div>
+      <span class="drawer-layer-name">${escH(layer.name)}</span>
+    </div>
+    <div class="drawer-layer-right">
+      <span class="${badgeCls}" id="layer-badge-${layer.layer}">${escH(badgeTxt)}</span>
+      <svg class="layer-chevron" id="chevron-${layer.layer}" width="14" height="14" fill="none"
+           stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </div>
+  </div>
+  <div class="drawer-layer-body" id="layer-body-${layer.layer}">
+    ${bodyContent}
+  </div>
+</div>`;
+}
+
+function renderLockedLayer(layer) {
+  const rows = layer.modules.map(mod => `
+<div class="locked-module-row">
+  <svg class="lock-icon" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+    <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+    <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+  </svg>
+  <span class="locked-module-name">${escH(mod.name)}</span>
+  <span class="locked-tag">LOCKED</span>
+</div>`).join('');
+  return `
+<div class="locked-note">
+  <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+  </svg>
+  Always active — cannot be disabled
+</div>
+<div class="locked-modules-list">${rows}</div>`;
+}
+
+function renderToggleableLayer(layer) {
+  return layer.modules.map(mod => renderModuleCard(mod)).join('');
+}
+
+function renderModuleCard(mod) {
+  const checked = _moduleToggles[mod.module_id] ? 'checked' : '';
+  const enabledCls = _moduleToggles[mod.module_id] ? 'enabled' : '';
+  const htsTxt = _htsCh(mod.applicable_hts_chapters);
+  return `
+<div class="module-card ${enabledCls}" id="mcard-${mod.module_id}">
+  <div class="module-card-body">
+    <div class="module-card-name">${escH(mod.name)}</div>
+    <div class="module-card-desc">${escH(mod.description)}</div>
+    <div class="module-card-meta">
+      <span class="module-hs-tag">Applies to: ${escH(htsTxt)}</span>
+    </div>
+  </div>
+  <div class="toggle-wrap">
+    <span class="save-indicator" id="save-ind-${mod.module_id}">Saved ✓</span>
+    <label class="toggle" title="${checked ? 'Disable' : 'Enable'} ${escH(mod.name)}">
+      <input type="checkbox" ${checked}
+             onchange="onModuleToggle('${mod.module_id}', this.checked)">
+      <div class="toggle-track"></div>
+      <div class="toggle-thumb"></div>
+    </label>
+  </div>
+</div>`;
+}
+
+function updateActiveBadge(count) {
+  const el = document.getElementById('drawer-active-count');
+  if (el) el.textContent = count;
+}
+
+function toggleLayerCollapse(layerNum) {
+  const body    = document.getElementById('layer-body-' + layerNum);
+  const chevron = document.getElementById('chevron-' + layerNum);
+  if (!body) return;
+  const isOpen = body.classList.contains('open');
+  body.classList.toggle('open', !isOpen);
+  if (chevron) chevron.classList.toggle('open', !isOpen);
+}
+
+// ── Toggle a single module ────────────────────────────────────────────────────
+
+function onModuleToggle(moduleId, enabled) {
+  _moduleToggles[moduleId] = enabled;
+  // Update card styling immediately
+  const card = document.getElementById('mcard-' + moduleId);
+  if (card) card.classList.toggle('enabled', enabled);
+  // Update layer count badge
+  _refreshLayerBadge(moduleId);
+  // Update total active badge (optimistic)
+  _refreshTotalBadge();
+  // Debounced API call
+  clearTimeout(_toggleTimers[moduleId]);
+  _toggleTimers[moduleId] = setTimeout(() => _patchModule(moduleId, enabled), _TOGGLE_DEBOUNCE);
+}
+
+async function _patchModule(moduleId, enabled) {
+  if (!_authToken) return;
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/modules/' + moduleId, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _authToken },
+      body: JSON.stringify({ enabled }),
+    });
+    if (!res.ok) {
+      if (res.status === 401) { handle401(); return; }
+      console.warn('[PortGuard] module patch failed:', moduleId, res.status);
+      return;
+    }
+    _showSaveIndicator(moduleId);
+    // Refresh total from server
+    if (_modulesCache) {
+      _modulesCache.layers.forEach(layer => {
+        const mod = layer.modules.find(m => m.module_id === moduleId);
+        if (mod) mod.enabled = enabled;
+      });
+      // Update total_enabled count
+      const total = Object.keys(_moduleToggles).filter(id => {
+        const mod = _findModuleInCache(id);
+        return mod && (mod.always_on || _moduleToggles[id]);
+      }).length + 6; // Layer 1 always adds 6
+      if (_modulesCache) _modulesCache.total_enabled = _countActive();
+      updateActiveBadge(_countActive());
+    }
+  } catch (e) {
+    console.warn('[PortGuard] module patch network error:', moduleId, e);
+  }
+}
+
+function _showSaveIndicator(moduleId) {
+  const el = document.getElementById('save-ind-' + moduleId);
+  if (!el) return;
+  el.classList.add('visible');
+  setTimeout(() => el.classList.remove('visible'), 1800);
+}
+
+function _findModuleInCache(moduleId) {
+  if (!_modulesCache) return null;
+  for (const layer of _modulesCache.layers) {
+    for (const mod of layer.modules) {
+      if (mod.module_id === moduleId) return mod;
+    }
+  }
+  return null;
+}
+
+function _countActive() {
+  if (!_modulesCache) return 6;
+  let count = 0;
+  _modulesCache.layers.forEach(layer => {
+    layer.modules.forEach(mod => {
+      if (mod.always_on || _moduleToggles[mod.module_id]) count++;
+    });
+  });
+  return count;
+}
+
+function _refreshLayerBadge(moduleId) {
+  if (!_modulesCache) return;
+  for (const layer of _modulesCache.layers) {
+    const mod = layer.modules.find(m => m.module_id === moduleId);
+    if (!mod) continue;
+    const enabledInLayer = layer.modules.filter(m => _moduleToggles[m.module_id]).length;
+    const badge = document.getElementById('layer-badge-' + layer.layer);
+    if (!badge) break;
+    badge.textContent = enabledInLayer + ' / ' + layer.modules.length + ' on';
+    badge.className   = enabledInLayer > 0 ? 'layer-count-badge has-enabled' : 'layer-count-badge';
+    break;
+  }
+}
+
+function _refreshTotalBadge() {
+  updateActiveBadge(_countActive());
+}
+
+// ── Industry presets ──────────────────────────────────────────────────────────
+
+async function applyPreset(presetKey) {
+  const ids = _PRESETS[presetKey];
+  if (!ids || !_authToken) return;
+
+  // Disable all preset buttons temporarily
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.add('applying'));
+
+  // Build bulk update: enable preset modules, leave others unchanged
+  const updates = {};
+  ids.forEach(id => { updates[id] = true; });
+
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/modules', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _authToken },
+      body: JSON.stringify({ modules: updates }),
+    });
+    if (!res.ok) {
+      if (res.status === 401) { handle401(); return; }
+      console.warn('[PortGuard] preset PUT failed:', res.status);
+      return;
+    }
+
+    // Update local state
+    ids.forEach(id => { _moduleToggles[id] = true; });
+
+    // Reload drawer with fresh server state
+    await loadModules();
+
+    // Show brief feedback on all affected cards
+    ids.forEach(id => _showSaveIndicator(id));
+
+  } catch (e) {
+    console.warn('[PortGuard] preset apply failed:', e);
+  } finally {
+    document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('applying'));
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function escH(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
 </script>
 </body>
 </html>
