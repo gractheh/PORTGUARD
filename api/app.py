@@ -40,6 +40,18 @@ from portguard.document_validator import (
 from portguard.data.sanctions import get_sanctions_programs
 from portguard.data.section301 import get_section_301
 from portguard.data.adcvd import get_adcvd_orders
+from portguard.data.certification_modules import (
+    ALL_MODULES,
+    ALL_TOGGLEABLE_MODULES,
+    MODULE_BY_ID,
+    LAYER_NAMES,
+    LAYER1_MODULES,
+)
+from portguard.models.certification import (
+    CertificationScreeningResult,
+    ModuleFinding,
+    SustainabilityRating,
+)
 from portguard.report_generator import (
     generate_report_from_dict,
     generate_report_from_payload,
@@ -70,6 +82,22 @@ if os.getenv("PORTGUARD_PATTERN_LEARNING_ENABLED", "true").lower() not in ("0", 
         logger.warning(
             "Pattern learning init failed (%s) — running rule-only mode", _exc
         )
+
+# ---------------------------------------------------------------------------
+# Module config DB — module-level singleton (best-effort; never crashes app)
+# ---------------------------------------------------------------------------
+# Shares the same auth DB as AuthDB.  Provides per-org module enabled/disabled
+# state to the certification screener and the module management endpoints.
+
+_module_config_db = None
+
+try:
+    from portguard.module_config_db import ModuleConfigDB as _ModuleConfigDB
+    _auth_db_path = os.getenv("PORTGUARD_AUTH_DB_PATH", "portguard_auth.db")
+    _module_config_db = _ModuleConfigDB(_auth_db_path)
+    logger.info("ModuleConfigDB initialized at %s", _auth_db_path)
+except Exception as _exc:
+    logger.warning("ModuleConfigDB init failed (%s) — module screening disabled", _exc)
 
 # ---------------------------------------------------------------------------
 # Dashboard analytics — module-level singleton (best-effort; never crashes app)
@@ -1151,6 +1179,27 @@ class AnalyzeResponse(BaseModel):
                     "confidence tier, signal count, and verdict.",
     )
 
+    # Certification screening fields — Optional during migration window.
+    # All existing callers that ignore unknown keys are unaffected.
+    sustainability_rating: Optional[SustainabilityRating] = Field(
+        None,
+        description="Sustainability grade (A/B/C/D/N/A) computed from document signals, "
+                    "country-of-origin risk, and product category risk.  Does not affect "
+                    "the compliance decision.",
+    )
+    module_findings: list[ModuleFinding] = Field(
+        default_factory=list,
+        description="Findings from enabled certification modules (Stage 3.5 screener).",
+    )
+    active_modules_at_scan: list[str] = Field(
+        default_factory=list,
+        description="Module IDs that were evaluated during this analysis.",
+    )
+    modules_triggered: list[str] = Field(
+        default_factory=list,
+        description="Module IDs that produced at least one finding.",
+    )
+
 
 class FeedbackRequest(BaseModel):
     """Body for POST /api/v1/feedback."""
@@ -1378,6 +1427,173 @@ def health():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ---------------------------------------------------------------------------
+# Module management endpoints
+# ---------------------------------------------------------------------------
+
+class ModuleStateResponse(BaseModel):
+    module_id: str
+    name: str
+    layer: int
+    layer_name: str
+    enabled: bool
+    always_on: bool
+    description: str
+    why_it_matters: str
+    applicable_hts_chapters: list[str]
+    risk_countries: list[str]
+
+
+class LayerResponse(BaseModel):
+    layer: int
+    name: str
+    modules: list[ModuleStateResponse]
+
+
+class ModulesListResponse(BaseModel):
+    layers: list[LayerResponse]
+    total_enabled: int
+    total_modules: int
+
+
+class ModuleToggleRequest(BaseModel):
+    enabled: bool
+
+
+class ModuleToggleResponse(BaseModel):
+    module_id: str
+    enabled: bool
+    updated_at: str
+
+
+class BulkModuleUpdateRequest(BaseModel):
+    modules: dict[str, bool]
+
+
+class BulkModuleUpdateResponse(BaseModel):
+    updated: int
+    ignored_always_on: int
+
+
+@app.get("/api/v1/modules", response_model=ModulesListResponse)
+def list_modules(current_org: dict = Depends(get_current_organization)):
+    """Return the full module catalog with per-org enabled/disabled state.
+
+    Layer 1 modules are always shown as enabled=True (locked).
+    Layers 2–5 reflect the authenticated org's current toggle state.
+    """
+    org_id: str = current_org["organization_id"]
+
+    # Get org-specific enabled states from DB
+    org_states: dict[str, bool] = (
+        _module_config_db.get_all_module_states(org_id)
+        if _module_config_db is not None else {}
+    )
+
+    # Group modules by layer
+    layers_dict: dict[int, list[ModuleStateResponse]] = {}
+    for module in ALL_MODULES:
+        if module.layer not in layers_dict:
+            layers_dict[module.layer] = []
+        if module.toggleable:
+            enabled = org_states.get(module.module_id, False)
+        else:
+            enabled = True  # Layer 1 always on
+
+        layers_dict[module.layer].append(ModuleStateResponse(
+            module_id=module.module_id,
+            name=module.name,
+            layer=module.layer,
+            layer_name=module.layer_name,
+            enabled=enabled,
+            always_on=not module.toggleable,
+            description=module.description,
+            why_it_matters=module.why_it_matters,
+            applicable_hts_chapters=list(module.applicable_hts_chapters),
+            risk_countries=list(module.risk_countries),
+        ))
+
+    layers: list[LayerResponse] = [
+        LayerResponse(layer=layer_num, name=LAYER_NAMES[layer_num], modules=mods)
+        for layer_num, mods in sorted(layers_dict.items())
+    ]
+
+    total_enabled = sum(
+        1 for m in ALL_MODULES
+        if not m.toggleable or org_states.get(m.module_id, False)
+    )
+
+    return ModulesListResponse(
+        layers=layers,
+        total_enabled=total_enabled,
+        total_modules=len(ALL_MODULES),
+    )
+
+
+@app.patch("/api/v1/modules/{module_id}", response_model=ModuleToggleResponse)
+def toggle_module(
+    module_id: str,
+    body: ModuleToggleRequest,
+    current_org: dict = Depends(get_current_organization),
+):
+    """Enable or disable a single certification module for the authenticated org.
+
+    Returns 403 if the module is a Layer 1 always-on module.
+    Returns 404 if the module_id is not recognized.
+    """
+    from datetime import datetime, timezone as _tz
+
+    module = MODULE_BY_ID.get(module_id)
+    if module is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "MODULE_NOT_FOUND", "message": f"Unknown module_id: {module_id}"},
+        )
+    if not module.toggleable:
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "code": "MODULE_ALWAYS_ON",
+                "message": "Layer 1 modules are always active and cannot be disabled.",
+            },
+        )
+
+    org_id: str = current_org["organization_id"]
+    if _module_config_db is None:
+        raise HTTPException(status_code=503, detail="Module configuration DB is not available.")
+
+    _module_config_db.set_module_enabled(org_id, module_id, body.enabled)
+    return ModuleToggleResponse(
+        module_id=module_id,
+        enabled=body.enabled,
+        updated_at=datetime.now(_tz.utc).isoformat(),
+    )
+
+
+@app.put("/api/v1/modules", response_model=BulkModuleUpdateResponse)
+def bulk_update_modules(
+    body: BulkModuleUpdateRequest,
+    current_org: dict = Depends(get_current_organization),
+):
+    """Bulk-update enabled/disabled state for multiple certification modules.
+
+    Layer 1 always-on module IDs in the request are silently ignored.
+    Unrecognized module IDs are silently ignored.
+    """
+    org_id: str = current_org["organization_id"]
+    if _module_config_db is None:
+        raise HTTPException(status_code=503, detail="Module configuration DB is not available.")
+
+    # Count how many are Layer 1 (ignored)
+    ignored_always_on = sum(
+        1 for mid in body.modules
+        if mid in MODULE_BY_ID and not MODULE_BY_ID[mid].toggleable
+    )
+
+    updated = _module_config_db.set_modules_bulk(org_id, body.modules)
+    return BulkModuleUpdateResponse(updated=updated, ignored_always_on=ignored_always_on)
+
+
 @app.post("/api/v1/analyze", response_model=AnalyzeResponse)
 def analyze(
     request: AnalyzeRequest,
@@ -1466,6 +1682,33 @@ def analyze(
     else:
         final_risk_level = "CRITICAL"
 
+    # --- Certification module screening (Stage 3.5) ---
+    all_text = "\n\n".join(
+        f"=== {doc.filename or f'Document {i+1}'} ===\n{doc.raw_text.strip()}"
+        for i, doc in enumerate(request.documents)
+    )
+    cert_result: Optional[CertificationScreeningResult] = None
+    sustainability: Optional[SustainabilityRating] = None
+
+    try:
+        from portguard.agents.certification_screener import CertificationScreener
+        enabled_modules: list[str] = (
+            _module_config_db.get_enabled_modules(org_id)
+            if _module_config_db is not None else []
+        )
+        screener = CertificationScreener(enabled_modules)
+        cert_result = screener.screen(sd, all_text)
+    except Exception as _cert_exc:
+        logger.warning("CertificationScreener failed (non-fatal): %s", _cert_exc)
+
+    # --- Sustainability rating (Stage 5.5 — post-decision, no influence on decision) ---
+    try:
+        from portguard.agents.sustainability_rater import SustainabilityRater
+        rater = SustainabilityRater()
+        sustainability = rater.rate(sd, cert_result, all_text)
+    except Exception as _sus_exc:
+        logger.warning("SustainabilityRater failed (non-fatal): %s", _sus_exc)
+
     # Build the response object first so we can serialise it for PDF storage.
     analyze_response = AnalyzeResponse(
         status="completed",
@@ -1486,6 +1729,10 @@ def analyze(
         pattern_history_depth=pattern_history_depth_val,
         validation_warnings=_val_warnings,
         document_validations=_val_metadata,
+        sustainability_rating=sustainability,
+        module_findings=cert_result.findings if cert_result else [],
+        active_modules_at_scan=cert_result.modules_run if cert_result else [],
+        modules_triggered=cert_result.triggered_modules if cert_result else [],
     )
 
     # Record analysis to PatternDB inline (fast — < 10 ms); shipment_id is
@@ -1709,6 +1956,32 @@ async def analyze_files(
     else:
         final_risk_level = "CRITICAL"
 
+    # --- Certification module screening + sustainability rating ---
+    all_text_f = "\n\n".join(
+        f"=== {doc.filename or f'Document {i+1}'} ===\n{doc.raw_text.strip()}"
+        for i, doc in enumerate(documents)
+    )
+    cert_result_f: Optional[CertificationScreeningResult] = None
+    sustainability_f: Optional[SustainabilityRating] = None
+
+    try:
+        from portguard.agents.certification_screener import CertificationScreener
+        enabled_modules_f: list[str] = (
+            _module_config_db.get_enabled_modules(org_id)
+            if _module_config_db is not None else []
+        )
+        screener_f = CertificationScreener(enabled_modules_f)
+        cert_result_f = screener_f.screen(sd, all_text_f)
+    except Exception as _cert_exc_f:
+        logger.warning("CertificationScreener (files) failed (non-fatal): %s", _cert_exc_f)
+
+    try:
+        from portguard.agents.sustainability_rater import SustainabilityRater
+        rater_f = SustainabilityRater()
+        sustainability_f = rater_f.rate(sd, cert_result_f, all_text_f)
+    except Exception as _sus_exc_f:
+        logger.warning("SustainabilityRater (files) failed (non-fatal): %s", _sus_exc_f)
+
     analyze_response_files = AnalyzeResponse(
         status="completed",
         shipment_data=ShipmentData(**sd),
@@ -1728,6 +2001,10 @@ async def analyze_files(
         pattern_history_depth=pattern_history_depth_val,
         validation_warnings=_val_warnings_f,
         document_validations=_val_metadata_f,
+        sustainability_rating=sustainability_f,
+        module_findings=cert_result_f.findings if cert_result_f else [],
+        active_modules_at_scan=cert_result_f.modules_run if cert_result_f else [],
+        modules_triggered=cert_result_f.triggered_modules if cert_result_f else [],
     )
 
     try:

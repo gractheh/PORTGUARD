@@ -610,6 +610,19 @@ _MIGRATIONS: list[tuple[str, str | list[str]]] = [
             ON bulk_shipments(analysis_id);
         """,
     ),
+    (
+        "006_certification_modules",
+        [
+            "ALTER TABLE shipment_history ADD COLUMN sustainability_grade TEXT;",
+            "ALTER TABLE shipment_history ADD COLUMN sustainability_signals TEXT;",
+            "ALTER TABLE shipment_history ADD COLUMN active_modules_snapshot TEXT;",
+            "ALTER TABLE shipment_history ADD COLUMN module_findings TEXT;",
+        ],
+    ),
+    (
+        "007_bulk_modules_snapshot",
+        "ALTER TABLE bulk_batches ADD COLUMN modules_snapshot TEXT;",
+    ),
 ]
 
 

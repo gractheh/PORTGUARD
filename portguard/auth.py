@@ -186,6 +186,20 @@ _AUTH_SCHEMA_STMTS: list[str] = [
     "CREATE INDEX IF NOT EXISTS idx_revocations_jti ON auth_token_revocations(jti)",
     "CREATE INDEX IF NOT EXISTS idx_login_attempts_ip_at ON auth_login_attempts(ip_address, attempted_at)",
     "CREATE INDEX IF NOT EXISTS idx_orgs_email ON organizations(email)",
+    # organization_modules — stores toggleable module enabled/disabled state per org.
+    # Layer 1 modules (always_on) are never inserted here; they run unconditionally.
+    """CREATE TABLE IF NOT EXISTS organization_modules (
+        organization_id     TEXT NOT NULL,
+        module_id           TEXT NOT NULL,
+        enabled             INTEGER NOT NULL DEFAULT 0,
+        enabled_at          TEXT,
+        disabled_at         TEXT,
+        set_by              TEXT,
+        PRIMARY KEY (organization_id, module_id),
+        FOREIGN KEY (organization_id) REFERENCES organizations(organization_id)
+            ON DELETE CASCADE
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_org_modules_org ON organization_modules(organization_id, enabled)",
 ]
 
 
@@ -266,11 +280,38 @@ class AuthDB:
                         "created_at": now,
                     },
                 )
+                # Insert default (disabled) rows for all toggleable modules.
+                # Layer 1 modules are never inserted here — they always run.
+                self._init_org_modules(conn, org_id, now)
             return org_id
         except _IntegrityError:
             raise ValueError(f"The email '{email}' is already registered.")
         except _SQLAlchemyError as exc:
             raise RuntimeError(f"Failed to create organization: {exc}") from exc
+
+    def _init_org_modules(self, conn, org_id: str, now: str) -> None:
+        """Insert default disabled rows for all toggleable modules.
+
+        Called inside the org-creation transaction so a failed org creation
+        never leaves orphaned module rows.
+        """
+        try:
+            from portguard.data.certification_modules import ALL_TOGGLEABLE_MODULES
+            raw_sql = (
+                "INSERT OR IGNORE INTO organization_modules "
+                "(organization_id, module_id, enabled, set_by) "
+                "VALUES (:org_id, :module_id, 0, 'system_default')"
+            )
+            adapted = adapt_stmt(raw_sql, self._dialect)
+            for module in ALL_TOGGLEABLE_MODULES:
+                conn.execute(
+                    text(adapted),
+                    {"org_id": org_id, "module_id": module.module_id},
+                )
+        except Exception as exc:
+            # Non-fatal — log and continue.  The org row is already inserted;
+            # missing module rows will default to all-disabled (Layer 1 only).
+            logger.warning("_init_org_modules failed for %s: %s", org_id, exc)
 
     def get_organization_by_email(self, email: str) -> Optional[Any]:
         """Look up an organization by email address.  Returns row or None."""
