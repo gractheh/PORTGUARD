@@ -1954,6 +1954,60 @@
     }
     textarea.bulk-slot-doc-text::placeholder { color: var(--faint); }
 
+    /* PDF upload button inside a manual entry slot */
+    .bulk-slot-pdf-btn {
+      flex-shrink: 0;
+      display: inline-flex; align-items: center; gap: .28rem;
+      padding: .2rem .5rem;
+      border: 1px solid var(--teal-500);
+      border-radius: 4px;
+      background: transparent;
+      color: var(--teal-300);
+      font-size: .7rem; font-weight: 600;
+      cursor: pointer; transition: background .15s;
+    }
+    .bulk-slot-pdf-btn:hover { background: rgba(27,154,170,.1); }
+
+    /* Teal border on slot cards with a PDF attached */
+    .bulk-slot.has-pdf { border-color: rgba(27,154,170,.45); }
+
+    /* Mini PDF preview panel inside a slot */
+    .bulk-slt-pdf-panel {
+      margin: .4rem 0 .35rem;
+      padding: .45rem .6rem;
+      background: rgba(255,255,255,.02);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+    }
+    .bulk-slt-pdf-header {
+      display: flex; align-items: center; gap: .6rem;
+      margin-bottom: .4rem; flex-wrap: wrap;
+    }
+    .bulk-slt-pdf-filename {
+      font-size: .75rem; font-weight: 600; color: var(--teal-300);
+      max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .bulk-slt-pdf-meta { font-size: .7rem; color: var(--faint); }
+    /* Compact thumbnail strip inside a slot */
+    .bulk-slt-pdf-thumbs { gap: .35rem; }
+    .bulk-slt-pdf-thumbs .pdf-thumb-wrap { width: 48px; }
+
+    /* Override warning banner */
+    .bulk-slt-pdf-override-warn {
+      display: flex; align-items: center; gap: .45rem; flex-wrap: wrap;
+      padding: .3rem .55rem;
+      background: rgba(232,168,56,.07);
+      border: 1px solid rgba(232,168,56,.28);
+      border-radius: 4px;
+      font-size: .72rem; color: #E8A838;
+      margin-bottom: .35rem;
+    }
+    .bulk-slt-pdf-override-warn button {
+      padding: .12rem .36rem; border-radius: 3px;
+      font-size: .68rem; cursor: pointer; border: 1px solid currentColor;
+      background: transparent; color: inherit;
+    }
+
     /* ---- Submit button ---- */
     .bulk-submit-wrap {
       margin-top: 1.5rem; display: flex; align-items: center; gap: 1rem;
@@ -8215,10 +8269,11 @@ function _bulkRenderAllSlots() {
 
 function _bulkBuildSlotEl(slot) {
   const div = document.createElement('div');
-  div.className = 'bulk-slot' + (slot.expanded ? ' expanded' : '');
+  const slotHasPdf = slot.tabs.some(t => !!t.pdfMeta);
+  div.className = 'bulk-slot' + (slot.expanded ? ' expanded' : '') + (slotHasPdf ? ' has-pdf' : '');
   div.id = 'bulk-slot-' + slot.id;
 
-  const docCount = slot.tabs.filter(t => t.text.trim()).length;
+  const docCount = slot.tabs.filter(t => (t.pdfExtractedText || t.text || '').trim()).length;
 
   // Build tab HTML for the active doc pane
   const activeTabData = slot.tabs.find(t => t.id === slot.activeTab) || slot.tabs[0];
@@ -8256,13 +8311,7 @@ function _bulkBuildSlotEl(slot) {
         <button class="bulk-slot-tab-add" title="Add document" onclick="bulkSlotAddTab(${slot.id})">+</button>
       </div>
       <div class="bulk-slot-doc-pane" id="bulk-slot-pane-${slot.id}">
-        <div class="bulk-slot-filename-row">
-          <div class="bulk-slot-fname-label">File</div>
-          <input class="bulk-slot-fname-input" id="bulk-slt-fname-${slot.id}-${activeTabData.id}"
-                 value="${escHtml(activeTabData.filename)}" placeholder="document.txt">
-        </div>
-        <textarea class="bulk-slot-doc-text" id="bulk-slt-text-${slot.id}-${activeTabData.id}"
-                  placeholder="Paste document text here…">${escHtml(activeTabData.text)}</textarea>
+        ${_bulkBuildPaneHtml(slot, activeTabData)}
       </div>
     </div>`;
   return div;
@@ -8366,22 +8415,308 @@ function _bulkRerenderSlotTabs(slot) {
     </button>`).join('') +
     `<button class="bulk-slot-tab-add" title="Add document" onclick="bulkSlotAddTab(${slot.id})">+</button>`;
 
-  pane.innerHTML = `
-    <div class="bulk-slot-filename-row">
-      <div class="bulk-slot-fname-label">File</div>
-      <input class="bulk-slot-fname-input" id="bulk-slt-fname-${slot.id}-${at.id}"
-             value="${escHtml(at.filename)}" placeholder="document.txt">
-    </div>
-    <textarea class="bulk-slot-doc-text" id="bulk-slt-text-${slot.id}-${at.id}"
-              placeholder="Paste document text here…">${escHtml(at.text)}</textarea>`;
+  pane.innerHTML = _bulkBuildPaneHtml(slot, at);
+
+  // Sync has-pdf class on the card
+  const _cardEl = document.getElementById('bulk-slot-' + slot.id);
+  if (_cardEl) _cardEl.classList.toggle('has-pdf', slot.tabs.some(t => !!t.pdfMeta));
 
   _bulkAttachSlotListeners(slot);
   _bulkUpdateSlotDocCount(slot);
 }
 
+// ---------------------------------------------------------------------------
+// Bulk slot pane HTML builder (shared by _bulkBuildSlotEl and _bulkRerenderSlotTabs)
+// ---------------------------------------------------------------------------
+function _bulkBuildPaneHtml(slot, at) {
+  const sid = slot.id, tid = at.id;
+  const hasPdf = !!(at.pdfMeta);
+  const pdfInputId = `bulk-slt-pdf-input-${sid}-${tid}`;
+
+  const pdfBtnHtml = (typeof pdfjsLib !== 'undefined') ? `
+    <input type="file" accept=".pdf" style="display:none"
+           id="${pdfInputId}"
+           onchange="bulkSlotPdfChosen(${sid},${tid},this)">
+    <button class="bulk-slot-pdf-btn"
+            onclick="document.getElementById('${pdfInputId}').click()">
+      <svg width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/>
+      </svg>
+      PDF
+    </button>` : '';
+
+  const filenameRowHtml = `
+    <div class="bulk-slot-filename-row">
+      <div class="bulk-slot-fname-label">File</div>
+      <input class="bulk-slot-fname-input" id="bulk-slt-fname-${sid}-${tid}"
+             value="${escHtml(at.filename || '')}" placeholder="document.txt">
+      ${pdfBtnHtml}
+    </div>`;
+
+  if (!hasPdf) {
+    return filenameRowHtml + `
+      <textarea class="bulk-slot-doc-text" id="bulk-slt-text-${sid}-${tid}"
+                placeholder="Paste document text here\u2026">${escHtml(at.text || '')}</textarea>`;
+  }
+
+  const meta = at.pdfMeta;
+  const badgeState = meta.extractionState || 'extracting';
+  const badgeHtml = _pdfBadgeHtml(badgeState, meta.badgeText);
+  const textEditOpen = !!at.textEditOpen;
+  const isDone = badgeState !== 'extracting';
+
+  const maxThumbs = Math.min(meta.pageCount || 0, 3);
+  let thumbsHtml = '';
+  for (let p = 1; p <= maxThumbs; p++) {
+    const stored = meta.thumbnails && meta.thumbnails[p - 1];
+    const innerEl = stored
+      ? `<img src="${stored}" class="pdf-thumb-canvas" alt="Page ${p}">`
+      : `<canvas class="pdf-thumb-canvas" id="bulk-pdf-canvas-${sid}-${tid}-${p}"></canvas>`;
+    thumbsHtml += `
+      <div class="pdf-thumb-wrap${isDone ? ' scan-done' : ''}" id="bulk-pdf-thumb-wrap-${sid}-${tid}-${p}">
+        ${innerEl}
+        <div class="pdf-scan-beam"></div>
+        <div class="pdf-thumb-label">p.${p}</div>
+      </div>`;
+  }
+  if ((meta.pageCount || 0) > 3) {
+    thumbsHtml += `<div class="pdf-more-chip"><strong>+${meta.pageCount - 3}</strong> more</div>`;
+  }
+
+  const hasConflict = !!(at.pdfExtractedText && at.text && at.pdfExtractedText !== at.text && (at.text || '').trim());
+  const overrideHtml = hasConflict ? `
+    <div class="bulk-slt-pdf-override-warn">
+      \u26a0 PDF text active \u2014 manual entry overridden
+      <button onclick="bulkSlotUsePdfText(${sid},${tid})">Use PDF</button>
+      <button onclick="bulkSlotUseManualText(${sid},${tid})">Keep manual</button>
+    </div>` : '';
+
+  return filenameRowHtml + `
+    <div class="bulk-slt-pdf-panel" id="bulk-slt-pdf-panel-${sid}-${tid}">
+      <div class="bulk-slt-pdf-header">
+        <span class="bulk-slt-pdf-filename">${escHtml(at.filename || 'document.pdf')}</span>
+        <span class="bulk-slt-pdf-meta">${meta.pageCount || 0} p \u00b7 ${meta.fileSizeKb} KB</span>
+        <span class="pdf-extract-badge ${badgeState}" id="bulk-slt-pdf-badge-${sid}-${tid}">
+          ${badgeHtml}
+        </span>
+      </div>
+      <div class="pdf-thumb-strip bulk-slt-pdf-thumbs" id="bulk-slt-pdf-thumbs-${sid}-${tid}">
+        ${thumbsHtml}
+      </div>
+    </div>
+    ${overrideHtml}
+    <button class="pdf-edit-toggle${textEditOpen ? ' open' : ''}"
+            id="bulk-slt-pdf-toggle-${sid}-${tid}"
+            onclick="bulkSlotToggleEditText(${sid},${tid})">
+      <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+      <span id="bulk-slt-pdf-toggle-label-${sid}-${tid}">${textEditOpen ? 'Hide text \u2191' : 'Edit text \u2193'}</span>
+    </button>
+    <div class="pdf-text-collapse${textEditOpen ? ' open' : ''}" id="bulk-slt-pdf-collapse-${sid}-${tid}">
+      <div class="pdf-text-collapse-inner">
+        <div class="pdf-text-label">Extracted text \u2014 edit if needed</div>
+        <textarea class="bulk-slot-doc-text" id="bulk-slt-text-${sid}-${tid}"
+                  placeholder="Extracted text will appear here.">${escHtml(at.text || '')}</textarea>
+      </div>
+    </div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Bulk manual entry — PDF upload handlers
+// ---------------------------------------------------------------------------
+
+function bulkSlotPdfChosen(slotId, tabId, inputEl) {
+  const file = inputEl.files && inputEl.files[0];
+  if (!file) return;
+  inputEl.value = '';   // reset so same file can be re-selected
+  _bulkPdfHandleUpload(slotId, tabId, file);
+}
+
+async function _bulkPdfHandleUpload(slotId, tabId, file) {
+  if (typeof pdfjsLib === 'undefined') return;
+  const slot = _bulkSlots.find(s => s.id === slotId);
+  const tab  = slot && slot.tabs.find(t => t.id === tabId);
+  if (!tab) return;
+
+  // Stale-upload guard
+  const uploadGen = (tab._pdfUploadGen = (tab._pdfUploadGen || 0) + 1);
+  const sizeKb = Math.round(file.size / 1024);
+
+  let pdfDoc;
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+  } catch (e) {
+    const isPassword = e && (
+      e.name === 'PasswordException' ||
+      (pdfjsLib.PasswordResponses && e.code === pdfjsLib.PasswordResponses.NEED_PASSWORD)
+    );
+    tab.pdfMeta = {
+      pageCount: 0, fileSizeKb: sizeKb, thumbnails: [],
+      extractionState: 'error',
+      badgeText: isPassword ? 'Password protected' : 'Load failed',
+    };
+    tab.filename = file.name;
+    _bulkRerenderSlotTabs(slot);
+    return;
+  }
+
+  if (tab._pdfUploadGen !== uploadGen) return;
+
+  // Auto-fill filename from file if still at a generic default
+  if (!tab.filename || /^(bill_of_lading|document_\d+)\.txt$/.test(tab.filename)) {
+    tab.filename = file.name;
+  }
+
+  tab.pdfMeta = {
+    pageCount: pdfDoc.numPages,
+    fileSizeKb: sizeKb,
+    thumbnails: [],
+    extractionState: 'extracting',
+    badgeText: null,
+  };
+  _bulkRerenderSlotTabs(slot);   // renders panel with empty canvases + scanning beam
+
+  // Render thumbnails (max 3) in-place
+  const maxThumbs = Math.min(pdfDoc.numPages, 3);
+  for (let p = 1; p <= maxThumbs; p++) {
+    if (tab._pdfUploadGen !== uploadGen) return;
+    try {
+      const dataUrl = await _bulkPdfRenderThumb(pdfDoc, p, slotId, tabId);
+      if (tab.pdfMeta) tab.pdfMeta.thumbnails[p - 1] = dataUrl;
+      const canvas = document.getElementById(`bulk-pdf-canvas-${slotId}-${tabId}-${p}`);
+      if (canvas) {
+        const img = document.createElement('img');
+        img.className = 'pdf-thumb-canvas';
+        img.alt = 'Page ' + p;
+        img.src = dataUrl;
+        canvas.replaceWith(img);
+      }
+    } catch (e) {
+      console.warn('[PDF.js] Bulk thumb render failed p.' + p, e);
+    }
+  }
+
+  // Extract text from all pages
+  let extractedText = '';
+  try {
+    extractedText = await _bulkPdfExtractText(pdfDoc, uploadGen, tab);
+  } catch (e) {
+    console.warn('[PDF.js] Bulk text extraction failed:', e);
+  }
+
+  if (tab._pdfUploadGen !== uploadGen) return;
+
+  // Update extraction state
+  const finalState = extractedText.trim() ? 'done' : 'warn';
+  const finalBadge = extractedText.trim() ? null : 'No text found';
+  if (tab.pdfMeta) {
+    tab.pdfMeta.extractionState = finalState;
+    tab.pdfMeta.badgeText = finalBadge;
+  }
+  _bulkPdfSetScanDone(slotId, tabId, finalState, finalBadge);
+
+  // Populate text — detect conflict with pre-existing manual text
+  const existingText = (tab.text || '').trim();
+  if (extractedText.trim()) {
+    if (existingText && existingText !== extractedText.trim()) {
+      // Conflict: keep manual text in tab.text, store PDF text separately
+      tab.pdfExtractedText = extractedText.trim();
+      _bulkRerenderSlotTabs(slot);   // re-render to show override warning
+    } else {
+      tab.text = extractedText.trim();
+      tab.pdfExtractedText = '';
+      // Update textarea in-place if already in DOM
+      const ta = document.getElementById(`bulk-slt-text-${slotId}-${tabId}`);
+      if (ta) ta.value = tab.text;
+    }
+  }
+
+  _bulkUpdateSlotDocCount(slot);
+  _bulkUpdateSubmitBtn();
+}
+
+async function _bulkPdfRenderThumb(pdfDoc, pageNum, slotId, tabId) {
+  const page     = await pdfDoc.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 0.22 });
+  const canvas   = document.getElementById(`bulk-pdf-canvas-${slotId}-${tabId}-${pageNum}`);
+  if (!canvas) {
+    const offscreen = document.createElement('canvas');
+    offscreen.width  = viewport.width;
+    offscreen.height = viewport.height;
+    await page.render({ canvasContext: offscreen.getContext('2d'), viewport }).promise;
+    return offscreen.toDataURL('image/jpeg', 0.75);
+  }
+  canvas.width  = viewport.width;
+  canvas.height = viewport.height;
+  await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+  return canvas.toDataURL('image/jpeg', 0.75);
+}
+
+async function _bulkPdfExtractText(pdfDoc, uploadGen, tab) {
+  let full = '';
+  for (let p = 1; p <= pdfDoc.numPages; p++) {
+    if (tab._pdfUploadGen !== uploadGen) return '';
+    const page    = await pdfDoc.getPage(p);
+    const content = await page.getTextContent();
+    const pageText = content.items.map(item => item.str).join(' ').replace(/\s{3,}/g, '\n');
+    if (pageText.trim()) full += pageText + '\n\n';
+  }
+  return full.trim();
+}
+
+function _bulkPdfSetScanDone(slotId, tabId, state, badgeText) {
+  state = state || 'done';
+  document.querySelectorAll(`#bulk-slt-pdf-thumbs-${slotId}-${tabId} .pdf-thumb-wrap`).forEach(w => {
+    w.classList.add('scan-done');
+  });
+  const badgeEl = document.getElementById(`bulk-slt-pdf-badge-${slotId}-${tabId}`);
+  if (badgeEl) {
+    badgeEl.className = 'pdf-extract-badge ' + state;
+    badgeEl.innerHTML = _pdfBadgeHtml(state, badgeText || null);
+  }
+}
+
+function bulkSlotToggleEditText(slotId, tabId) {
+  const slot = _bulkSlots.find(s => s.id === slotId);
+  const tab  = slot && slot.tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  tab.textEditOpen = !tab.textEditOpen;
+  const collapseEl = document.getElementById(`bulk-slt-pdf-collapse-${slotId}-${tabId}`);
+  const toggleBtn  = document.getElementById(`bulk-slt-pdf-toggle-${slotId}-${tabId}`);
+  const labelEl    = document.getElementById(`bulk-slt-pdf-toggle-label-${slotId}-${tabId}`);
+  if (collapseEl) collapseEl.classList.toggle('open', tab.textEditOpen);
+  if (toggleBtn)  toggleBtn.classList.toggle('open', tab.textEditOpen);
+  if (labelEl)    labelEl.textContent = tab.textEditOpen ? 'Hide text \u2191' : 'Edit text \u2193';
+  if (tab.textEditOpen) {
+    const ta = document.getElementById(`bulk-slt-text-${slotId}-${tabId}`);
+    if (ta && tab.text) ta.value = tab.text;
+  }
+}
+
+function bulkSlotUsePdfText(slotId, tabId) {
+  const slot = _bulkSlots.find(s => s.id === slotId);
+  const tab  = slot && slot.tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  tab.text = tab.pdfExtractedText || tab.text;
+  tab.pdfExtractedText = '';
+  _bulkRerenderSlotTabs(slot);
+}
+
+function bulkSlotUseManualText(slotId, tabId) {
+  const slot = _bulkSlots.find(s => s.id === slotId);
+  const tab  = slot && slot.tabs.find(t => t.id === tabId);
+  if (!tab) return;
+  tab.pdfMeta = null;
+  tab.pdfExtractedText = '';
+  _bulkRerenderSlotTabs(slot);
+}
+
 function _bulkUpdateSlotDocCount(slot) {
   const el = document.querySelector(`#bulk-slot-${slot.id} .bulk-slot-doc-count`);
-  const n  = slot.tabs.filter(t => t.text.trim()).length;
+  const n  = slot.tabs.filter(t => (t.pdfExtractedText || t.text || '').trim()).length;
   if (el) el.textContent = n + ' doc' + (n !== 1 ? 's' : '');
 }
 
@@ -8395,7 +8730,7 @@ function _bulkUpdateSubmitBtn() {
   if (_bulkMethod === 'zip' && _bulkZipFile) count = 1; // unknown count until processed
   else if (_bulkMethod === 'csv' && _bulkCsvFile) count = 1;
   else if (_bulkMethod === 'manual') {
-    count = _bulkSlots.filter(s => s.tabs.some(t => t.text.trim())).length;
+    count = _bulkSlots.filter(s => s.tabs.some(t => (t.pdfExtractedText || t.text || '').trim())).length;
   }
 
   const enabled = count >= 1 && (
@@ -8434,7 +8769,7 @@ function bulkSubmitClick() {
   let count = 0;
   if (_bulkMethod === 'zip') count = '?'; // unknown
   else if (_bulkMethod === 'csv') count = '?';
-  else count = _bulkSlots.filter(s => s.tabs.some(t => t.text.trim())).length;
+  else count = _bulkSlots.filter(s => s.tabs.some(t => (t.pdfExtractedText || t.text || '').trim())).length;
 
   if (typeof count === 'number' && count <= 10) {
     bulkModalConfirm(); // skip confirm for small batches
@@ -8485,12 +8820,15 @@ async function _bulkSubmit() {
     } else {
       // Manual JSON
       const shipments = _bulkSlots
-        .filter(s => s.tabs.some(t => t.text.trim()))
+        .filter(s => s.tabs.some(t => (t.pdfExtractedText || t.text || '').trim()))
         .map(s => ({
           ref: s.ref || ('SHP-' + String(s.id).padStart(3,'0')),
           documents: s.tabs
-            .filter(t => t.text.trim())
-            .map(t => ({ filename: t.filename || 'document.txt', raw_text: t.text.trim() })),
+            .filter(t => (t.pdfExtractedText || t.text || '').trim())
+            .map(t => ({
+              filename: t.filename || 'document.txt',
+              raw_text: (t.pdfExtractedText || t.text || '').trim(),
+            })),
         }));
       res = await fetch(apiUrl() + '/api/v1/analyze/bulk',
         authedJson('POST', { input_method: 'MANUAL', shipments }));
