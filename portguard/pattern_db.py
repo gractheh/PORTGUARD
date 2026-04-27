@@ -630,6 +630,10 @@ _MIGRATIONS: list[tuple[str, str | list[str]]] = [
             "ALTER TABLE bulk_shipments ADD COLUMN sustainability_signals TEXT;",
         ],
     ),
+    (
+        "009_bulk_shipments_active_modules",
+        "ALTER TABLE bulk_shipments ADD COLUMN active_modules_snapshot TEXT;",
+    ),
 ]
 
 

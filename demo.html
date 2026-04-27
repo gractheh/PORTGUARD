@@ -3563,6 +3563,7 @@
               <th onclick="bulkSort('ref')">Reference ID <span class="sort-icon" id="bsort-ref"></span></th>
               <th onclick="bulkSort('decision')">Decision <span class="sort-icon" id="bsort-decision"></span></th>
               <th onclick="bulkSort('risk_score')">Risk Score <span class="sort-icon" id="bsort-risk_score">↓</span></th>
+              <th onclick="bulkSort('sustainability_grade')">Sustainability <span class="sort-icon" id="bsort-sustainability_grade"></span></th>
               <th onclick="bulkSort('n_findings')">Findings <span class="sort-icon" id="bsort-n_findings"></span></th>
               <th>Top Finding</th>
               <th>Actions</th>
@@ -8965,14 +8966,28 @@ async function _bulkLoadResults() {
     const data = await res.json();
 
     _bulkAllResults = (data.shipments || []).map(s => ({
-      ref:        s.ref,
-      decision:   s.decision   || 'PENDING',
-      risk_score: s.risk_score != null ? +s.risk_score : null,
-      n_findings: s.n_findings || 0,
+      ref:         s.ref,
+      decision:    s.decision   || 'PENDING',
+      risk_score:  s.risk_score != null ? +s.risk_score : null,
+      n_findings:  s.n_findings || 0,
       top_finding: s.top_finding || '',
-      status:     s.status,
+      status:      s.status,
       analysis_id: s.analysis_id,
-      findings:   (s.full_result && s.full_result.explanations) || [],
+      findings:    (s.full_result && s.full_result.explanations) || [],
+      // Sustainability — prefer DB column (fast path), fall back to full_result
+      sustainability_grade:
+        s.sustainability_grade
+        || (s.full_result && s.full_result.sustainability_rating && s.full_result.sustainability_rating.grade)
+        || null,
+      sustainability_signals:
+        s.sustainability_signals
+          ? s.sustainability_signals.split('|').filter(Boolean)
+          : ((s.full_result && s.full_result.sustainability_rating && s.full_result.sustainability_rating.signals) || []),
+      module_findings: (s.full_result && s.full_result.module_findings) || [],
+      active_modules:
+        s.active_modules_snapshot
+          ? s.active_modules_snapshot.split('|').filter(Boolean)
+          : ((s.full_result && s.full_result.active_modules_at_scan) || []),
     }));
 
     // Summary stats
@@ -9050,7 +9065,7 @@ function bulkSort(key) {
   if (_bulkSortKey === key) { _bulkSortAsc = !_bulkSortAsc; }
   else { _bulkSortKey = key; _bulkSortAsc = key === 'ref'; }
   // Update sort icons
-  ['ref','decision','risk_score','n_findings'].forEach(k => {
+  ['ref','decision','risk_score','sustainability_grade','n_findings'].forEach(k => {
     const el = document.getElementById('bsort-' + k);
     if (!el) return;
     el.textContent = _bulkSortKey === k ? (_bulkSortAsc ? '↑' : '↓') : '';
@@ -9076,7 +9091,7 @@ function _bulkRenderTable() {
   tbody.innerHTML = '';
   const rows = _bulkGetFiltered();
   if (!rows.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem">No results match this filter.</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--muted);padding:2rem">No results match this filter.</td></tr>`;
     return;
   }
   rows.forEach(r => {
@@ -9086,6 +9101,13 @@ function _bulkRenderTable() {
     const scoreColor = _bulkRiskColor(score);
     const topFinding = r.top_finding ? escHtml(r.top_finding.slice(0, 60)) + (r.top_finding.length > 60 ? '…' : '') : '—';
     const expandId = 'bulk-expand-' + r.ref.replace(/[^a-z0-9]/gi,'_');
+
+    // Sustainability badge cell
+    const sGrade = r.sustainability_grade;
+    const sGradeKey = sGrade === 'N/A' ? 'NA' : (sGrade || null);
+    const sCell = sGradeKey
+      ? `<td><span class="sustain-badge sustain-badge-${sGradeKey}">${escHtml(sGrade)}</span></td>`
+      : `<td style="color:var(--faint);font-size:.8rem;text-align:center">—</td>`;
 
     const row = document.createElement('tr');
     row.dataset.ref = r.ref;
@@ -9098,6 +9120,7 @@ function _bulkRenderTable() {
           <span class="bulk-risk-val" style="color:${scoreColor}">${scorePct != null ? scorePct : '—'}</span>
         </div>
       </td>
+      ${sCell}
       <td>${r.n_findings || '—'}</td>
       <td style="color:var(--muted);font-size:.78rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${topFinding}</td>
       <td>
@@ -9113,16 +9136,46 @@ function _bulkRenderTable() {
       </td>`;
     tbody.appendChild(row);
 
-    // Expand row (hidden by default)
+    // Expand row — findings + sustainability + module findings
     const expRow = document.createElement('tr');
     expRow.id = expandId;
     expRow.className = 'bulk-row-expand';
     const findings = r.findings.length
       ? r.findings.map(f => `<div class="bulk-inline-finding">${escHtml(f)}</div>`).join('')
       : '<div style="color:var(--muted);font-size:.8rem">No findings recorded.</div>';
-    expRow.innerHTML = `<td colspan="6"><div class="bulk-inline-analysis">
+
+    let sustainHtml = '';
+    if (r.sustainability_grade) {
+      const gk = r.sustainability_grade === 'N/A' ? 'NA' : r.sustainability_grade;
+      sustainHtml = `
+        <div style="margin-top:.75rem">
+          <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);margin-bottom:.35rem">Sustainability</div>
+          <span class="sustain-badge sustain-badge-${gk}" style="margin-bottom:.35rem;display:inline-block">${escHtml(r.sustainability_grade)}</span>
+          ${r.sustainability_signals.length
+            ? '<ul class="sustain-signals">' + r.sustainability_signals.map(s => `<li>${escHtml(s)}</li>`).join('') + '</ul>'
+            : ''}
+          ${r.active_modules.length
+            ? `<div style="font-size:.7rem;color:var(--faint);margin-top:.3rem">Modules: ${r.active_modules.map(m => escHtml(m)).join(', ')}</div>`
+            : ''}
+        </div>`;
+    }
+
+    let modulesHtml = '';
+    if (r.module_findings && r.module_findings.length) {
+      const triggered = r.module_findings.filter(f => f.triggered);
+      if (triggered.length) {
+        modulesHtml = `
+          <div style="margin-top:.6rem">
+            <div style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);margin-bottom:.35rem">Module Findings</div>
+            ${triggered.map(f => `<div class="bulk-inline-finding">${escHtml(f.module_name || '')}: ${escHtml(f.message || '')}</div>`).join('')}
+          </div>`;
+      }
+    }
+
+    expRow.innerHTML = `<td colspan="7"><div class="bulk-inline-analysis">
       <div style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--faint);margin-bottom:.5rem">Analysis Findings</div>
       <div class="bulk-inline-findings">${findings}</div>
+      ${sustainHtml}${modulesHtml}
     </div></td>`;
     tbody.appendChild(expRow);
   });

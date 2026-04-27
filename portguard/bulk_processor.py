@@ -169,8 +169,9 @@ CREATE TABLE IF NOT EXISTS bulk_shipments (
     result_json           TEXT,
     error_message         TEXT,
     processed_at          TEXT,
-    sustainability_grade  TEXT,
-    sustainability_signals TEXT,
+    sustainability_grade       TEXT,
+    sustainability_signals     TEXT,
+    active_modules_snapshot    TEXT,
     UNIQUE(batch_id, shipment_ref),
     FOREIGN KEY(batch_id) REFERENCES bulk_batches(batch_id)
 );
@@ -519,7 +520,9 @@ class BulkProcessor:
                 text("""
                     SELECT shipment_ref, status, decision, risk_score, risk_level,
                            n_findings, top_finding, analysis_id, result_json,
-                           error_message, processed_at
+                           error_message, processed_at,
+                           sustainability_grade, sustainability_signals,
+                           active_modules_snapshot
                     FROM bulk_shipments
                     WHERE batch_id = :id
                     ORDER BY
@@ -560,6 +563,9 @@ class BulkProcessor:
                 "analysis_id": r["analysis_id"],
                 "error_message": r["error_message"],
                 "processed_at": r["processed_at"],
+                "sustainability_grade": r["sustainability_grade"],
+                "sustainability_signals": r["sustainability_signals"],
+                "active_modules_snapshot": r["active_modules_snapshot"],
             }
             if r["result_json"]:
                 try:
@@ -613,7 +619,7 @@ class BulkProcessor:
                 text("""
                     SELECT shipment_ref, status, decision, risk_score, risk_level,
                            n_findings, top_finding, analysis_id, error_message, processed_at,
-                           sustainability_grade, sustainability_signals
+                           sustainability_grade, sustainability_signals, active_modules_snapshot
                     FROM bulk_shipments
                     WHERE batch_id = :id
                     ORDER BY
@@ -757,7 +763,13 @@ class BulkProcessor:
         sustainability_grade: Optional[str] = _sus.get("grade") if isinstance(_sus, dict) else None
         _sus_signals = _sus.get("signals", []) if isinstance(_sus, dict) else []
         sustainability_signals: Optional[str] = (
-            json.dumps(_sus_signals) if _sus_signals else None
+            "|".join(str(s) for s in _sus_signals[:20]) if _sus_signals else None
+        )
+
+        # Extract active modules at scan time.
+        _active_mods = result.get("active_modules_at_scan") or []
+        active_modules_snapshot: Optional[str] = (
+            "|".join(str(m) for m in _active_mods) if _active_mods else None
         )
 
         try:
@@ -788,7 +800,8 @@ class BulkProcessor:
                         result_json = :result_json,
                         processed_at = :now,
                         sustainability_grade = :sustainability_grade,
-                        sustainability_signals = :sustainability_signals
+                        sustainability_signals = :sustainability_signals,
+                        active_modules_snapshot = :active_modules_snapshot
                     WHERE batch_id = :bid AND shipment_ref = :ref
                 """),
                 {
@@ -802,6 +815,7 @@ class BulkProcessor:
                     "now": now,
                     "sustainability_grade": sustainability_grade,
                     "sustainability_signals": sustainability_signals,
+                    "active_modules_snapshot": active_modules_snapshot,
                     "bid": batch_id,
                     "ref": ref,
                 },

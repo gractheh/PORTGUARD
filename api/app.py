@@ -3615,7 +3615,7 @@ def bulk_export_csv(
     _CSV_HEADERS = [
         "shipment_ref", "status", "decision", "risk_score", "risk_level",
         "n_findings", "top_finding", "analysis_id", "error_message", "processed_at",
-        "sustainability_grade", "sustainability_signals",
+        "sustainability_grade", "sustainability_signals", "active_modules_snapshot",
     ]
 
     def _generate_csv():
