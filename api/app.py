@@ -2909,6 +2909,34 @@ def _run_bulk_single_analysis(documents_data: list, org_id: str) -> dict:
     else:
         final_risk_level = "CRITICAL"
 
+    # Build combined text for cert screening and sustainability rating
+    all_text_bulk = "\n\n".join(
+        f"=== {doc.filename or f'Document {i+1}'} ===\n{doc.raw_text.strip()}"
+        for i, doc in enumerate(docs)
+    )
+
+    # Stage 3.5: Certification module screening
+    cert_result_bulk = None
+    try:
+        from portguard.agents.certification_screener import CertificationScreener
+        enabled_modules_bulk: list[str] = (
+            _module_config_db.get_enabled_modules(org_id)
+            if _module_config_db is not None else []
+        )
+        screener_bulk = CertificationScreener(enabled_modules_bulk)
+        cert_result_bulk = screener_bulk.screen(sd, all_text_bulk)
+    except Exception as _cert_exc_bulk:
+        logger.warning("CertificationScreener failed in bulk (non-fatal): %s", _cert_exc_bulk)
+
+    # Stage 5.5: Sustainability rating
+    sustainability_bulk = None
+    try:
+        from portguard.agents.sustainability_rater import SustainabilityRater
+        rater_bulk = SustainabilityRater()
+        sustainability_bulk = rater_bulk.rate(sd, cert_result_bulk, all_text_bulk)
+    except Exception as _sus_exc_bulk:
+        logger.warning("SustainabilityRater failed in bulk (non-fatal): %s", _sus_exc_bulk)
+
     analyze_response = AnalyzeResponse(
         status="completed",
         shipment_data=ShipmentData(**sd),
@@ -2928,6 +2956,10 @@ def _run_bulk_single_analysis(documents_data: list, org_id: str) -> dict:
         pattern_history_depth=pattern_history_depth_val,
         validation_warnings=val_warnings,
         document_validations=val_metadata,
+        sustainability_rating=sustainability_bulk,
+        module_findings=cert_result_bulk.findings if cert_result_bulk else [],
+        active_modules_at_scan=cert_result_bulk.modules_run if cert_result_bulk else [],
+        modules_triggered=cert_result_bulk.triggered_modules if cert_result_bulk else [],
     )
 
     # Record to PatternDB and store report payload
@@ -3160,21 +3192,79 @@ async def bulk_create(
                 detail={"code": "BAD_REQUEST", "message": f"Could not parse form data: {exc}"},
             )
 
-        input_method = str(form.get("input_method", "ZIP")).upper()
-        zip_file = form.get("zip_file")
-        csv_file = form.get("csv_file")
+        # Resolve the file objects — try named keys first, then scan all uploaded
+        # files by extension/MIME so the frontend does not need to use the exact
+        # key names (backwards-compatible with any key like 'file').
+        zip_file = None
+        csv_file = None
 
-        # Auto-detect if input_method not specified but file is present
-        if zip_file and not csv_file:
+        _zf_raw = form.get("zip_file")
+        _cf_raw = form.get("csv_file")
+        if _zf_raw and hasattr(_zf_raw, "filename"):
+            zip_file = _zf_raw
+        if _cf_raw and hasattr(_cf_raw, "filename"):
+            csv_file = _cf_raw
+
+        # Fallback: scan all UploadFile values for a recognisable extension/MIME.
+        if zip_file is None and csv_file is None:
+            for _key in form:
+                _val = form.get(_key)
+                if not hasattr(_val, "filename"):
+                    continue  # plain text field — skip
+                _fn = (_val.filename or "").lower()
+                _ct = (_val.content_type or "").lower()
+                if (
+                    _fn.endswith(".zip")
+                    or "zip" in _ct
+                    or _ct in ("application/zip", "application/x-zip-compressed",
+                               "application/octet-stream")
+                    and _fn.endswith(".zip")
+                ):
+                    zip_file = _val
+                    break
+                elif (
+                    _fn.endswith(".csv")
+                    or _ct in ("text/csv", "application/csv", "text/plain")
+                    and _fn.endswith(".csv")
+                ):
+                    csv_file = _val
+                    break
+
+        # Derive input_method from explicit form field, then from which file was found.
+        explicit_method = str(form.get("input_method", "")).upper()
+        if explicit_method in ("ZIP", "CSV"):
+            input_method = explicit_method
+        elif zip_file and not csv_file:
             input_method = "ZIP"
         elif csv_file and not zip_file:
             input_method = "CSV"
+        else:
+            input_method = "ZIP"  # default when ambiguous; guard below will fire
 
         if input_method == "ZIP":
             if zip_file is None:
+                # Build a clear error describing what was actually received.
+                _found = []
+                for _k in form:
+                    _v = form.get(_k)
+                    if hasattr(_v, "filename"):
+                        _found.append(
+                            f"'{_k}' (filename={_v.filename!r}, "
+                            f"content_type={_v.content_type!r})"
+                        )
+                    else:
+                        _found.append(f"'{_k}' (text field)")
+                _found_str = ", ".join(_found) if _found else "no fields"
                 raise HTTPException(
                     status_code=400,
-                    detail={"code": "MISSING_FILE", "message": "No zip_file provided."},
+                    detail={
+                        "code": "MISSING_FILE",
+                        "message": (
+                            "No ZIP file found in the request. "
+                            f"Fields received: {_found_str}. "
+                            "Send the ZIP as 'zip_file' (or any field with a .zip filename)."
+                        ),
+                    },
                 )
             try:
                 raw = await zip_file.read()
@@ -3188,7 +3278,7 @@ async def bulk_create(
                 raise
             except (InvalidZipError, EmptyBatchError, BatchTooLargeError) as exc:
                 raise HTTPException(
-                    status_code=400 if not isinstance(exc, BatchTooLargeError) else 400,
+                    status_code=400,
                     detail={"code": exc.code, "message": str(exc)},
                 )
             except BulkParseError as exc:
@@ -3198,9 +3288,27 @@ async def bulk_create(
 
         elif input_method == "CSV":
             if csv_file is None:
+                _found = []
+                for _k in form:
+                    _v = form.get(_k)
+                    if hasattr(_v, "filename"):
+                        _found.append(
+                            f"'{_k}' (filename={_v.filename!r}, "
+                            f"content_type={_v.content_type!r})"
+                        )
+                    else:
+                        _found.append(f"'{_k}' (text field)")
+                _found_str = ", ".join(_found) if _found else "no fields"
                 raise HTTPException(
                     status_code=400,
-                    detail={"code": "MISSING_FILE", "message": "No csv_file provided."},
+                    detail={
+                        "code": "MISSING_FILE",
+                        "message": (
+                            "No CSV file found in the request. "
+                            f"Fields received: {_found_str}. "
+                            "Send the CSV as 'csv_file' (or any field with a .csv filename)."
+                        ),
+                    },
                 )
             try:
                 raw = await csv_file.read()
@@ -3222,11 +3330,27 @@ async def bulk_create(
                 )
 
         else:
+            # Neither zip_file nor csv_file found at all
+            _found = []
+            for _k in form:
+                _v = form.get(_k)
+                if hasattr(_v, "filename"):
+                    _found.append(
+                        f"'{_k}' (filename={_v.filename!r}, content_type={_v.content_type!r})"
+                    )
+                else:
+                    _found.append(f"'{_k}' (text field: {str(_v)[:40]!r})")
+            _found_str = ", ".join(_found) if _found else "no fields"
             raise HTTPException(
                 status_code=400,
                 detail={
-                    "code": "INVALID_INPUT_METHOD",
-                    "message": f"Unknown input_method '{input_method}'. Expected ZIP or CSV.",
+                    "code": "UNRECOGNIZED_INPUT",
+                    "message": (
+                        "Could not determine input type. "
+                        f"Fields received: {_found_str}. "
+                        "Expected a .zip file (key 'zip_file') or a .csv file (key 'csv_file'), "
+                        "or set 'input_method' to ZIP or CSV."
+                    ),
                 },
             )
 
@@ -3491,6 +3615,7 @@ def bulk_export_csv(
     _CSV_HEADERS = [
         "shipment_ref", "status", "decision", "risk_score", "risk_level",
         "n_findings", "top_finding", "analysis_id", "error_message", "processed_at",
+        "sustainability_grade", "sustainability_signals",
     ]
 
     def _generate_csv():

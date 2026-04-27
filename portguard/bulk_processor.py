@@ -156,19 +156,21 @@ CREATE INDEX IF NOT EXISTS idx_bulk_batches_org
     ON bulk_batches(organization_id, created_at DESC);
 
 CREATE TABLE IF NOT EXISTS bulk_shipments (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    batch_id        TEXT    NOT NULL,
-    shipment_ref    TEXT    NOT NULL,
-    status          TEXT    NOT NULL DEFAULT 'PENDING',
-    decision        TEXT,
-    risk_score      REAL,
-    risk_level      TEXT,
-    n_findings      INTEGER,
-    top_finding     TEXT,
-    analysis_id     TEXT,
-    result_json     TEXT,
-    error_message   TEXT,
-    processed_at    TEXT,
+    id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+    batch_id              TEXT    NOT NULL,
+    shipment_ref          TEXT    NOT NULL,
+    status                TEXT    NOT NULL DEFAULT 'PENDING',
+    decision              TEXT,
+    risk_score            REAL,
+    risk_level            TEXT,
+    n_findings            INTEGER,
+    top_finding           TEXT,
+    analysis_id           TEXT,
+    result_json           TEXT,
+    error_message         TEXT,
+    processed_at          TEXT,
+    sustainability_grade  TEXT,
+    sustainability_signals TEXT,
     UNIQUE(batch_id, shipment_ref),
     FOREIGN KEY(batch_id) REFERENCES bulk_batches(batch_id)
 );
@@ -610,7 +612,8 @@ class BulkProcessor:
             rows = conn.execute(
                 text("""
                     SELECT shipment_ref, status, decision, risk_score, risk_level,
-                           n_findings, top_finding, analysis_id, error_message, processed_at
+                           n_findings, top_finding, analysis_id, error_message, processed_at,
+                           sustainability_grade, sustainability_signals
                     FROM bulk_shipments
                     WHERE batch_id = :id
                     ORDER BY
@@ -749,6 +752,14 @@ class BulkProcessor:
         analysis_id: Optional[str] = result.get("shipment_id")
         now = _utcnow()
 
+        # Extract sustainability data from nested rating object.
+        _sus = result.get("sustainability_rating") or {}
+        sustainability_grade: Optional[str] = _sus.get("grade") if isinstance(_sus, dict) else None
+        _sus_signals = _sus.get("signals", []) if isinstance(_sus, dict) else []
+        sustainability_signals: Optional[str] = (
+            json.dumps(_sus_signals) if _sus_signals else None
+        )
+
         try:
             result_json: Optional[str] = json.dumps(result)
         except Exception:
@@ -775,7 +786,9 @@ class BulkProcessor:
                         top_finding = :top_finding,
                         analysis_id = :analysis_id,
                         result_json = :result_json,
-                        processed_at = :now
+                        processed_at = :now,
+                        sustainability_grade = :sustainability_grade,
+                        sustainability_signals = :sustainability_signals
                     WHERE batch_id = :bid AND shipment_ref = :ref
                 """),
                 {
@@ -787,6 +800,8 @@ class BulkProcessor:
                     "analysis_id": analysis_id,
                     "result_json": result_json,
                     "now": now,
+                    "sustainability_grade": sustainability_grade,
+                    "sustainability_signals": sustainability_signals,
                     "bid": batch_id,
                     "ref": ref,
                 },

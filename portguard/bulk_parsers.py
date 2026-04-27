@@ -38,7 +38,7 @@ MAX_ZIP_BYTES: int = 50 * 1024 * 1024    # 50 MB
 MAX_CSV_BYTES: int = 5 * 1024 * 1024     # 5 MB
 MAX_DOCS_PER_SHIPMENT: int = 10
 
-# Columns that are recognised as document text in a CSV upload.
+# Columns that are recognised as document text in a CSV upload — named/canonical set.
 # Order determines how they appear as filenames.
 _CSV_DOC_COLUMNS: list[str] = [
     "bill_of_lading",
@@ -47,6 +47,17 @@ _CSV_DOC_COLUMNS: list[str] = [
     "certificate_of_origin",
     "isf_filing",
     "other_doc_1",
+]
+
+# Generic column names also accepted as document text — tried when no canonical
+# column is present.  A CSV with a single "text" or "description" column is a
+# valid input: the entire cell becomes the shipment document.
+_CSV_DOC_COLUMNS_GENERIC: list[str] = [
+    "document_text",
+    "text",
+    "content",
+    "shipment",
+    "description",
 ]
 
 # Columns that are recognised as the shipment reference ID in a CSV upload.
@@ -351,16 +362,22 @@ def parse_csv_upload(csv_bytes: bytes) -> list[dict]:
         )
 
     # Build document-column mapping (case-insensitive, canonical → actual fieldname).
+    # Priority 1: named/canonical document columns.
     doc_col_map: dict[str, str] = {}
     for col in _CSV_DOC_COLUMNS:
         if col in fn_lower:
             doc_col_map[col] = fn_lower[col]
 
+    # Priority 2: generic column names (document_text, text, content, shipment, description).
     if not doc_col_map:
-        raise InvalidCsvError(
-            "CSV has no recognised document columns. "
-            f"Expected at least one of: {', '.join(_CSV_DOC_COLUMNS)}."
-        )
+        for col in _CSV_DOC_COLUMNS_GENERIC:
+            if col in fn_lower:
+                doc_col_map[col] = fn_lower[col]
+
+    # Priority 3: raw-row fallback — no recognized doc column found at all.
+    # Treat every column that isn't the reference column as document text,
+    # concatenated into a single "document.txt" per shipment.
+    use_raw_row_fallback: bool = not doc_col_map
 
     shipments: list[dict] = []
     seen_refs: set[str] = set()
@@ -384,10 +401,20 @@ def parse_csv_upload(csv_bytes: bytes) -> list[dict]:
         seen_refs.add(ref)
 
         docs: list[dict] = []
-        for canonical, actual in doc_col_map.items():
-            val = row.get(actual, "").strip()
-            if val:
-                docs.append({"filename": canonical + ".txt", "raw_text": val})
+        if use_raw_row_fallback:
+            # No recognized doc columns — concatenate all non-reference field values.
+            parts = [
+                f"{k}: {v}".strip()
+                for k, v in row.items()
+                if k != ref_col and str(v).strip()
+            ]
+            if parts:
+                docs.append({"filename": "document.txt", "raw_text": "\n".join(parts)})
+        else:
+            for canonical, actual in doc_col_map.items():
+                val = row.get(actual, "").strip()
+                if val:
+                    docs.append({"filename": canonical + ".txt", "raw_text": val})
 
         if not docs:
             logger.debug("CSV row %d (ref=%s): no document text; skipping.", row_num, ref)

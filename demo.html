@@ -8474,11 +8474,13 @@ async function _bulkSubmit() {
     let res;
     if (_bulkMethod === 'zip' && _bulkZipFile) {
       const fd = new FormData();
-      fd.append('file', _bulkZipFile);
+      fd.append('zip_file', _bulkZipFile);
+      fd.append('input_method', 'ZIP');
       res = await fetch(apiUrl() + '/api/v1/analyze/bulk', authedForm(fd));
     } else if (_bulkMethod === 'csv' && _bulkCsvFile) {
       const fd = new FormData();
-      fd.append('file', _bulkCsvFile);
+      fd.append('csv_file', _bulkCsvFile);
+      fd.append('input_method', 'CSV');
       res = await fetch(apiUrl() + '/api/v1/analyze/bulk', authedForm(fd));
     } else {
       // Manual JSON
