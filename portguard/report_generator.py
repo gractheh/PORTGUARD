@@ -35,10 +35,17 @@ import json
 import logging
 import math
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Optional
 
 from fpdf import FPDF
+
+try:
+    from portguard.data.certification_modules import MODULE_BY_ID, LAYER_NAMES
+except Exception:  # pragma: no cover
+    MODULE_BY_ID = {}  # type: ignore[assignment]
+    LAYER_NAMES = {}   # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
@@ -791,55 +798,76 @@ class ReportGenerator:
         pdf.set_text_color(*_C_NEAR_BLACK)
 
     def _section_sustainability(self) -> None:
-        """Sustainability Assessment section — grade, risk signals, certifications."""
+        """Sustainability Assessment — dynamic, built from active module snapshot.
+
+        Completely omitted for legacy records where both sustainability_rating
+        and sustainability_signals are absent.
+        """
         rating = self._payload.get("sustainability_rating")
-        if not rating:
-            return
-
-        grade = rating.get("grade", "N/A") if isinstance(rating, dict) else getattr(rating, "grade", "N/A")
-        if grade == "N/A":
-            return
-
-        pdf = self._pdf
-        self._section_heading("SUSTAINABILITY ASSESSMENT")
 
         def _get(key: str, default=None):
             if isinstance(rating, dict):
                 return rating.get(key, default)
-            return getattr(rating, key, default)
+            if rating is not None:
+                return getattr(rating, key, default)
+            return default
 
-        # Grade badge row
-        _GRADE_COLORS: dict[str, tuple[int, int, int]] = {
-            "A": (29, 184, 122),
-            "B": (27, 168, 168),
-            "C": (232, 168, 56),
-            "D": (224, 80, 80),
-        }
-        grade_color = _GRADE_COLORS.get(grade, _C_MID_GRAY)
+        signals: list = _get("signals", []) or []
+
+        # Omit entirely for legacy records with no sustainability data.
+        if not rating and not signals:
+            return
+
+        grade: str = _get("grade", "N/A") or "N/A"
+        active_module_ids: list[str] = self._payload.get("active_modules_at_scan") or []
+        modules_triggered: list[str] = self._payload.get("modules_triggered") or []
+        certs_detected: list[str] = _get("certifications_detected", []) or []
+        certs_missing: list[str]  = _get("certifications_missing",  []) or []
+        computation_notes: list[str] = _get("computation_notes", []) or []
+
+        pdf = self._pdf
+
+        # ── Separator above ──────────────────────────────────────────────────
+        if pdf.get_y() > 250:
+            pdf.add_page()
+        pdf.ln(2)
+        self._horizontal_rule(weight=0.8)
+        pdf.ln(2)
+
+        self._section_heading("SUSTAINABILITY ASSESSMENT")
 
         x = self._MARGIN_LEFT
         y = pdf.get_y()
 
-        # Grade square
+        # ── Grade badge ──────────────────────────────────────────────────────
+        # Grayscale-safe fills: dark = black text readable, gradient toward light.
+        _GRADE_BG: dict[str, tuple[int, int, int]] = {
+            "A": (20,  70,  30),   # dark green  → white text
+            "B": (25,  70,  110),  # dark navy   → white text
+            "C": (130, 100, 15),   # dark amber  → white text
+            "D": (140, 25,  25),   # dark red    → white text
+        }
+        _GRADE_LABELS: dict[str, str] = {
+            "A":   "Strong sustainability profile",
+            "B":   "Good sustainability profile",
+            "C":   "Moderate sustainability concerns",
+            "D":   "Significant sustainability gaps",
+            "N/A": "Not applicable for this product category",
+        }
+        grade_bg = _GRADE_BG.get(grade, _C_MID_GRAY)
+
         sq = 18
-        pdf.set_fill_color(*grade_color)
+        pdf.set_fill_color(*grade_bg)
         pdf.rect(x, y, sq, sq, style="F")
         pdf.set_font("Helvetica", "B", 14)
         pdf.set_text_color(*_C_WHITE)
         pdf.set_xy(x, y + 2)
         pdf.cell(sq, sq - 4, grade, align="C", ln=False)
 
-        # Grade label + risk pills (same row, right of square)
         pdf.set_font("Helvetica", "B", 9)
         pdf.set_text_color(*_C_NEAR_BLACK)
         pdf.set_xy(x + sq + 4, y + 1)
-        grade_labels = {
-            "A": "Strong sustainability profile",
-            "B": "Good sustainability profile",
-            "C": "Moderate sustainability concerns",
-            "D": "Significant sustainability gaps",
-        }
-        pdf.cell(self._USABLE_W - sq - 4, 5, grade_labels.get(grade, ""), ln=True)
+        pdf.cell(self._USABLE_W - sq - 4, 5, _GRADE_LABELS.get(grade, ""), ln=True)
 
         pdf.set_font("Helvetica", "", 8)
         pdf.set_text_color(*_C_MID_GRAY)
@@ -853,14 +881,39 @@ class ReportGenerator:
             ln=True,
         )
         pdf.ln(max(0, (y + sq + 2) - pdf.get_y()))
-
         pdf.set_text_color(*_C_NEAR_BLACK)
         pdf.ln(3)
 
-        # Signals
-        signals = _get("signals", []) or []
+        # ── Rating rationale ─────────────────────────────────────────────────
+        if pdf.get_y() > 252:
+            pdf.add_page()
+
+        if computation_notes:
+            rationale = computation_notes[0]
+        elif grade == "A":
+            n = len(certs_detected)
+            rationale = f"{n} certification(s) detected with no high-risk signals."
+        elif grade == "B":
+            rationale = "1 certification detected or low inherent product risk."
+        elif grade == "C":
+            rationale = "No certifications detected; moderate risk signals present."
+        elif grade == "D":
+            rationale = "High-risk product/country combination; no mitigating certifications."
+        else:
+            rationale = "No applicable sustainability standards for this category."
+
+        pdf.set_font("Helvetica", "I", 8.5)
+        pdf.set_text_color(*_C_NEAR_BLACK)
+        pdf.set_x(x)
+        pdf.multi_cell(self._USABLE_W, 5, self._t(rationale), ln=True)
+        pdf.ln(2)
+
+        # ── Sustainability signals ────────────────────────────────────────────
         if signals:
+            if pdf.get_y() > 252:
+                pdf.add_page()
             pdf.set_font("Helvetica", "B", 8)
+            pdf.set_text_color(*_C_NEAR_BLACK)
             pdf.set_x(x)
             pdf.cell(self._USABLE_W, 5, "Sustainability Signals:", ln=True)
             pdf.set_font("Helvetica", "", 8)
@@ -869,47 +922,139 @@ class ReportGenerator:
                 if pdf.get_y() > 265:
                     pdf.add_page()
                 pdf.set_x(x + 3)
-                pdf.cell(self._USABLE_W - 3, 4.5, f"\u2022 {self._t(sig)}", ln=True)
+                pdf.cell(self._USABLE_W - 3, 4.5, f"* {self._t(sig)}", ln=True)
             pdf.set_text_color(*_C_NEAR_BLACK)
             pdf.ln(2)
 
-        # Detected certifications
-        detected = _get("certifications_detected", []) or []
-        missing  = _get("certifications_missing",  []) or []
-
-        if detected:
-            if pdf.get_y() > 255:
-                pdf.add_page()
-            pdf.set_font("Helvetica", "B", 8)
-            pdf.set_x(x)
-            pdf.cell(self._USABLE_W, 5, "Certifications Detected:", ln=True)
+        # ── Detected certifications ───────────────────────────────────────────
+        if pdf.get_y() > 255:
+            pdf.add_page()
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_text_color(*_C_NEAR_BLACK)
+        pdf.set_x(x)
+        pdf.cell(self._USABLE_W, 5, "Certifications Detected:", ln=True)
+        if certs_detected:
             pdf.set_font("Helvetica", "", 8)
             pdf.set_text_color(29, 184, 122)
-            for cert in detected:
+            for cert in certs_detected:
                 if pdf.get_y() > 265:
                     pdf.add_page()
                 pdf.set_x(x + 3)
-                pdf.cell(self._USABLE_W - 3, 4.5, f"\u2713 {self._t(cert)}", ln=True)
-            pdf.set_text_color(*_C_NEAR_BLACK)
-            pdf.ln(2)
+                pdf.cell(self._USABLE_W - 3, 4.5, f"[OK] {self._t(cert)}", ln=True)
+        else:
+            pdf.set_font("Helvetica", "I", 8)
+            pdf.set_text_color(*_C_MID_GRAY)
+            pdf.set_x(x + 3)
+            pdf.cell(self._USABLE_W - 3, 4.5, "No certifications detected in document text.", ln=True)
+        pdf.set_text_color(*_C_NEAR_BLACK)
+        pdf.ln(2)
 
-        if missing:
-            if pdf.get_y() > 255:
-                pdf.add_page()
-            pdf.set_font("Helvetica", "B", 8)
-            pdf.set_x(x)
-            pdf.cell(self._USABLE_W, 5, "Recommended Certifications:", ln=True)
+        # ── Missing certifications ────────────────────────────────────────────
+        if pdf.get_y() > 255:
+            pdf.add_page()
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_text_color(*_C_NEAR_BLACK)
+        pdf.set_x(x)
+        pdf.cell(self._USABLE_W, 5, "Missing Certifications (flagged for this product category):", ln=True)
+        if certs_missing:
             pdf.set_font("Helvetica", "", 8)
             pdf.set_text_color(200, 140, 40)
-            for cert in missing[:10]:
+            # Build a name→why_it_matters lookup from the module catalog.
+            _name_to_why: dict[str, str] = {
+                m.name: m.why_it_matters for m in MODULE_BY_ID.values()
+            } if MODULE_BY_ID else {}
+            for cert in certs_missing[:10]:
                 if pdf.get_y() > 265:
                     pdf.add_page()
+                why = _name_to_why.get(cert, "")
+                if why:
+                    # Truncate to first sentence, max 100 chars
+                    why_short = why.split(".")[0][:100]
+                    line = f"[!] {self._t(cert)}: Not detected [{self._t(why_short)}]"
+                else:
+                    line = f"[!] {self._t(cert)}: Not detected"
                 pdf.set_x(x + 3)
-                pdf.cell(self._USABLE_W - 3, 4.5, f"\u26a0 {self._t(cert)}", ln=True)
-            pdf.set_text_color(*_C_NEAR_BLACK)
-            pdf.ln(2)
-
+                pdf.multi_cell(self._USABLE_W - 3, 4.5, line, ln=True)
+        else:
+            pdf.set_font("Helvetica", "I", 8)
+            pdf.set_text_color(*_C_MID_GRAY)
+            pdf.set_x(x + 3)
+            pdf.cell(self._USABLE_W - 3, 4.5, "No missing certifications flagged for this product category.", ln=True)
+        pdf.set_text_color(*_C_NEAR_BLACK)
         pdf.ln(2)
+
+        # ── Active certification modules (layer-grouped) ──────────────────────
+        if pdf.get_y() > 255:
+            pdf.add_page()
+        pdf.set_font("Helvetica", "B", 8)
+        pdf.set_text_color(*_C_NEAR_BLACK)
+        pdf.set_x(x)
+        pdf.cell(self._USABLE_W, 5, "Active Certification Modules:", ln=True)
+
+        optional_active = [
+            mid for mid in active_module_ids
+            if mid in MODULE_BY_ID and MODULE_BY_ID[mid].toggleable
+        ] if MODULE_BY_ID else []
+
+        if not optional_active:
+            pdf.set_font("Helvetica", "I", 8)
+            pdf.set_text_color(*_C_MID_GRAY)
+            pdf.set_x(x + 3)
+            pdf.cell(
+                self._USABLE_W - 3, 4.5,
+                "Core compliance modules only (no optional modules active).",
+                ln=True,
+            )
+            pdf.set_text_color(*_C_NEAR_BLACK)
+        else:
+            by_layer: dict[int, list[str]] = defaultdict(list)
+            for mid in optional_active:
+                by_layer[MODULE_BY_ID[mid].layer].append(mid)
+
+            for layer_num in sorted(by_layer.keys()):
+                layer_mids = by_layer[layer_num]
+                layer_label = LAYER_NAMES.get(layer_num, f"Layer {layer_num}")
+                count = len(layer_mids)
+
+                if pdf.get_y() > 255:
+                    pdf.add_page()
+
+                pdf.set_font("Helvetica", "B", 8)
+                pdf.set_text_color(*_C_NEAR_BLACK)
+                pdf.set_x(x + 2)
+                pdf.cell(
+                    self._USABLE_W - 2, 5,
+                    f"Layer {layer_num} -- {layer_label} "
+                    f"({count} module{'s' if count != 1 else ''} active)",
+                    ln=True,
+                )
+
+                name_w   = self._USABLE_W - 56
+                status_w = 50
+
+                for mid in layer_mids:
+                    if pdf.get_y() > 265:
+                        pdf.add_page()
+                    m = MODULE_BY_ID[mid]
+                    triggered = mid in modules_triggered
+                    status_txt   = "Certificate detected" if triggered else "No findings"
+                    status_color = (200, 80, 20) if triggered else _C_MID_GRAY
+
+                    pdf.set_font("Helvetica", "", 7.5)
+                    pdf.set_text_color(*_C_NEAR_BLACK)
+                    pdf.set_x(x + 5)
+                    pdf.cell(name_w, 4.5, f"- {self._t(m.name)}", ln=False)
+                    pdf.set_text_color(*status_color)
+                    pdf.cell(status_w, 4.5, status_txt, align="R", ln=True)
+
+                pdf.ln(1)
+
+            pdf.set_text_color(*_C_NEAR_BLACK)
+
+        # ── Separator below ───────────────────────────────────────────────────
+        pdf.ln(3)
+        self._horizontal_rule(weight=0.8)
+        pdf.ln(3)
 
     def _section_pattern_intelligence(self) -> None:
         """Pattern intelligence signals and blend weight information."""
@@ -1140,24 +1285,56 @@ class ReportGenerator:
     def _t(text: str) -> str:
         """Sanitise text for Helvetica (Latin-1) rendering.
 
-        Replaces the most common Unicode symbols with safe ASCII/Latin-1
-        equivalents, then encodes with ``errors='replace'`` to catch anything
-        that slipped through.
+        Replaces common Unicode symbols with safe ASCII/Latin-1 equivalents,
+        then encodes with ``errors='replace'`` as a final catch-all.  Must be
+        called on EVERY string before it is passed to any fpdf cell/multi_cell.
         """
-        replacements = {
-            "\u2014": "-",    # em dash
-            "\u2013": "-",    # en dash
-            "\u2018": "'",    # left single quote
-            "\u2019": "'",    # right single quote
-            "\u201c": '"',    # left double quote
-            "\u201d": '"',    # right double quote
-            "\u2022": "*",    # bullet
-            "\u00a0": " ",    # non-breaking space
-            "\u2026": "...",  # ellipsis
-            "\u00ae": "(R)",  # registered trademark
-            "\u2122": "(TM)", # trademark
-        }
-        for src, dst in replacements.items():
+        if not isinstance(text, str):
+            text = str(text)
+        replacements = (
+            ("\u2014", "-"),    # em dash
+            ("\u2013", "-"),    # en dash
+            ("\u2012", "-"),    # figure dash
+            ("\u2010", "-"),    # hyphen
+            ("\u2018", "'"),    # left single quote
+            ("\u2019", "'"),    # right single quote
+            ("\u201a", "'"),    # single low-9 quote
+            ("\u201c", '"'),    # left double quote
+            ("\u201d", '"'),    # right double quote
+            ("\u201e", '"'),    # double low-9 quote
+            ("\u2022", "*"),    # bullet  •
+            ("\u2023", "*"),    # triangular bullet  ‣
+            ("\u00b7", "*"),    # middle dot  ·
+            ("\u25b8", ">"),    # right-pointing triangle  ▸
+            ("\u27a4", ">"),    # heavy right arrow  ➤
+            ("\u2794", ">"),    # heavy wide-headed arrow  ➔
+            ("\u2713", "[OK]"), # check mark  ✓
+            ("\u2714", "[OK]"), # heavy check mark  ✔
+            ("\u2717", "[X]"),  # ballot x  ✗
+            ("\u2718", "[X]"),  # heavy ballot x  ✘
+            ("\u26a0", "[!]"),  # warning  ⚠
+            ("\u267b", "[sustainability]"),  # recycling symbol  ♻
+            ("\u00a0", " "),    # non-breaking space
+            ("\u2026", "..."),  # ellipsis
+            ("\u00ae", "(R)"),  # registered trademark
+            ("\u2122", "(TM)"), # trademark
+            ("\u00a9", "(c)"),  # copyright
+            ("\u2020", "+"),    # dagger
+            ("\u2021", "++"),   # double dagger
+            ("\u00b0", " deg"), # degree sign
+            ("\u00b1", "+/-"),  # plus-minus
+            ("\u00d7", "x"),    # multiplication sign
+            ("\u00f7", "/"),    # division sign
+            ("\u2192", "->"),   # right arrow
+            ("\u2190", "<-"),   # left arrow
+            ("\u2248", "~"),    # almost equal
+            ("\u2260", "!="),   # not equal
+            ("\u2264", "<="),   # less-or-equal
+            ("\u2265", ">="),   # greater-or-equal
+            ("\ufb01", "fi"),   # fi ligature
+            ("\ufb02", "fl"),   # fl ligature
+        )
+        for src, dst in replacements:
             text = text.replace(src, dst)
         return text.encode("latin-1", errors="replace").decode("latin-1")
 

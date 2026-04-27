@@ -1839,14 +1839,16 @@
 
     .bulk-slot {
       background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: var(--radius-lg); overflow: hidden;
+      border-radius: var(--radius-lg);
       transition: border-color .18s;
+      overflow: visible;
     }
     .bulk-slot.expanded { border-color: var(--border-hi); }
 
     .bulk-slot-header {
       display: flex; align-items: center; gap: .75rem;
       padding: .75rem 1rem; cursor: pointer; user-select: none;
+      border-radius: var(--radius-lg) var(--radius-lg) 0 0; overflow: hidden;
     }
     .bulk-slot-header:hover { background: rgba(255,255,255,.02); }
 
