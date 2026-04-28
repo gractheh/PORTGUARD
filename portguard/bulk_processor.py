@@ -38,6 +38,7 @@ BulkProcessor(db_path, analyze_fn)
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import logging
 import uuid
@@ -340,17 +341,18 @@ class BulkProcessor:
         batch_id: str,
         shipments: list[dict],
         org_id: str,
+        enabled_modules: Optional[list] = None,
     ) -> None:
         """Process all shipments in the batch concurrently.
 
-        This is an ``async def`` coroutine designed to run as a FastAPI
-        ``BackgroundTask``.  It returns only after every shipment has been
-        processed (or timed out / errored).
+        Awaited directly by the request handler — returns only after every
+        shipment has a result (COMPLETE, ERROR, or TIMEOUT).  The caller
+        receives the complete result set synchronously in a single HTTP response.
 
         Each shipment analysis runs in a thread pool because ``analyze_fn``
-        is synchronous.  At most ``_SEMAPHORE_SIZE`` analyses run simultaneously.
-        Per-shipment timeouts of ``SHIPMENT_TIMEOUT_SECONDS`` prevent one slow
-        document set from stalling the entire batch.
+        is synchronous and CPU-bound.  At most ``_SEMAPHORE_SIZE`` analyses
+        run simultaneously.  Per-shipment timeouts of ``SHIPMENT_TIMEOUT_SECONDS``
+        prevent one slow document set from stalling the entire batch.
 
         Batch counters (``processed_count``, ``approved_count``, etc.) are
         incremented atomically via SQL arithmetic so concurrent thread writes
@@ -364,6 +366,11 @@ class BulkProcessor:
             Same list passed to :meth:`create_batch`.
         org_id:
             Authenticated organisation UUID.
+        enabled_modules:
+            Pre-loaded list of enabled module IDs for this org.  When provided,
+            the analyse function uses this snapshot instead of hitting the DB
+            once per shipment.  Pass ``None`` to fall back to per-shipment DB
+            lookup (backward-compatible).
         """
         if self._analyze_fn is None:
             msg = "No analyze_fn configured; cannot process batch."
@@ -375,6 +382,16 @@ class BulkProcessor:
         loop = asyncio.get_running_loop()
         semaphore = asyncio.Semaphore(_SEMAPHORE_SIZE)
 
+        # Bind the enabled_modules snapshot to the analyse function so every
+        # shipment in this batch uses the identical module set without a DB
+        # round-trip per row.
+        if enabled_modules is not None:
+            _fn: Callable = functools.partial(
+                self._analyze_fn, enabled_modules=enabled_modules
+            )
+        else:
+            _fn = self._analyze_fn
+
         async def _process_one(shipment: dict) -> None:
             ref = shipment["ref"]
             async with semaphore:
@@ -383,7 +400,7 @@ class BulkProcessor:
                     result: dict = await asyncio.wait_for(
                         loop.run_in_executor(
                             _BULK_EXECUTOR,
-                            self._analyze_fn,
+                            _fn,
                             shipment["documents"],
                             org_id,
                         ),
@@ -395,9 +412,10 @@ class BulkProcessor:
                         batch_id,
                         ref,
                         f"Analysis timed out after {int(SHIPMENT_TIMEOUT_SECONDS)} seconds.",
+                        decision="TIMEOUT",
                     )
                 except Exception as exc:
-                    self._store_shipment_error(batch_id, ref, str(exc))
+                    self._store_shipment_error(batch_id, ref, str(exc), decision="ERROR")
 
         await asyncio.gather(*[_process_one(s) for s in shipments])
         self._mark_batch_complete(batch_id)
@@ -841,8 +859,17 @@ class BulkProcessor:
         batch_id: str,
         ref: str,
         error_message: str,
+        decision: str = "ERROR",
     ) -> None:
-        """Mark a shipment as errored and increment the batch error counter."""
+        """Mark a shipment as errored and increment the batch error counter.
+
+        Parameters
+        ----------
+        decision:
+            ``"ERROR"`` for general failures; ``"TIMEOUT"`` for per-shipment
+            timeouts.  Stored in ``bulk_shipments.decision`` so callers can
+            distinguish the two cases in the response.
+        """
         msg = (error_message or "Unknown error")[:500]
         now = _utcnow()
 
@@ -850,10 +877,11 @@ class BulkProcessor:
             conn.execute(
                 text("""
                     UPDATE bulk_shipments
-                    SET status = 'ERROR', error_message = :msg, processed_at = :now
+                    SET status = 'ERROR', decision = :decision,
+                        error_message = :msg, processed_at = :now
                     WHERE batch_id = :bid AND shipment_ref = :ref
                 """),
-                {"msg": msg, "now": now, "bid": batch_id, "ref": ref},
+                {"decision": decision, "msg": msg, "now": now, "bid": batch_id, "ref": ref},
             )
             conn.execute(
                 text("""
@@ -866,6 +894,6 @@ class BulkProcessor:
             )
 
         logger.warning(
-            "Bulk shipment ERROR: batch=%s ref=%s error=%s",
-            batch_id, ref, msg,
+            "Bulk shipment %s: batch=%s ref=%s error=%s",
+            decision, batch_id, ref, msg,
         )

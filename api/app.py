@@ -6,6 +6,7 @@ GET  /api/v1/health   — liveness check
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
@@ -2963,11 +2964,56 @@ def report_generate_direct(
         )
 
 
+
+# ---------------------------------------------------------------------------
+# Shareable result lookup
+# ---------------------------------------------------------------------------
+
+@app.get("/api/v1/results/{result_id}")
+def get_result(
+    result_id: str,
+    current_org: dict = Depends(get_current_organization),
+):
+    if _pattern_db is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "SERVICE_UNAVAILABLE", "message": "Database not initialised."},
+        )
+
+    org_id: str = current_org["organization_id"]
+
+    payload_json = _pattern_db.get_report_payload(result_id, org_id)
+    if payload_json is not None:
+        try:
+            return json.loads(payload_json)
+        except Exception:
+            raise HTTPException(
+                status_code=500,
+                detail={"code": "RESULT_CORRUPT", "message": "Stored result could not be deserialised."},
+            )
+
+    owner_org = _pattern_db.get_result_owner(result_id)
+    if owner_org is None:
+        raise HTTPException(
+            status_code=404,
+            detail={"code": "NOT_FOUND", "message": f"No result found with id '{result_id}'."},
+        )
+
+    raise HTTPException(
+        status_code=403,
+        detail={"code": "FORBIDDEN", "message": "This result belongs to a different organization."},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Bulk screening — analysis helper
 # ---------------------------------------------------------------------------
 
-def _run_bulk_single_analysis(documents_data: list, org_id: str) -> dict:
+def _run_bulk_single_analysis(
+    documents_data: list,
+    org_id: str,
+    enabled_modules: Optional[list] = None,
+) -> dict:
     """Run the full analysis pipeline for one shipment in a bulk batch.
 
     This is a synchronous function executed in a ``ThreadPoolExecutor`` by
@@ -2983,6 +3029,11 @@ def _run_bulk_single_analysis(documents_data: list, org_id: str) -> dict:
         List of ``{"filename": str, "raw_text": str}`` dicts.
     org_id:
         Authenticated organisation UUID.
+    enabled_modules:
+        Pre-loaded module snapshot for the batch.  When provided, the
+        CertificationScreener is instantiated with this list instead of
+        issuing a DB query — loading once per batch instead of once per row.
+        Pass ``None`` to fall back to per-shipment DB lookup.
 
     Returns
     -------
@@ -3087,14 +3138,19 @@ def _run_bulk_single_analysis(documents_data: list, org_id: str) -> dict:
     )
 
     # Stage 3.5: Certification module screening
+    # Use the pre-loaded batch snapshot when provided; fall back to DB lookup.
     cert_result_bulk = None
     try:
         from portguard.agents.certification_screener import CertificationScreener
-        enabled_modules_bulk: list[str] = (
-            _module_config_db.get_enabled_modules(org_id)
-            if _module_config_db is not None else []
+        _mods_bulk: list[str] = (
+            enabled_modules
+            if enabled_modules is not None
+            else (
+                _module_config_db.get_enabled_modules(org_id)
+                if _module_config_db is not None else []
+            )
         )
-        screener_bulk = CertificationScreener(enabled_modules_bulk)
+        screener_bulk = CertificationScreener(_mods_bulk)
         cert_result_bulk = screener_bulk.screen(sd, all_text_bulk)
     except Exception as _cert_exc_bulk:
         logger.warning("CertificationScreener failed in bulk (non-fatal): %s", _cert_exc_bulk)
@@ -3289,17 +3345,112 @@ def _check_bulk_rate_limit(org_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Bulk screening — response builder
+# ---------------------------------------------------------------------------
+
+
+def _build_bulk_response(batch_id: str, results_data: dict) -> dict:
+    """Reshape BulkProcessor results into the public bulk-create response format.
+
+    Per-shipment fields:
+      reference_id, result_id, decision, risk_score, risk_level,
+      flags, summary, sustainability_rating, sustainability_signals,
+      active_modules_snapshot, status, error_message, processed_at
+    """
+    import json as _json
+    summary = results_data.get("summary") or {}
+    raw_shipments = results_data.get("shipments") or []
+
+    results = []
+    for s in raw_shipments:
+        full: dict = {}
+        if s.get("full_result"):
+            full = s["full_result"]
+        elif s.get("result_json"):
+            try:
+                full = _json.loads(s["result_json"])
+            except Exception:
+                pass
+
+        # Sustainability
+        sus = full.get("sustainability_rating") or {}
+        if isinstance(sus, dict) and not sus:
+            sus = None
+        sus_grade = s.get("sustainability_grade") or (
+            sus.get("grade") if isinstance(sus, dict) else None
+        )
+
+        sus_signals_raw = s.get("sustainability_signals")
+        if isinstance(sus_signals_raw, str) and sus_signals_raw:
+            sus_signals: list = [x for x in sus_signals_raw.split("|") if x]
+        else:
+            sus_signals = (sus.get("signals", []) if isinstance(sus, dict) else []) or []
+
+        active_mods_raw = s.get("active_modules_snapshot")
+        if isinstance(active_mods_raw, str) and active_mods_raw:
+            active_mods: list = [x for x in active_mods_raw.split("|") if x]
+        else:
+            active_mods = full.get("active_modules_at_scan", []) or []
+
+        # Decision — TIMEOUT and ERROR are set by _store_shipment_error;
+        # null means the row had no result (should not happen after gather completes).
+        decision = s.get("decision") or "ERROR"
+
+        # Flags: full explanations list when available, else the error message.
+        flags: list = full.get("explanations", []) or []
+        if not flags and s.get("error_message"):
+            flags = [s["error_message"]]
+
+        results.append({
+            "reference_id": s.get("ref"),
+            "result_id": s.get("analysis_id"),
+            "decision": decision,
+            "risk_score": s.get("risk_score"),
+            "risk_level": s.get("risk_level"),
+            "flags": flags,
+            "summary": s.get("top_finding"),
+            "sustainability_rating": sus,
+            "sustainability_signals": sus_signals,
+            "active_modules_snapshot": active_mods,
+            "status": s.get("status"),
+            "error_message": s.get("error_message"),
+            "processed_at": s.get("processed_at"),
+        })
+
+    return {
+        "batch_id": batch_id,
+        "total": summary.get("total", len(results)),
+        "processed": summary.get("processed", len(results)),
+        "summary": summary,
+        "results": results,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Bulk screening — endpoints
 # ---------------------------------------------------------------------------
 
 
-@app.post("/api/v1/analyze/bulk", status_code=202)
+@app.post("/api/v1/analyze/bulk", status_code=200)
 async def bulk_create(
     request: Request,
-    background_tasks: BackgroundTasks,
     current_org: dict = Depends(get_current_organization),
 ):
-    """Create a new bulk screening batch and begin background processing.
+    """Screen a bulk batch of shipments and return all results synchronously.
+
+    Processes every shipment through the full 6-agent pipeline (Parser →
+    Classifier → Validator → Risk → Decision → CertificationScreener →
+    SustainabilityRater) and returns HTTP 200 only after every row has a
+    result.  No polling is required.
+
+    Architecture note: single-response (not SSE) was chosen because:
+    - The existing asyncio.Semaphore(5) + ThreadPoolExecutor(5) model already
+      provides proper concurrency — the endpoint simply awaits completion.
+    - SSE requires long-lived connections and browser reconnect logic with no
+      material UX benefit given the results-only-after-all-complete requirement.
+    - The per-row 30-second timeout bounds worst-case latency to 300 seconds
+      (ceil(50/5) × 30s).  Deployments with proxy timeouts under ~300s should
+      raise ``SHIPMENT_TIMEOUT_SECONDS`` or increase the proxy timeout.
 
     Accepts three input formats:
 
@@ -3326,9 +3477,18 @@ async def bulk_create(
 
         {"input_method": "MANUAL", "shipments": [...]}
 
-    Returns HTTP 202 immediately with a ``batch_id``.  Poll
-    ``GET /api/v1/analyze/bulk/{batch_id}/status`` every 2 seconds to track
-    progress.
+    Returns
+    -------
+    JSON ``{"batch_id", "total", "processed", "summary", "results": [...]}``
+    where every row has ``reference_id``, ``result_id``, ``decision``,
+    ``risk_score``, ``risk_level``, ``flags``, ``summary``,
+    ``sustainability_rating``, ``sustainability_signals``,
+    ``active_modules_snapshot``.
+
+    Per-row ``decision`` values: ``APPROVE`` | ``REVIEW_RECOMMENDED`` |
+    ``FLAG_FOR_INSPECTION`` | ``REQUEST_MORE_INFORMATION`` | ``REJECT`` |
+    ``TIMEOUT`` | ``ERROR``.  Zero rows will have decision ``null`` or
+    ``PENDING`` in the response.
 
     Raises
     ------
@@ -3339,6 +3499,7 @@ async def bulk_create(
     413 FILE_TOO_LARGE        ZIP > 50 MB or CSV > 5 MB
     422                       JSON body validation error
     429 RATE_LIMITED          More than 3 batches/minute for this org
+    503 SERVICE_UNAVAILABLE   BulkProcessor not available
     """
     from portguard.bulk_parsers import (
         parse_zip_upload, parse_csv_upload, validate_manual_input,
@@ -3556,7 +3717,17 @@ async def bulk_create(
                 status_code=422, detail={"code": "INVALID_SHIPMENT", "message": str(exc)}
             )
 
-    # --- Create batch and start background processing ---
+    # --- Load enabled modules ONCE for the whole batch ---
+    enabled_modules: list[str] = []
+    if _module_config_db is not None:
+        try:
+            enabled_modules = _module_config_db.get_enabled_modules(org_id)
+        except Exception as _me:
+            logger.warning(
+                "Could not load enabled modules for bulk batch (non-fatal): %s", _me
+            )
+
+    # --- Create batch DB record and process synchronously ---
     try:
         processor = _get_bulk_processor()
     except Exception as exc:
@@ -3567,24 +3738,23 @@ async def bulk_create(
 
     batch_id = processor.create_batch(org_id, shipments, input_method)
 
-    background_tasks.add_task(
-        processor.process_batch,
+    # Await all rows — returns only after every shipment is COMPLETE/ERROR/TIMEOUT.
+    await processor.process_batch(
         batch_id,
         shipments,
         org_id,
+        enabled_modules=enabled_modules,
     )
 
-    import datetime as _dt
-    now_str = _dt.datetime.now(_dt.timezone.utc).isoformat()
-    return {
-        "batch_id": batch_id,
-        "total_shipments": len(shipments),
-        "status": "PROCESSING",
-        "input_method": input_method,
-        "created_at": now_str,
-        "status_url": f"/api/v1/analyze/bulk/{batch_id}/status",
-        "results_url": f"/api/v1/analyze/bulk/{batch_id}/results",
-    }
+    # Fetch completed results from DB
+    results_data = processor.get_batch_results(batch_id, org_id)
+    if results_data is None:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "INTERNAL_ERROR", "message": "Batch results unavailable after processing."},
+        )
+
+    return _build_bulk_response(batch_id, results_data)
 
 
 @app.get("/api/v1/analyze/bulk/{batch_id}/status")

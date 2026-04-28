@@ -1383,6 +1383,26 @@ class PatternDB:
             logger.warning("get_report_payload(%s) failed: %s", analysis_id, exc)
             return None
 
+    def get_result_owner(self, analysis_id: str) -> Optional[str]:
+        """Return the organization_id that owns an analysis, or None if not found.
+
+        Used by ``GET /api/v1/results/{result_id}`` to distinguish 404 (no such
+        result) from 403 (result exists but belongs to a different org).
+        """
+        try:
+            with self._engine.connect() as conn:
+                row = conn.execute(
+                    text(
+                        "SELECT organization_id FROM shipment_history"
+                        " WHERE analysis_id = :id"
+                    ),
+                    {"id": analysis_id},
+                ).mappings().fetchone()
+            return row["organization_id"] if row else None
+        except Exception as exc:
+            logger.warning("get_result_owner(%s) failed: %s", analysis_id, exc)
+            return None
+
     def update_sustainability_fields(
         self,
         analysis_id: str,
