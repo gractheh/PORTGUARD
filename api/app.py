@@ -1382,6 +1382,45 @@ def _record_shipment_bg(
         return None
 
 
+def _write_sustainability_fields(
+    analysis_id: Optional[str],
+    organization_id: str,
+    analyze_response: "AnalyzeResponse",
+) -> None:
+    """Back-fill sustainability columns on shipment_history after analysis.
+
+    Called immediately after _record_shipment_bg returns an analysis_id.
+    All errors are swallowed — never raises.
+    """
+    if _pattern_db is None or not analysis_id:
+        return
+    try:
+        rating       = analyze_response.sustainability_rating
+        grade: Optional[str] = None
+        signals_str: Optional[str] = None
+        if rating:
+            grade = getattr(rating, "grade", None) or (rating.get("grade") if isinstance(rating, dict) else None)
+            raw_signals = (
+                getattr(rating, "signals", []) if not isinstance(rating, dict)
+                else rating.get("signals", [])
+            ) or []
+            if raw_signals:
+                signals_str = "|".join(str(s) for s in raw_signals[:20])
+
+        active_mods  = analyze_response.active_modules_at_scan or []
+        active_str: Optional[str] = "|".join(active_mods) if active_mods else None
+
+        _pattern_db.update_sustainability_fields(
+            analysis_id=analysis_id,
+            organization_id=organization_id,
+            grade=grade,
+            signals_str=signals_str,
+            active_modules_str=active_str,
+        )
+    except Exception as exc:
+        logger.warning("_write_sustainability_fields(%s) failed (non-fatal): %s", analysis_id, exc)
+
+
 # ---------------------------------------------------------------------------
 # FastAPI app
 # ---------------------------------------------------------------------------
@@ -1764,6 +1803,7 @@ def analyze(
     )
 
     analyze_response.shipment_id = shipment_id
+    _write_sustainability_fields(shipment_id, org_id, analyze_response)
     return analyze_response
 
 
@@ -2031,6 +2071,7 @@ async def analyze_files(
     )
 
     analyze_response_files.shipment_id = shipment_id
+    _write_sustainability_fields(shipment_id, org_id, analyze_response_files)
     return analyze_response_files
 
 
@@ -2533,6 +2574,136 @@ def dashboard_recent_activity(
     return _dashboard_analytics.get_recent_activity(
         organization_id=current_org["organization_id"],
         limit=limit,
+    )
+
+
+@app.get("/api/v1/dashboard/module-summary")
+def dashboard_module_summary(
+    current_org: dict = Depends(get_current_organization),
+):
+    """Return per-module certification screening performance for this org.
+
+    Queries both single-document (shipment_history.report_payload) and bulk
+    (bulk_shipments.result_json) analyses to build per-module detection and
+    missing-flag counts.  The enabled/inactive split is determined server-side
+    from the org's current module configuration.
+
+    Response fields
+    ---------------
+    active_modules (list):
+        One entry per enabled toggleable module.  Fields: module_id,
+        module_name, layer, layer_name, total_shipments_screened,
+        detections, missing_flags, not_applicable, detection_rate_pct.
+    inactive_modules (list):
+        One entry per disabled toggleable module.  Fields: module_id,
+        module_name, layer, layer_name, detections_if_enabled (null), note.
+    """
+    _require_analytics()
+    org_id = current_org["organization_id"]
+
+    # Resolve enabled modules from server-side config (not trusting client input).
+    enabled_ids: list[str] = []
+    if _module_config_db is not None:
+        try:
+            enabled_ids = _module_config_db.get_enabled_modules(org_id)
+        except Exception as exc:
+            logger.warning("module-summary: get_enabled_modules failed: %s", exc)
+
+    return _dashboard_analytics.get_module_summary(
+        organization_id=org_id,
+        enabled_module_ids=enabled_ids,
+    )
+
+
+@app.get("/api/v1/dashboard/top-missing-certifications")
+def dashboard_top_missing_certifications(
+    limit: int = Query(default=10, ge=1, le=30),
+    current_org: dict = Depends(get_current_organization),
+):
+    """Return the most frequently missing certifications for this org.
+
+    Filtered to currently enabled modules.
+
+    Response fields
+    ---------------
+    missing_certs (list):
+        Sorted by missing_count descending.  Each: module_id, module_name,
+        layer, missing_count, total_screened, missing_rate_pct.
+    """
+    _require_analytics()
+    org_id = current_org["organization_id"]
+
+    enabled_ids: list[str] = []
+    if _module_config_db is not None:
+        try:
+            enabled_ids = _module_config_db.get_enabled_modules(org_id)
+        except Exception as exc:
+            logger.warning("top-missing-certifications: get_enabled_modules failed: %s", exc)
+
+    return _dashboard_analytics.get_top_missing_certifications(
+        organization_id=org_id,
+        module_ids=enabled_ids if enabled_ids else None,
+        limit=limit,
+    )
+
+
+@app.get("/api/v1/dashboard/sustainability-distribution")
+def dashboard_sustainability_distribution(
+    modules: Optional[str] = Query(
+        default=None,
+        description=(
+            "Comma-separated module IDs to filter by. "
+            "Defaults to the org's server-side enabled modules."
+        ),
+    ),
+    current_org: dict = Depends(get_current_organization),
+):
+    """Return sustainability grade distribution filtered by active module snapshot.
+
+    Only includes shipments whose ``active_modules_snapshot`` column overlaps with
+    at least one currently enabled module.  Legacy shipments (no snapshot) are
+    excluded and counted separately.
+
+    Query parameters
+    ----------------
+    modules (str, optional):
+        Comma-separated module IDs to override server-side module list.
+        If absent, uses the org's current enabled module configuration.
+
+    Response fields
+    ---------------
+    grades (dict):
+        {A, B, C, D, NA} counts — only shipments screened with a currently
+        enabled module are included.
+    total (int):
+        Sum of all grade counts.
+    screened_with_current_modules (int):
+        Identical to ``total`` — rows that matched the active module filter.
+    legacy_excluded (int):
+        Rows excluded because ``active_modules_snapshot`` is null (pre-module era).
+    module_count (int):
+        Number of modules used for filtering.
+    modules_used (list[str]):
+        Sorted list of module IDs used.
+    """
+    _require_analytics()
+    org_id = current_org["organization_id"]
+
+    if modules:
+        enabled_ids = [m.strip() for m in modules.split(",") if m.strip()]
+    else:
+        enabled_ids = []
+        if _module_config_db is not None:
+            try:
+                enabled_ids = _module_config_db.get_enabled_modules(org_id)
+            except Exception as exc:
+                logger.warning(
+                    "sustainability-distribution: get_enabled_modules failed: %s", exc
+                )
+
+    return _dashboard_analytics.get_sustainability_distribution(
+        organization_id=org_id,
+        enabled_module_ids=enabled_ids,
     )
 
 

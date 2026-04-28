@@ -1335,6 +1335,147 @@
     }
     .dash-empty-cta:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(27,154,170,.45); }
 
+    /* --- Module-Aware Dashboard Banner --- */
+    .dash-module-banner {
+      display: flex; align-items: center; justify-content: space-between;
+      background: rgba(27,154,170,.06); border: 1px solid rgba(27,154,170,.15);
+      border-radius: var(--radius); padding: .55rem 1rem;
+      margin-bottom: 1.25rem; gap: .75rem;
+      font-size: .78rem; color: var(--muted);
+    }
+    .dash-module-banner.core-only {
+      background: rgba(139,170,191,.04); border-color: rgba(139,170,191,.15);
+    }
+    .dash-module-banner-text { display: flex; align-items: center; gap: .5rem; min-width: 0; }
+    .dash-module-banner-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--teal-400); flex-shrink: 0;
+      animation: pulse-dot 2s ease infinite;
+    }
+    .dash-module-banner.core-only .dash-module-banner-dot { background: var(--muted); animation: none; }
+    @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+    .dash-module-banner-link {
+      background: none; border: 1px solid rgba(27,154,170,.3);
+      color: var(--teal-400); cursor: pointer; border-radius: var(--radius);
+      font-family: 'Inter', sans-serif; font-size: .72rem; font-weight: 600;
+      padding: .25rem .7rem; transition: all .18s; white-space: nowrap; flex-shrink: 0;
+    }
+    .dash-module-banner-link:hover { background: rgba(27,154,170,.1); }
+
+    /* --- Module Performance Section --- */
+    .module-perf-section {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); margin-bottom: 1.25rem; overflow: hidden;
+    }
+    .module-perf-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 1.25rem; cursor: pointer; user-select: none;
+      transition: background .18s;
+    }
+    .module-perf-header:hover { background: rgba(255,255,255,.025); }
+    .module-perf-title {
+      font-size: .8rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--muted);
+    }
+    .module-perf-chevron { transition: transform .25s; color: var(--faint); }
+    .module-perf-chevron.open { transform: rotate(180deg); }
+    .module-perf-body {
+      display: none; padding: 0 1.25rem 1.25rem;
+      border-top: 1px solid var(--border);
+    }
+    .module-perf-body.open { display: block; }
+    .module-perf-tbl {
+      width: 100%; border-collapse: collapse; font-size: .8rem; margin-top: .75rem;
+    }
+    .module-perf-tbl th {
+      padding: .55rem .75rem; text-align: left;
+      font-size: .66rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .07em; color: var(--faint);
+      border-bottom: 1px solid var(--border);
+    }
+    .module-perf-tbl td {
+      padding: .6rem .75rem; border-bottom: 1px solid rgba(26,45,69,.5);
+      vertical-align: middle;
+    }
+    .module-perf-tbl tr:last-child td { border-bottom: none; }
+    .module-perf-tbl tr:hover td { background: rgba(27,154,170,.04); }
+    .module-perf-name { font-weight: 600; max-width: 200px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .module-perf-layer {
+      display: inline-block; padding: .15rem .5rem;
+      border-radius: 999px; font-size: .65rem; font-weight: 600;
+      background: rgba(27,154,170,.1); color: var(--teal-400); white-space: nowrap;
+    }
+    .rate-bar-wrap { display: flex; align-items: center; gap: .6rem; min-width: 100px; }
+    .rate-bar-track {
+      flex: 1; height: 6px; background: rgba(139,170,191,.15);
+      border-radius: 3px; overflow: hidden;
+    }
+    .rate-bar-fill { height: 100%; border-radius: 3px; transition: width .6s var(--ease-out); }
+    .rate-bar-fill.high { background: var(--teal-400); }
+    .rate-bar-fill.mid  { background: var(--amber); }
+    .rate-bar-fill.low  { background: rgba(139,170,191,.4); }
+    .rate-bar-pct { font-family: 'JetBrains Mono', monospace; font-size: .72rem; min-width: 2.8rem; }
+    .inactive-mods-section {
+      padding-top: .75rem; margin-top: .75rem;
+      border-top: 1px solid rgba(139,170,191,.1);
+    }
+    .inactive-mods-label {
+      font-size: .68rem; font-weight: 600; text-transform: uppercase;
+      letter-spacing: .08em; color: var(--faint); margin-bottom: .5rem;
+    }
+    .inactive-pills { display: flex; flex-wrap: wrap; gap: .4rem; }
+    .inactive-pill {
+      display: inline-flex; align-items: center; gap: .3rem;
+      background: rgba(139,170,191,.07); border: 1px solid rgba(139,170,191,.18);
+      border-radius: 999px; padding: .2rem .65rem;
+      font-size: .7rem; color: var(--faint);
+    }
+    .inactive-pill-add {
+      background: none; border: none; cursor: pointer;
+      color: var(--teal-400); font-size: .8rem; font-weight: 700;
+      padding: 0 0 0 .2rem; line-height: 1; transition: color .18s;
+    }
+    .inactive-pill-add:hover { color: var(--teal-300); }
+
+    /* --- Empty state for module charts --- */
+    .chart-empty-state {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; padding: 2.5rem 1.5rem; text-align: center;
+      gap: .75rem; flex: 1; min-height: 160px;
+    }
+    .chart-empty-icon { font-size: 1.8rem; }
+    .chart-empty-text { font-size: .8rem; color: var(--muted); max-width: 240px; line-height: 1.5; }
+    .chart-empty-cta {
+      background: none; border: 1px solid rgba(27,154,170,.3);
+      color: var(--teal-400); cursor: pointer;
+      font-family: 'Inter', sans-serif; font-size: .75rem; font-weight: 600;
+      padding: .35rem .9rem; border-radius: var(--radius); transition: all .18s;
+    }
+    .chart-empty-cta:hover { background: rgba(27,154,170,.1); }
+
+    /* --- Toast Notifications --- */
+    #dash-toast-container {
+      position: fixed; bottom: 1.5rem; right: 1.5rem;
+      display: flex; flex-direction: column; gap: .5rem;
+      z-index: 9999; pointer-events: none;
+    }
+    .dash-toast {
+      display: flex; align-items: center; gap: .65rem;
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: var(--radius-lg); padding: .7rem 1rem;
+      font-size: .8rem; color: var(--text);
+      box-shadow: 0 4px 20px rgba(0,0,0,.4);
+      pointer-events: auto;
+      animation: toast-in .25s var(--ease-out);
+      border-left-width: 3px;
+      max-width: 340px;
+    }
+    .dash-toast.enable  { border-left-color: var(--teal-400); }
+    .dash-toast.disable { border-left-color: #e05050; }
+    .dash-toast-icon { font-size: .9rem; flex-shrink: 0; }
+    @keyframes toast-in  { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
+    @keyframes toast-out { from { opacity:1; transform:translateX(0); } to { opacity:0; transform:translateX(20px); } }
+
     /* ======================================================
        PDF PREVIEW PANEL
        ====================================================== */
@@ -3251,6 +3392,15 @@
       </button>
     </div>
 
+    <!-- Module-aware banner: active module count + link to settings drawer -->
+    <div class="dash-module-banner core-only" id="dash-module-banner">
+      <span class="dash-module-banner-text">
+        <span class="dash-module-banner-dot"></span>
+        <span id="dash-banner-text">Core compliance only — enable certification modules for sustainability insights</span>
+      </span>
+      <button class="dash-module-banner-link" onclick="openSettingsDrawer()">Manage Modules</button>
+    </div>
+
     <!-- KPI row -->
     <div class="kpi-row" id="kpi-row">
       <!-- skeleton placeholders (replaced on load) -->
@@ -3303,6 +3453,28 @@
       </div>
     </div>
 
+    <!-- Charts row 3: Sustainability distribution + Top missing certs (module-sensitive) -->
+    <div class="chart-row chart-row-2">
+      <div class="chart-card" id="sustain-dist-card" style="min-height:280px;display:flex;flex-direction:column">
+        <div class="chart-title">
+          Sustainability Distribution
+          <span id="sustain-dist-subtitle" style="display:none;font-weight:400;font-size:.7rem;color:var(--faint);text-transform:none;letter-spacing:0;margin-left:.5rem"></span>
+        </div>
+        <div id="sustain-dist-content" style="flex:1;display:flex">
+          <!-- injected by _buildSustainabilityDonut() -->
+        </div>
+      </div>
+      <div class="chart-card" id="missing-certs-card" style="min-height:280px;display:flex;flex-direction:column">
+        <div class="chart-title">
+          Top Missing Certifications
+          <span style="font-weight:400;font-size:.7rem;color:var(--faint);text-transform:none;letter-spacing:0;margin-left:.5rem">From enabled modules only</span>
+        </div>
+        <div id="missing-certs-content" class="chart-canvas-wrap" style="flex:1;min-height:200px">
+          <!-- injected by _buildMissingCertsChart() -->
+        </div>
+      </div>
+    </div>
+
     <!-- Recent activity -->
     <div class="activity-card">
       <div class="activity-header">
@@ -3330,6 +3502,20 @@
             <tr class="skel-row"><td><div class="skel-cell skel" style="width:80px"></div></td><td><div class="skel-cell skel" style="width:140px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:90px"></div></td><td><div class="skel-cell skel" style="width:40px"></div></td><td><div class="skel-cell skel" style="width:60px"></div></td><td><div class="skel-cell skel" style="width:120px"></div></td><td></td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Certification Module Performance — collapsible, collapsed by default -->
+    <div class="module-perf-section" id="module-perf-section">
+      <div class="module-perf-header" onclick="toggleModulePerfSection()">
+        <span class="module-perf-title">Certification Module Performance</span>
+        <svg class="module-perf-chevron" id="module-perf-chevron"
+             width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </div>
+      <div class="module-perf-body" id="module-perf-body">
+        <!-- injected by _renderModulePerformanceTable() -->
       </div>
     </div>
 
@@ -7521,9 +7707,11 @@ function showSection(section) {
 // ---------------------------------------------------------------------------
 
 const _charts = {};         // keyed by canvas id
-let _dashInterval   = null; // 60s full refresh
-let _actInterval    = null; // 30s activity refresh
-let _dashLoaded     = false;
+let _dashInterval        = null;  // 60s full refresh
+let _actInterval         = null;  // 30s activity refresh
+let _dashLoaded          = false;
+let _moduleRefreshTimer  = null;  // debounce for module-triggered chart refresh
+let _lastModuleSignature = '';    // sorted module IDs — change detection for cross-tab sync
 
 // Color mapping for decisions (matches DECISION_CONFIG above)
 const DASH_DECISION_COLORS = {
@@ -7558,6 +7746,362 @@ function _destroyChart(id) {
 }
 
 // ---------------------------------------------------------------------------
+// Dashboard — module state helpers (read from _modulesCache / _moduleToggles)
+// ---------------------------------------------------------------------------
+
+function _getEnabledOptionalModuleIds() {
+  if (!_modulesCache) return [];
+  const ids = [];
+  _modulesCache.layers.forEach(layer => {
+    if (layer.layer === 1) return; // Layer 1 is always-on, not "optional"
+    layer.modules.forEach(mod => {
+      if (_moduleToggles[mod.module_id]) ids.push(mod.module_id);
+    });
+  });
+  return ids;
+}
+
+function _computeModuleSignature() {
+  return _getEnabledOptionalModuleIds().slice().sort().join(',');
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — module-aware banner
+// ---------------------------------------------------------------------------
+
+function _renderModuleBanner() {
+  const banner = document.getElementById('dash-module-banner');
+  const textEl = document.getElementById('dash-banner-text');
+  if (!banner || !textEl) return;
+  const count = _getEnabledOptionalModuleIds().length;
+  if (count === 0) {
+    banner.className = 'dash-module-banner core-only';
+    textEl.textContent = 'Core compliance only — enable certification modules for sustainability insights';
+  } else {
+    banner.className = 'dash-module-banner';
+    textEl.textContent = `Showing data for ${count} active module${count !== 1 ? 's' : ''}`;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — Sustainability Distribution Donut (module-sensitive)
+// ---------------------------------------------------------------------------
+
+function _buildSustainabilityDonut(data) {
+  const contentEl  = document.getElementById('sustain-dist-content');
+  const subtitleEl = document.getElementById('sustain-dist-subtitle');
+  if (!contentEl) return;
+
+  const grades    = data.grades     || {};
+  const total     = data.total      || 0;
+  const modCount  = data.module_count || 0;
+
+  if (modCount === 0) {
+    _destroyChart('chart-sustain');
+    contentEl.innerHTML = `
+      <div class="chart-empty-state">
+        <div class="chart-empty-icon">&#128202;</div>
+        <div class="chart-empty-text">No certification modules enabled. Enable modules in Settings to see sustainability distributions.</div>
+        <button class="chart-empty-cta" onclick="openSettingsDrawer()">Enable Modules</button>
+      </div>`;
+    if (subtitleEl) subtitleEl.style.display = 'none';
+    return;
+  }
+
+  if (subtitleEl) {
+    subtitleEl.textContent = `Based on ${modCount} active certification framework${modCount !== 1 ? 's' : ''}`;
+    subtitleEl.style.display = 'inline';
+  }
+
+  const GRADE_COLORS = { A: '#1DB87A', B: '#1B9AAA', C: '#E8A838', D: '#E05050', NA: '#4A5568' };
+  const GRADE_LABELS = { A: 'Grade A', B: 'Grade B', C: 'Grade C', D: 'Grade D', NA: 'N/A' };
+  const ORDER = ['A', 'B', 'C', 'D', 'NA'];
+  const counts = ORDER.map(g => grades[g] || 0);
+  const colors = ORDER.map(g => GRADE_COLORS[g]);
+  const labels = ORDER.map(g => GRADE_LABELS[g]);
+
+  contentEl.innerHTML = `
+    <div class="donut-layout" style="flex:1;align-items:center">
+      <div class="donut-wrap" style="position:relative">
+        <canvas id="chart-sustain" width="160" height="160"></canvas>
+        <div class="donut-center">
+          <div class="donut-center-val">${total.toLocaleString()}</div>
+          <div class="donut-center-lbl">screened</div>
+        </div>
+      </div>
+      <div class="donut-legend" id="sustain-legend"></div>
+    </div>`;
+
+  const legendEl = document.getElementById('sustain-legend');
+  if (legendEl) {
+    legendEl.innerHTML = ORDER.map((g, i) => `
+      <div class="donut-item">
+        <div class="donut-dot" style="background:${colors[i]}"></div>
+        <div class="donut-item-label">${labels[i]}</div>
+        <div class="donut-item-count">${counts[i].toLocaleString()}</div>
+        <div class="donut-item-pct">${total > 0 ? (counts[i] / total * 100).toFixed(1) : '0.0'}%</div>
+      </div>`).join('');
+  }
+
+  _destroyChart('chart-sustain');
+  const canvas = document.getElementById('chart-sustain');
+  if (!canvas) return;
+  _charts['chart-sustain'] = new Chart(canvas, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{ data: counts, backgroundColor: colors, borderColor: '#162845', borderWidth: 3, hoverOffset: 6 }],
+    },
+    options: {
+      responsive: false,
+      animation: { duration: 700, easing: 'easeOutQuart' },
+      cutout: '68%',
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0F2040', borderColor: '#1A3259', borderWidth: 1,
+          titleColor: '#EDF2F8', bodyColor: '#8BAABF',
+          callbacks: {
+            label: ctx => ' ' + ctx.label + ': ' + ctx.parsed.toLocaleString() +
+              ' (' + (total > 0 ? (ctx.parsed / total * 100).toFixed(1) : 0) + '%)',
+          },
+        },
+      },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — Top Missing Certifications Bar Chart (module-sensitive)
+// ---------------------------------------------------------------------------
+
+function _buildMissingCertsChart(data) {
+  const contentEl = document.getElementById('missing-certs-content');
+  if (!contentEl) return;
+
+  const certs    = (data.missing_certs || []).slice(0, 10);
+  const hasModules = _getEnabledOptionalModuleIds().length > 0;
+
+  if (certs.length === 0) {
+    _destroyChart('chart-missing-certs');
+    contentEl.innerHTML = `
+      <div class="chart-empty-state">
+        <div class="chart-empty-icon">&#128269;</div>
+        <div class="chart-empty-text">${
+          !hasModules
+          ? 'No certification modules enabled. Enable modules in Settings to see missing certification trends.'
+          : 'No missing certification data yet. Analyze shipments to see patterns.'
+        }</div>
+        ${!hasModules ? '<button class="chart-empty-cta" onclick="openSettingsDrawer()">Enable Modules</button>' : ''}
+      </div>`;
+    return;
+  }
+
+  // Ensure canvas is in place
+  if (!document.getElementById('chart-missing-certs')) {
+    contentEl.innerHTML = '<canvas id="chart-missing-certs"></canvas>';
+  }
+
+  const labels   = certs.map(c => c.module_name);
+  const counts   = certs.map(c => c.missing_count);
+  const bgColors = counts.map(() => 'rgba(224,80,80,.65)');
+
+  _destroyChart('chart-missing-certs');
+  const canvas = document.getElementById('chart-missing-certs');
+  if (!canvas) return;
+  _charts['chart-missing-certs'] = new Chart(canvas, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [{ label: 'Missing Flags', data: counts, backgroundColor: bgColors, borderRadius: 4 }],
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true, maintainAspectRatio: false,
+      animation: { duration: 600, easing: 'easeOutQuart' },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0F2040', borderColor: '#1A3259', borderWidth: 1,
+          titleColor: '#EDF2F8', bodyColor: '#8BAABF',
+          callbacks: {
+            label: (ctx) => {
+              const c = certs[ctx.dataIndex];
+              return [
+                ' Missing: ' + c.missing_count,
+                ' Screened: ' + c.total_screened,
+                ' Rate: ' + c.missing_rate_pct.toFixed(1) + '%',
+              ];
+            },
+          },
+        },
+      },
+      scales: {
+        x: { grid: { color: 'rgba(26,45,69,.5)' }, ticks: { precision: 0 }, min: 0 },
+        y: {
+          grid: { display: false },
+          ticks: {
+            font: { size: 10 },
+            callback: function(val) {
+              const lbl = this.getLabelForValue(val);
+              return lbl.length > 22 ? lbl.slice(0, 20) + '…' : lbl;
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — Certification Module Performance Table (module-sensitive)
+// ---------------------------------------------------------------------------
+
+function _renderModulePerformanceTable(data) {
+  const body = document.getElementById('module-perf-body');
+  if (!body) return;
+
+  const active   = data.active_modules   || [];
+  const inactive = data.inactive_modules || [];
+
+  if (active.length === 0 && inactive.length === 0) {
+    body.innerHTML = `<div style="padding:.75rem 0;color:var(--faint);font-size:.8rem">No module data available.</div>`;
+    return;
+  }
+
+  let html = '';
+
+  if (active.length > 0) {
+    html += `<div style="overflow-x:auto">
+    <table class="module-perf-tbl">
+      <thead>
+        <tr>
+          <th>Module</th><th>Layer</th><th>Shipments Screened</th>
+          <th>Detections</th><th>Missing Flags</th><th>Detection Rate</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${active.map(m => {
+          const rate  = m.detection_rate_pct || 0;
+          const cls   = rate >= 20 ? 'high' : rate >= 5 ? 'mid' : 'low';
+          const width = Math.min(100, rate);
+          return `<tr>
+            <td class="module-perf-name">${escHtml(m.module_name)}</td>
+            <td><span class="module-perf-layer">L${m.layer} ${escHtml(m.layer_name)}</span></td>
+            <td>${(m.total_shipments_screened || 0).toLocaleString()}</td>
+            <td>${(m.detections || 0).toLocaleString()}</td>
+            <td>${(m.missing_flags || 0).toLocaleString()}</td>
+            <td>
+              <div class="rate-bar-wrap">
+                <div class="rate-bar-track"><div class="rate-bar-fill ${cls}" style="width:${width}%"></div></div>
+                <span class="rate-bar-pct">${rate.toFixed(1)}%</span>
+              </div>
+            </td>
+          </tr>`;
+        }).join('')}
+      </tbody>
+    </table></div>`;
+  } else {
+    html += `<div style="padding:.75rem 0;color:var(--faint);font-size:.8rem">No active certification modules — enable modules to see screening performance.</div>`;
+  }
+
+  if (inactive.length > 0) {
+    html += `<div class="inactive-mods-section">
+      <div class="inactive-mods-label">Inactive Modules (not currently screening)</div>
+      <div class="inactive-pills">
+        ${inactive.map(m => `
+        <span class="inactive-pill">
+          ${escHtml(m.module_name)}
+          <button class="inactive-pill-add" title="Enable ${escHtml(m.module_name)}" onclick="openSettingsDrawer()">+</button>
+        </span>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  body.innerHTML = html;
+}
+
+function toggleModulePerfSection() {
+  const body    = document.getElementById('module-perf-body');
+  const chevron = document.getElementById('module-perf-chevron');
+  if (!body) return;
+  const open = body.classList.toggle('open');
+  if (chevron) chevron.classList.toggle('open', open);
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — Sustainability KPI card update (called after module-sensitive re-render)
+// ---------------------------------------------------------------------------
+
+function _updateSustainabilityKpiCard(sustainDist) {
+  const card = document.getElementById('kpi-sustainability');
+  if (!card) return;
+
+  const g = sustainDist.grades || {};
+  const A = g.A || 0, B = g.B || 0, C = g.C || 0, D = g.D || 0;
+  const gradedCount = A + B + C + D;
+
+  let display = '—', sub = 'enable modules to see sustainability data', cls = '';
+  if (gradedCount > 0) {
+    const avg = (A * 4 + B * 3 + C * 2 + D * 1) / gradedCount;
+    display   = avg >= 3.5 ? 'A' : avg >= 2.5 ? 'B' : avg >= 1.5 ? 'C' : 'D';
+    sub       = `A:${A} B:${B} C:${C} D:${D}`;
+    cls       = display === 'A' ? 'good' : display === 'B' ? '' : display === 'C' ? 'warn' : 'danger';
+  } else if ((sustainDist.module_count || 0) > 0) {
+    sub = 'no graded shipments yet';
+  }
+
+  const valEl = card.querySelector('.kpi-value');
+  const subEl = card.querySelector('.kpi-sub');
+  if (valEl) { valEl.className = `kpi-value ${cls}`; valEl.textContent = display; }
+  if (subEl) subEl.textContent = sub;
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — toast notification for module toggle events
+// ---------------------------------------------------------------------------
+
+function _showModuleToast(message, type) {
+  const container = document.getElementById('dash-toast-container');
+  if (!container) return;
+  const toast = document.createElement('div');
+  toast.className = `dash-toast ${type}`;
+  const icon = type === 'enable' ? '&#10003;' : '&#215;';
+  toast.innerHTML = `<span class="dash-toast-icon">${icon}</span>${escHtml(message)}`;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.style.animation = 'toast-out .25s var(--ease-out) forwards';
+    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 280);
+  }, 3000);
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard — refresh only module-sensitive charts (after toggle, cross-tab sync)
+// ---------------------------------------------------------------------------
+
+async function _refreshModuleSensitiveCharts() {
+  if (!_authToken) return;
+  try {
+    const base = apiUrl();
+    const _get = path => fetch(base + path, authedJson('GET'))
+      .then(r => { if (r.status === 401) { handle401(); throw new Error('401'); } return r.json(); });
+
+    const [sustainDist, moduleSummary, missingCerts] = await Promise.all([
+      _get('/api/v1/dashboard/sustainability-distribution'),
+      _get('/api/v1/dashboard/module-summary'),
+      _get('/api/v1/dashboard/top-missing-certifications?limit=10'),
+    ]);
+
+    _renderModuleBanner();
+    _buildSustainabilityDonut(sustainDist);
+    _buildMissingCertsChart(missingCerts);
+    _renderModulePerformanceTable(moduleSummary);
+    _updateSustainabilityKpiCard(sustainDist);
+    _lastModuleSignature = _computeModuleSignature();
+  } catch (_) {}
+}
+
+// ---------------------------------------------------------------------------
 // Dashboard — load all data
 // ---------------------------------------------------------------------------
 
@@ -7575,13 +8119,18 @@ async function loadDashboard(manual = false) {
     const _get = path => fetch(base + path, authedJson('GET'))
       .then(r => { if (r.status === 401) { handle401(); throw new Error('401'); } return r.json(); });
 
-    const [summary, decisions, trend, countries, shippers, activity] = await Promise.all([
+    // Fetch module-agnostic and module-sensitive endpoints in parallel
+    const [summary, decisions, trend, countries, shippers, activity,
+           sustainDist, moduleSummary, missingCerts] = await Promise.all([
       _get('/api/v1/dashboard/summary'),
       _get('/api/v1/dashboard/decisions'),
       _get('/api/v1/dashboard/fraud-trend?days=30'),
       _get('/api/v1/dashboard/top-countries?limit=10'),
       _get('/api/v1/dashboard/top-shippers?limit=10'),
       _get('/api/v1/dashboard/recent-activity?limit=20'),
+      _get('/api/v1/dashboard/sustainability-distribution'),
+      _get('/api/v1/dashboard/module-summary'),
+      _get('/api/v1/dashboard/top-missing-certifications?limit=10'),
     ]);
 
     _applyChartDefaults();
@@ -7589,12 +8138,22 @@ async function loadDashboard(manual = false) {
     const isEmpty = (summary.total_shipments || 0) === 0;
     document.getElementById('dash-empty').style.display = isEmpty ? 'flex' : 'none';
 
+    // Module-agnostic charts (re-rendered every 60s tick)
     _renderKpis(summary);
     _buildFraudTrendChart(trend);
     _buildDecisionDonut(decisions);
     _buildCountriesChart(countries);
     _buildShippersChart(shippers);
     _renderActivityFeed(activity);
+
+    // Module-sensitive charts and banner
+    _renderModuleBanner();
+    _buildSustainabilityDonut(sustainDist);
+    _buildMissingCertsChart(missingCerts);
+    _renderModulePerformanceTable(moduleSummary);
+    _updateSustainabilityKpiCard(sustainDist);
+
+    _lastModuleSignature = _computeModuleSignature();
 
     const now = new Date();
     document.getElementById('dash-last-updated').textContent =
@@ -7618,8 +8177,15 @@ async function loadDashboard(manual = false) {
 
 function _startDashTimers() {
   if (_dashInterval) return; // already running
-  _dashInterval = setInterval(() => {
-    if (_currentSection === 'dashboard') loadDashboard(false);
+  _dashInterval = setInterval(async () => {
+    if (_currentSection !== 'dashboard') return;
+    // Quietly re-check module state so cross-tab changes sync on next tick
+    await loadModules();
+    const newSig = _computeModuleSignature();
+    if (newSig !== _lastModuleSignature) {
+      _lastModuleSignature = newSig;
+    }
+    loadDashboard(false);
   }, 60000);
 
   _actInterval = setInterval(() => {
@@ -7696,7 +8262,7 @@ function _renderKpis(s) {
       <div class="kpi-value ${riskClass}">${avgRisk}</div>
       <div class="kpi-sub">pattern score ${avgPattern} / 100</div>
     </div>
-    <div class="kpi-card">
+    <div class="kpi-card" id="kpi-sustainability" title="Calculated from shipments screened with current module configuration">
       <div class="kpi-label">Avg Sustainability</div>
       <div class="kpi-value ${sustainClass}">${sustainDisplay}</div>
       <div class="kpi-sub">${sustainSub}</div>
@@ -8093,8 +8659,11 @@ function _renderActivityFeed(data) {
 
 function _dashCleanup() {
   _stopDashTimers();
+  clearTimeout(_moduleRefreshTimer);
+  _moduleRefreshTimer = null;
   Object.keys(_charts).forEach(k => _destroyChart(k));
   _dashLoaded = false;
+  _lastModuleSignature = '';
   const nav = document.getElementById('section-nav');
   if (nav) nav.style.display = 'none';
   showSection('analyze');
@@ -9539,6 +10108,19 @@ async function _patchModule(moduleId, enabled) {
       if (_modulesCache) _modulesCache.total_enabled = _countActive();
       updateActiveBadge(_countActive());
     }
+
+    // Toast notification + debounced module-sensitive chart refresh
+    const mod = _findModuleInCache(moduleId);
+    const modName = mod ? mod.name : moduleId;
+    _showModuleToast(
+      `Dashboard updated — ${modName} screening ${enabled ? 'enabled' : 'disabled'}`,
+      enabled ? 'enable' : 'disable'
+    );
+    // Debounced 1s: re-render module-sensitive charts if dashboard is loaded
+    clearTimeout(_moduleRefreshTimer);
+    _moduleRefreshTimer = setTimeout(() => {
+      if (_dashLoaded) _refreshModuleSensitiveCharts();
+    }, 1000);
   } catch (e) {
     console.warn('[PortGuard] module patch network error:', moduleId, e);
   }
@@ -9642,5 +10224,7 @@ function escH(str) {
     .replace(/"/g, '&quot;');
 }
 </script>
+<!-- Toast container for module toggle notifications -->
+<div id="dash-toast-container"></div>
 </body>
 </html>

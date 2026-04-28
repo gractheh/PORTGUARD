@@ -1383,6 +1383,44 @@ class PatternDB:
             logger.warning("get_report_payload(%s) failed: %s", analysis_id, exc)
             return None
 
+    def update_sustainability_fields(
+        self,
+        analysis_id: str,
+        organization_id: str,
+        grade: Optional[str],
+        signals_str: Optional[str],
+        active_modules_str: Optional[str],
+    ) -> None:
+        """Back-fill sustainability columns on an existing shipment_history row.
+
+        Called after :func:`record_shipment` once the sustainability rating and
+        module data are available.  Safe to call multiple times (idempotent UPDATE).
+        All errors are caught and logged — never raises.
+        """
+        if self._engine is None:
+            return
+        try:
+            with self._engine.begin() as conn:
+                conn.execute(
+                    text(
+                        """UPDATE shipment_history
+                              SET sustainability_grade    = :grade,
+                                  sustainability_signals  = :signals,
+                                  active_modules_snapshot = :active_mods
+                            WHERE analysis_id     = :analysis_id
+                              AND organization_id = :org_id"""
+                    ),
+                    {
+                        "grade":        grade,
+                        "signals":      signals_str,
+                        "active_mods":  active_modules_str,
+                        "analysis_id":  analysis_id,
+                        "org_id":       organization_id,
+                    },
+                )
+        except _SQLAlchemyError as exc:
+            logger.warning("update_sustainability_fields(%s) failed: %s", analysis_id, exc)
+
     # ------------------------------------------------------------------
     # Internal helpers — profile upsert (called within engine.begin() conn)
     # ------------------------------------------------------------------

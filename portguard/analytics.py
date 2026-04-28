@@ -35,6 +35,7 @@ Usage
 
 from __future__ import annotations
 
+import json as _json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
@@ -47,6 +48,36 @@ from sqlalchemy.engine import Engine
 from portguard.db import get_engine
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Module-stats aggregation helper (used by get_module_summary)
+# ---------------------------------------------------------------------------
+
+def _aggregate_module_stats(stats: dict, active_mods: list, findings: list) -> None:
+    """Accumulate per-module counts from a single shipment payload into *stats*.
+
+    stats[module_id] = {"total": int, "detections": int, "missing_flags": int}
+    """
+    DETECTION_TYPES = {"CERTIFICATION_DETECTED", "DECLARATION_PRESENT"}
+    MISSING_TYPES   = {"CERTIFICATION_MISSING"}
+
+    active_set = set(active_mods)
+    for mid in active_set:
+        entry = stats.setdefault(mid, {"total": 0, "detections": 0, "missing_flags": 0})
+        entry["total"] += 1
+
+    for f in findings:
+        if not isinstance(f, dict):
+            continue
+        mid  = f.get("module_id") or f.get("module_name")
+        ftype = f.get("finding_type", "")
+        if mid and mid in active_set:
+            entry = stats.setdefault(mid, {"total": 0, "detections": 0, "missing_flags": 0})
+            if ftype in DETECTION_TYPES:
+                entry["detections"] += 1
+            elif ftype in MISSING_TYPES:
+                entry["missing_flags"] += 1
 
 
 # ---------------------------------------------------------------------------
@@ -862,6 +893,302 @@ class DashboardAnalytics:
         except Exception as exc:
             logger.warning("get_recent_activity() failed: %s", exc)
             return {"activity": [], "total_shown": 0}
+
+    def get_module_summary(
+        self,
+        organization_id: str,
+        enabled_module_ids: list[str],
+    ) -> dict:
+        """Return per-module screening performance for the active module set.
+
+        Parses ``report_payload`` from ``shipment_history`` and ``result_json``
+        from ``bulk_shipments`` to build per-module counts.  This is done in
+        Python because module findings are stored as JSON blobs rather than in
+        queryable columns.
+
+        Parameters
+        ----------
+        organization_id:
+            Tenant scope.
+        enabled_module_ids:
+            Module IDs the org has currently enabled (from ModuleConfigDB).
+
+        Returns
+        -------
+        dict with keys ``active_modules`` (list) and ``inactive_modules`` (list).
+        """
+        try:
+            from portguard.data.certification_modules import MODULE_BY_ID
+        except Exception:
+            MODULE_BY_ID = {}  # type: ignore[assignment]
+
+        stats: dict[str, dict] = {}
+
+        # Single-document analyses
+        single_rows = self._query(
+            "SELECT report_payload FROM shipment_history "
+            "WHERE organization_id = ? AND report_payload IS NOT NULL",
+            (organization_id,),
+        )
+        for row in single_rows:
+            try:
+                payload = _json.loads(row["report_payload"])
+                _aggregate_module_stats(
+                    stats,
+                    payload.get("active_modules_at_scan") or [],
+                    payload.get("module_findings") or [],
+                )
+            except Exception:
+                pass
+
+        # Bulk analyses
+        bulk_rows = self._query(
+            """SELECT bs.result_json
+               FROM   bulk_shipments bs
+               JOIN   bulk_batches bb ON bs.batch_id = bb.batch_id
+               WHERE  bb.organization_id = ?
+                 AND  bs.result_json IS NOT NULL
+                 AND  bs.status = 'complete'""",
+            (organization_id,),
+        )
+        for row in bulk_rows:
+            try:
+                payload = _json.loads(row["result_json"])
+                _aggregate_module_stats(
+                    stats,
+                    payload.get("active_modules_at_scan") or [],
+                    payload.get("module_findings") or [],
+                )
+            except Exception:
+                pass
+
+        enabled_set = set(enabled_module_ids)
+        active_modules: list[dict]   = []
+        inactive_modules: list[dict] = []
+
+        for mid, m in MODULE_BY_ID.items():
+            if not m.toggleable:
+                continue
+            s          = stats.get(mid, {})
+            total      = s.get("total", 0)
+            detections = s.get("detections", 0)
+            missing    = s.get("missing_flags", 0)
+
+            if mid in enabled_set:
+                active_modules.append({
+                    "module_id":                mid,
+                    "module_name":              m.name,
+                    "layer":                    m.layer,
+                    "layer_name":               m.layer_name,
+                    "total_shipments_screened": total,
+                    "detections":               detections,
+                    "missing_flags":            missing,
+                    "not_applicable":           max(0, total - detections - missing),
+                    "detection_rate_pct":       round(detections / total * 100, 1) if total else 0.0,
+                })
+            else:
+                inactive_modules.append({
+                    "module_id":             mid,
+                    "module_name":           m.name,
+                    "layer":                 m.layer,
+                    "layer_name":            m.layer_name,
+                    "detections_if_enabled": None,
+                    "note":                  "Enable this module to screen for this certification",
+                })
+
+        active_modules.sort(key=lambda x: (-x["detection_rate_pct"], x["module_name"]))
+        inactive_modules.sort(key=lambda x: (x["layer"], x["module_name"]))
+
+        return {"active_modules": active_modules, "inactive_modules": inactive_modules}
+
+    def get_top_missing_certifications(
+        self,
+        organization_id: str,
+        module_ids: list[str] | None = None,
+        limit: int = 10,
+    ) -> dict:
+        """Return the most frequently missing certifications for this org.
+
+        Parameters
+        ----------
+        organization_id:
+            Tenant scope.
+        module_ids:
+            When provided, only include missing flags for these module IDs.
+            When None / empty, include all.
+        limit:
+            Maximum entries to return.
+
+        Returns
+        -------
+        dict with key ``missing_certs`` (list of {module_id, module_name,
+        layer, missing_count, total_screened, missing_rate_pct}).
+        """
+        filter_set = set(module_ids) if module_ids else None
+        stats: dict[str, dict] = {}
+
+        for source_rows, payload_key in [
+            (
+                self._query(
+                    "SELECT report_payload FROM shipment_history "
+                    "WHERE organization_id = ? AND report_payload IS NOT NULL",
+                    (organization_id,),
+                ),
+                "report_payload",
+            ),
+            (
+                self._query(
+                    """SELECT bs.result_json AS report_payload
+                       FROM   bulk_shipments bs
+                       JOIN   bulk_batches bb ON bs.batch_id = bb.batch_id
+                       WHERE  bb.organization_id = ?
+                         AND  bs.result_json IS NOT NULL
+                         AND  bs.status = 'complete'""",
+                    (organization_id,),
+                ),
+                "report_payload",
+            ),
+        ]:
+            for row in source_rows:
+                try:
+                    payload  = _json.loads(row[payload_key])
+                    active   = set(payload.get("active_modules_at_scan") or [])
+                    findings = payload.get("module_findings") or []
+                    for f in findings:
+                        if not isinstance(f, dict):
+                            continue
+                        mid   = f.get("module_id") or ""
+                        ftype = f.get("finding_type", "")
+                        if ftype == "CERTIFICATION_MISSING" and mid in active:
+                            if filter_set is None or mid in filter_set:
+                                e = stats.setdefault(mid, {"missing": 0, "total": 0, "name": mid, "layer": 0})
+                                e["missing"] += 1
+                    for mid in active:
+                        if filter_set is None or mid in filter_set:
+                            e = stats.setdefault(mid, {"missing": 0, "total": 0, "name": mid, "layer": 0})
+                            e["total"] += 1
+                except Exception:
+                    pass
+
+        try:
+            from portguard.data.certification_modules import MODULE_BY_ID
+            for mid, entry in stats.items():
+                m = MODULE_BY_ID.get(mid)
+                if m:
+                    entry["name"]  = m.name
+                    entry["layer"] = m.layer
+        except Exception:
+            pass
+
+        rows = [
+            {
+                "module_id":        mid,
+                "module_name":      e["name"],
+                "layer":            e["layer"],
+                "missing_count":    e["missing"],
+                "total_screened":   e["total"],
+                "missing_rate_pct": round(e["missing"] / e["total"] * 100, 1) if e["total"] else 0.0,
+            }
+            for mid, e in stats.items()
+            if e["missing"] > 0
+        ]
+        rows.sort(key=lambda x: -x["missing_count"])
+
+        return {"missing_certs": rows[:limit]}
+
+    def get_sustainability_distribution(
+        self,
+        organization_id: str,
+        enabled_module_ids: list[str],
+    ) -> dict:
+        """Return sustainability grade distribution filtered by active module snapshot.
+
+        Only counts shipments whose ``active_modules_snapshot`` column overlaps with
+        at least one of the currently enabled module IDs.  Legacy rows (null snapshot)
+        are excluded and reported separately.
+
+        Parameters
+        ----------
+        organization_id:
+            Tenant scope.
+        enabled_module_ids:
+            Module IDs currently enabled for this org.
+
+        Returns
+        -------
+        dict with keys:
+            grades (dict): {A, B, C, D, NA} counts — filtered to current modules.
+            total (int): Sum of grade counts (excludes legacy rows).
+            screened_with_current_modules (int): Same as total.
+            legacy_excluded (int): Rows excluded due to null/empty snapshot.
+            module_count (int): len(enabled_module_ids).
+            modules_used (list[str]): sorted enabled_module_ids.
+        """
+        empty: dict[str, int] = {"A": 0, "B": 0, "C": 0, "D": 0, "NA": 0}
+        if not enabled_module_ids:
+            return {
+                "grades": empty.copy(),
+                "total": 0,
+                "screened_with_current_modules": 0,
+                "legacy_excluded": 0,
+                "module_count": 0,
+                "modules_used": [],
+            }
+
+        try:
+            rows = self._query(
+                """
+                SELECT sustainability_grade,
+                       active_modules_snapshot,
+                       COUNT(*) AS cnt
+                FROM   shipment_history
+                WHERE  organization_id        = ?
+                  AND  sustainability_grade IS NOT NULL
+                GROUP  BY sustainability_grade, active_modules_snapshot
+                """,
+                (organization_id,),
+            )
+
+            enabled_set = set(enabled_module_ids)
+            grades: dict[str, int] = {"A": 0, "B": 0, "C": 0, "D": 0, "NA": 0}
+            legacy_excluded = 0
+            screened_with_current = 0
+
+            for row in rows:
+                grade = row["sustainability_grade"]
+                snap  = row["active_modules_snapshot"] or ""
+                cnt   = int(row["cnt"])
+
+                if not snap:
+                    legacy_excluded += cnt
+                    continue
+
+                snap_set = set(snap.split("|"))
+                if snap_set & enabled_set:
+                    key = "NA" if grade == "N/A" else grade
+                    if key in grades:
+                        grades[key] += cnt
+                        screened_with_current += cnt
+
+            return {
+                "grades": grades,
+                "total": sum(grades.values()),
+                "screened_with_current_modules": screened_with_current,
+                "legacy_excluded": legacy_excluded,
+                "module_count": len(enabled_module_ids),
+                "modules_used": sorted(enabled_module_ids),
+            }
+
+        except Exception as exc:
+            logger.warning("get_sustainability_distribution() failed: %s", exc)
+            return {
+                "grades": empty.copy(),
+                "total": 0,
+                "screened_with_current_modules": 0,
+                "legacy_excluded": 0,
+                "module_count": 0,
+                "modules_used": [],
+            }
 
     # ------------------------------------------------------------------
     # Lifecycle
