@@ -3950,8 +3950,6 @@ async function handleLogin(e) {
   btn.disabled = true;
   btn.textContent = 'Signing in…';
 
-  console.log('[PortGuard] Login attempt | email:', email);
-
   try {
     const res = await fetch(apiUrl() + '/api/v1/auth/login', {
       method: 'POST',
@@ -3959,8 +3957,6 @@ async function handleLogin(e) {
       body: JSON.stringify({ email, password }),
     });
     const data = await res.json();
-
-    console.log('[PortGuard] Login response | status:', res.status, 'data:', data);
 
     if (!res.ok) {
       const code = data.detail && data.detail.code;
@@ -3983,7 +3979,6 @@ async function handleLogin(e) {
       return;
     }
 
-    console.log('[PortGuard] Login successful | org:', data.org_name, 'token length:', data.access_token.length);
     _authToken   = data.access_token;
     _authOrgName = data.org_name;
     hideAuthOverlay(); // hideAuthOverlay handles section routing including pending deep-links

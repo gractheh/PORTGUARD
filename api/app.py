@@ -4151,4 +4151,4 @@ def bulk_csv_template():
         },
     )
 
-    return _pdf_response(pdf_bytes, shipment_id)
+
