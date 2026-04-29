@@ -2115,12 +2115,15 @@
     .bulk-slot.has-pdf { border-color: rgba(27,154,170,.45); }
 
     /* Mini PDF preview panel inside a slot */
+    /* Single-doc .pdf-preview-panel NOT touched */
     .bulk-slt-pdf-panel {
       margin: .4rem 0 .35rem;
       padding: .45rem .6rem;
       background: rgba(255,255,255,.02);
       border: 1px solid var(--border);
       border-radius: 6px;
+      max-height: 600px;
+      overflow-y: auto;
     }
     .bulk-slt-pdf-header {
       display: flex; align-items: center; gap: .6rem;
@@ -2133,7 +2136,8 @@
     .bulk-slt-pdf-meta { font-size: .7rem; color: var(--faint); }
     /* Compact thumbnail strip inside a slot */
     .bulk-slt-pdf-thumbs { gap: .35rem; }
-    .bulk-slt-pdf-thumbs .pdf-thumb-wrap { width: 48px; }
+    /* Single-doc .pdf-thumb-wrap base rule (line 1570) NOT touched */
+    .bulk-slt-pdf-thumbs .pdf-thumb-wrap { width: auto; }
 
     /* Override warning banner */
     .bulk-slt-pdf-override-warn {
@@ -2252,7 +2256,38 @@
       background: linear-gradient(90deg, var(--teal-700), var(--teal-400));
       transition: width .4s var(--ease-out);
     }
+    /* Indeterminate animated fill shown while awaiting synchronous response */
+    .bulk-progress-fill.indeterminate {
+      width: 35%;
+      animation: bulk-progress-indeterminate 1.8s ease-in-out infinite alternate;
+    }
+    @keyframes bulk-progress-indeterminate {
+      0%   { width: 15%; margin-left: 0; }
+      50%  { width: 40%; margin-left: 20%; }
+      100% { width: 25%; margin-left: 65%; }
+    }
     .bulk-progress-eta { font-size: .75rem; color: var(--muted); }
+
+    /* Per-row share button in bulk results table */
+    .bulk-share-row-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 24px; border-radius: 4px; border: none;
+      background: transparent; color: var(--teal-400); cursor: pointer;
+      transition: background .15s, color .15s; flex-shrink: 0;
+    }
+    .bulk-share-row-btn:hover { background: rgba(27,154,170,.15); color: var(--teal-300); }
+    .bulk-share-row-copied { font-size: .72rem; color: var(--teal-300); white-space: nowrap; }
+
+    /* Single-doc inline share button */
+    #single-share-btn {
+      display: none; align-items: center; gap: .35rem;
+      padding: .38rem .75rem; border: 1px solid rgba(27,154,170,.4);
+      border-radius: var(--radius-sm); background: transparent;
+      color: var(--teal-300); font-size: .8rem; font-weight: 600;
+      cursor: pointer; transition: all .15s; flex-shrink: 0;
+    }
+    #single-share-btn:hover { background: rgba(27,154,170,.08); border-color: var(--teal-500); }
+    #single-share-btn.copied { color: var(--green); border-color: rgba(29,184,122,.4); }
 
     .bulk-live-feed {
       background: var(--bg-card); border: 1px solid var(--border);
@@ -3170,6 +3205,13 @@
         </svg>
         <span id="download-report-label">Download Compliance Report</span>
       </button>
+      <button id="single-share-btn" onclick="singleShareResult()">
+        <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+          <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+        </svg>
+        <span id="single-share-label">Share Result</span>
+      </button>
       <span id="report-status"></span>
     </div>
 
@@ -3854,14 +3896,26 @@ function hideAuthOverlay() {
   document.getElementById('header-org').style.display   = 'flex';
   document.getElementById('logout-btn').style.display   = 'block';
   document.getElementById('header-org-name').textContent = _authOrgName || '';
-  // Show section navigation now that user is authenticated
   const nav = document.getElementById('section-nav');
   if (nav) nav.style.display = 'flex';
-  // Show settings gear button
   const gear = document.getElementById('settings-gear-btn');
   if (gear) gear.style.display = 'flex';
-  // Load modules into drawer (background, no spinner)
   loadModules();
+
+  // Restore pending deep-link if present; default to analyze tab
+  if (_pendingResultId) {
+    const rid = _pendingResultId;
+    _pendingResultId = null;
+    showSection('analyze');
+    _loadResultById(rid);
+  } else if (_pendingBatchId) {
+    const bid = _pendingBatchId;
+    _pendingBatchId = null;
+    showSection('bulk');
+    _bulkLoadSharedBatch(bid);
+  } else {
+    showSection('analyze');
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -3931,8 +3985,7 @@ async function handleLogin(e) {
     console.log('[PortGuard] Login successful | org:', data.org_name, 'token length:', data.access_token.length);
     _authToken   = data.access_token;
     _authOrgName = data.org_name;
-    hideAuthOverlay();
-    showSection('analyze');
+    hideAuthOverlay(); // hideAuthOverlay handles section routing including pending deep-links
   } catch (err) {
     console.error('[PortGuard] Login network error:', err);
     errEl.textContent = 'Network error — could not reach the server.';
@@ -6107,11 +6160,12 @@ function loadScenario(key) {
   // Scroll to input
   document.querySelector('.tabs-bar').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-  // Hide previous results and download button
+  // Hide previous results and download/share buttons
   const _r = document.getElementById('results');
   _r.classList.remove('visible');
   _r.style.display = '';
   document.getElementById('download-report-btn').style.display = 'none';
+  document.getElementById('single-share-btn').style.display = 'none';
   document.getElementById('report-status').textContent = '';
   document.getElementById('report-status').className = '';
   const _wb = document.getElementById('validation-warning-banner');
@@ -6339,6 +6393,7 @@ async function analyzeWithPipeline(documents) {
   _rEl.classList.remove('visible');
   _rEl.style.display = '';
   document.getElementById('download-report-btn').style.display = 'none';
+  document.getElementById('single-share-btn').style.display = 'none';
   document.getElementById('report-status').textContent = '';
   document.getElementById('report-status').className = '';
 
@@ -6759,14 +6814,18 @@ function renderResults(data) {
   renderPatternIntelligence(data);
   renderFeedbackUI(data);
 
-  // Show download button only when we have a shipment_id
-  const dlBtn = document.getElementById('download-report-btn');
+  // Show download + share buttons only when we have a shipment_id
+  const dlBtn    = document.getElementById('download-report-btn');
+  const shareBtn = document.getElementById('single-share-btn');
   const reportStatus = document.getElementById('report-status');
   if (data.shipment_id) {
     dlBtn.style.display = 'flex';
     dlBtn.dataset.shipmentId = data.shipment_id;
+    shareBtn.style.display = 'flex';
+    shareBtn.dataset.shipmentId = data.shipment_id;
   } else {
     dlBtn.style.display = 'none';
+    shareBtn.style.display = 'none';
   }
   // Reset any previous status message
   reportStatus.textContent = '';
@@ -6929,6 +6988,22 @@ async function downloadReport() {
     btn.classList.remove('loading');
     label.textContent = 'Download Compliance Report';
   }
+}
+
+function singleShareResult() {
+  const btn = document.getElementById('single-share-btn');
+  const labelEl = document.getElementById('single-share-label');
+  const shipmentId = btn.dataset.shipmentId;
+  if (!shipmentId) return;
+  const url = window.location.origin + window.location.pathname + '#result/' + shipmentId;
+  navigator.clipboard.writeText(url).then(() => {
+    btn.classList.add('copied');
+    labelEl.textContent = 'Link copied!';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      labelEl.textContent = 'Share Result';
+    }, 2000);
+  }).catch(() => { prompt('Copy this link:', url); });
 }
 
 async function downloadActivityReport(analysisId) {
@@ -8676,19 +8751,22 @@ function _dashCleanup() {
 // ---------------------------------------------------------------------------
 // Bulk state
 // ---------------------------------------------------------------------------
-let _bulkSlots       = [];   // [{ id, ref, tabs:[{id,filename,text}], activeTab }]
-let _bulkSlotNextId  = 1;
-let _bulkTabNextId   = 100;
-let _bulkMethod      = null; // 'zip' | 'csv' | 'manual'
-let _bulkZipFile     = null;
-let _bulkCsvFile     = null;
-let _bulkBatchId     = null;
-let _bulkPollTimer   = null;
-let _bulkSeenRefs    = new Set();
-let _bulkAllResults  = [];
-let _bulkSortKey     = 'risk_score';
-let _bulkSortAsc     = false;
-let _bulkFilter      = 'ALL';
+let _bulkSlots           = [];   // [{ id, ref, tabs:[{id,filename,text}], activeTab }]
+let _bulkSlotNextId      = 1;
+let _bulkTabNextId       = 100;
+let _bulkMethod          = null; // 'zip' | 'csv' | 'manual'
+let _bulkZipFile         = null;
+let _bulkCsvFile         = null;
+let _bulkBatchId         = null;
+let _bulkPollTimer       = null;
+let _bulkAbortController = null; // AbortController for in-flight bulk fetch
+let _bulkSeenRefs        = new Set();
+let _bulkAllResults      = [];
+let _bulkSortKey         = 'risk_score';
+let _bulkSortAsc         = false;
+let _bulkFilter          = 'ALL';
+let _pendingBatchId      = null; // set from ?batch= URL param on page load
+let _pendingResultId     = null; // set from #result/ URL hash on page load
 
 // ---------------------------------------------------------------------------
 // Decision helpers
@@ -8700,6 +8778,7 @@ const _BULK_DEC_LABEL = {
   REQUEST_MORE_INFORMATION: 'Needs Info',
   REJECT:                   'Rejected',
   ERROR:                    'Error',
+  TIMEOUT:                  'Timeout',
   PENDING:                  'Pending',
 };
 function _bulkDecLabel(d) { return _BULK_DEC_LABEL[d] || d || '—'; }
@@ -9210,6 +9289,7 @@ async function _bulkPdfHandleUpload(slotId, tabId, file) {
   _bulkUpdateSubmitBtn();
 }
 
+// Single-doc _pdfRenderThumb() at line ~7151 NOT touched
 async function _bulkPdfRenderThumb(pdfDoc, pageNum, slotId, tabId) {
   const page     = await pdfDoc.getPage(pageNum);
   const viewport = page.getViewport({ scale: 0.22 });
@@ -9223,6 +9303,14 @@ async function _bulkPdfRenderThumb(pdfDoc, pageNum, slotId, tabId) {
   }
   canvas.width  = viewport.width;
   canvas.height = viewport.height;
+  // Set --thumb-h so the scan beam travels exactly this canvas height, scoped per wrap
+  const wrapEl = document.getElementById(`bulk-pdf-thumb-wrap-${slotId}-${tabId}-${pageNum}`);
+  if (wrapEl) {
+    wrapEl.style.setProperty('--thumb-h', Math.round(viewport.height) + 'px');
+    // Keep the beam container clipped to canvas height
+    const beam = wrapEl.querySelector('.pdf-scan-beam');
+    if (beam) beam.style.height = canvas.height + 'px';
+  }
   await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
   return canvas.toDataURL('image/jpeg', 0.75);
 }
@@ -9367,15 +9455,22 @@ async function bulkModalConfirm() {
 // Submit — send to API
 // ---------------------------------------------------------------------------
 async function _bulkSubmit() {
-  // Switch to progress view
+  // Switch to progress view — results table hidden until all rows complete
   document.getElementById('bulk-upload-section').style.display  = 'none';
   document.getElementById('bulk-progress-screen').classList.add('visible');
   document.getElementById('bulk-results-screen').classList.remove('visible');
 
-  // Reset progress UI
+  // Reset progress UI — indeterminate bar while awaiting synchronous response
   _bulkSeenRefs = new Set();
   document.getElementById('bulk-live-feed-list').innerHTML = '';
-  _bulkSetProgress(0, 0, 0);
+  document.getElementById('bulk-progress-text').textContent = 'Analyzing shipments… please wait';
+  document.getElementById('bulk-progress-pct').textContent  = '';
+  const fillEl = document.getElementById('bulk-progress-fill');
+  fillEl.style.width = '';
+  fillEl.classList.add('indeterminate');
+
+  _bulkAbortController = new AbortController();
+  const signal = _bulkAbortController.signal;
 
   try {
     let res;
@@ -9383,18 +9478,19 @@ async function _bulkSubmit() {
       const fd = new FormData();
       fd.append('zip_file', _bulkZipFile);
       fd.append('input_method', 'ZIP');
-      res = await fetch(apiUrl() + '/api/v1/analyze/bulk', authedForm(fd));
+      res = await fetch(apiUrl() + '/api/v1/analyze/bulk', { ...authedForm(fd), signal });
     } else if (_bulkMethod === 'csv' && _bulkCsvFile) {
       const fd = new FormData();
       fd.append('csv_file', _bulkCsvFile);
       fd.append('input_method', 'CSV');
-      res = await fetch(apiUrl() + '/api/v1/analyze/bulk', authedForm(fd));
+      res = await fetch(apiUrl() + '/api/v1/analyze/bulk', { ...authedForm(fd), signal });
     } else {
-      // Manual JSON
+      // Manual — read enabled_modules from current settings drawer state
+      const enabledModules = Object.keys(_moduleToggles).filter(k => _moduleToggles[k]);
       const shipments = _bulkSlots
         .filter(s => s.tabs.some(t => (t.pdfExtractedText || t.text || '').trim()))
         .map(s => ({
-          ref: s.ref || ('SHP-' + String(s.id).padStart(3,'0')),
+          reference_id: s.ref || ('SHP-' + String(s.id).padStart(3,'0')),
           documents: s.tabs
             .filter(t => (t.pdfExtractedText || t.text || '').trim())
             .map(t => ({
@@ -9402,8 +9498,9 @@ async function _bulkSubmit() {
               raw_text: (t.pdfExtractedText || t.text || '').trim(),
             })),
         }));
-      res = await fetch(apiUrl() + '/api/v1/analyze/bulk',
-        authedJson('POST', { input_method: 'MANUAL', shipments }));
+      const body = { input_method: 'MANUAL', shipments };
+      if (enabledModules.length) body.enabled_modules = enabledModules;
+      res = await fetch(apiUrl() + '/api/v1/analyze/bulk', { ...authedJson('POST', body), signal });
     }
 
     if (res.status === 401) { handle401(); return; }
@@ -9422,16 +9519,88 @@ async function _bulkSubmit() {
     const data = await res.json();
     _bulkBatchId = data.batch_id;
 
-    // Start polling
-    _bulkStartPolling(data.total_shipments || 0);
+    // Backend returned all results synchronously — render immediately
+    fillEl.classList.remove('indeterminate');
+    _bulkRenderFromResponse(data);
 
   } catch (e) {
+    if (e.name === 'AbortError') return;  // user hit Cancel
     _bulkShowProgressError(e.message || 'Network error — is the API server running?');
+  } finally {
+    _bulkAbortController = null;
+    document.getElementById('bulk-progress-fill').classList.remove('indeterminate');
   }
 }
 
 // ---------------------------------------------------------------------------
-// Polling
+// Render all results from synchronous POST response (new format)
+// ---------------------------------------------------------------------------
+
+function _bulkRenderFromResponse(data) {
+  // Map POST /api/v1/analyze/bulk response (data.results[]) to _bulkAllResults
+  _bulkAllResults = (data.results || []).map(r => {
+    const sus = r.sustainability_rating || {};
+    return {
+      ref:          r.reference_id,
+      result_id:    r.result_id,
+      analysis_id:  r.result_id,   // compat alias — PDF download uses analysis_id
+      decision:     r.decision || (r.status === 'ERROR' ? 'ERROR' : 'PENDING'),
+      risk_score:   r.risk_score != null ? +r.risk_score : null,
+      n_findings:   (r.flags || []).length,
+      top_finding:  (r.flags && r.flags[0]) || r.summary || '',
+      findings:     r.flags || [],
+      status:       r.status,
+      error_message: r.error_message || null,
+      // Sustainability
+      sustainability_grade:
+        (sus && sus.grade) || null,
+      sustainability_signals:
+        Array.isArray(r.sustainability_signals) ? r.sustainability_signals
+        : (sus && sus.signals) || [],
+      module_findings: [],   // not present in bulk POST response
+      active_modules:
+        Array.isArray(r.active_modules_snapshot) ? r.active_modules_snapshot : [],
+    };
+  });
+
+  _bulkRenderStats(data.summary || {});
+  _bulkUpdateFilterCounts();
+  _bulkSortKey = 'risk_score'; _bulkSortAsc = false; _bulkFilter = 'ALL';
+  _bulkActivateFilter('ALL');
+  _bulkRenderTable();
+
+  document.getElementById('bulk-progress-screen').classList.remove('visible');
+  document.getElementById('bulk-results-screen').classList.add('visible');
+}
+
+function _bulkRenderStats(s) {
+  document.getElementById('bstat-total').textContent    = s.total    || _bulkAllResults.length;
+  document.getElementById('bstat-approved').textContent = s.approved || 0;
+  document.getElementById('bstat-flagged').textContent  = (s.flagged  || 0) + (s.rejected || 0);
+  document.getElementById('bstat-review').textContent   = s.review_recommended || 0;
+  document.getElementById('bstat-info').textContent     = s.needs_info || 0;
+  document.getElementById('bstat-errors').textContent   = s.errors  || 0;
+
+  const avgRisk = s.avg_risk_score;
+  const avgEl   = document.getElementById('bstat-avg-risk');
+  if (avgRisk != null) {
+    avgEl.textContent = Math.round(avgRisk * 100);
+    avgEl.style.color = _bulkRiskColor(avgRisk);
+  } else {
+    avgEl.textContent = '—';
+    avgEl.style.color = '';
+  }
+
+  if (s.highest_risk) {
+    const hr = s.highest_risk;
+    document.getElementById('bulk-highest-risk-bar').style.display = 'flex';
+    document.getElementById('bulk-hr-ref').textContent   = hr.ref || '—';
+    document.getElementById('bulk-hr-score').textContent = hr.risk_score != null ? Math.round(hr.risk_score * 100) : '—';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Polling (kept for share-link shared-batch restore path)
 // ---------------------------------------------------------------------------
 function _bulkStartPolling(total) {
   if (_bulkPollTimer) clearInterval(_bulkPollTimer);
@@ -9511,6 +9680,7 @@ function _bulkAddLiveFeedItem(s) {
 }
 
 async function bulkCancelBatch() {
+  if (_bulkAbortController) { _bulkAbortController.abort(); _bulkAbortController = null; }
   if (_bulkPollTimer) { clearInterval(_bulkPollTimer); _bulkPollTimer = null; }
   _bulkBatchId = null;
   bulkResetToUpload();
@@ -9538,13 +9708,15 @@ async function _bulkLoadResults() {
 
     _bulkAllResults = (data.shipments || []).map(s => ({
       ref:         s.ref,
-      decision:    s.decision   || 'PENDING',
+      result_id:   s.analysis_id,
+      analysis_id: s.analysis_id,
+      decision:    s.decision || (s.status === 'ERROR' ? 'ERROR' : 'PENDING'),
       risk_score:  s.risk_score != null ? +s.risk_score : null,
       n_findings:  s.n_findings || 0,
       top_finding: s.top_finding || '',
       status:      s.status,
-      analysis_id: s.analysis_id,
       findings:    (s.full_result && s.full_result.explanations) || [],
+      error_message: s.error_message || null,
       // Sustainability — prefer DB column (fast path), fall back to full_result
       sustainability_grade:
         s.sustainability_grade
@@ -9561,32 +9733,8 @@ async function _bulkLoadResults() {
           : ((s.full_result && s.full_result.active_modules_at_scan) || []),
     }));
 
-    // Summary stats
-    const decisions = data.decisions || {};
-    document.getElementById('bstat-total').textContent    = data.total_shipments || _bulkAllResults.length;
-    document.getElementById('bstat-approved').textContent = decisions.APPROVE || 0;
-    document.getElementById('bstat-flagged').textContent  = (decisions.FLAG_FOR_INSPECTION || 0) + (decisions.REJECT || 0);
-    document.getElementById('bstat-review').textContent   = decisions.REVIEW_RECOMMENDED || 0;
-    document.getElementById('bstat-info').textContent     = decisions.REQUEST_MORE_INFORMATION || 0;
-    document.getElementById('bstat-errors').textContent   = decisions.ERROR || 0;
-
-    const avgRisk = data.average_risk_score;
-    const avgEl   = document.getElementById('bstat-avg-risk');
-    if (avgRisk != null) {
-      avgEl.textContent = Math.round(avgRisk * 100);
-      avgEl.style.color = _bulkRiskColor(avgRisk);
-    } else {
-      avgEl.textContent = '—';
-      avgEl.style.color = '';
-    }
-
-    // Highest risk
-    if (data.highest_risk) {
-      const hr = data.highest_risk;
-      document.getElementById('bulk-highest-risk-bar').style.display = 'flex';
-      document.getElementById('bulk-hr-ref').textContent   = hr.ref || '—';
-      document.getElementById('bulk-hr-score').textContent = hr.risk_score != null ? Math.round(hr.risk_score * 100) : '—';
-    }
+    // Summary stats — results endpoint returns data.summary (not data.decisions)
+    _bulkRenderStats(data.summary || {});
 
     // Filter counts
     _bulkUpdateFilterCounts();
@@ -9666,11 +9814,15 @@ function _bulkRenderTable() {
     return;
   }
   rows.forEach(r => {
-    const dec   = r.decision || 'PENDING';
+    const dec   = r.decision || (r.status === 'ERROR' ? 'ERROR' : 'PENDING');
     const score = r.risk_score;
     const scorePct = score != null ? Math.round(score * 100) : null;
     const scoreColor = _bulkRiskColor(score);
-    const topFinding = r.top_finding ? escHtml(r.top_finding.slice(0, 60)) + (r.top_finding.length > 60 ? '…' : '') : '—';
+    // Show error message in summary column for error rows
+    const displaySummary = (dec === 'ERROR' || dec === 'TIMEOUT') && r.error_message
+      ? r.error_message
+      : (r.top_finding || '');
+    const topFinding = displaySummary ? escHtml(displaySummary.slice(0, 80)) + (displaySummary.length > 80 ? '…' : '') : '—';
     const expandId = 'bulk-expand-' + r.ref.replace(/[^a-z0-9]/gi,'_');
 
     // Sustainability badge cell
@@ -9680,8 +9832,22 @@ function _bulkRenderTable() {
       ? `<td><span class="sustain-badge sustain-badge-${sGradeKey}">${escHtml(sGrade)}</span></td>`
       : `<td style="color:var(--faint);font-size:.8rem;text-align:center">—</td>`;
 
+    // Share button (chain-link icon) — uses result_id for the /#result/ hash link
+    const shareRowId = JSON.stringify(r.result_id || r.analysis_id || '');
+    const shareBtn = (r.result_id || r.analysis_id) ? `
+          <button class="bulk-share-row-btn" id="bsr-${r.result_id || r.analysis_id}"
+                  title="Copy share link"
+                  onclick="bulkShareRowLink(${shareRowId}, this)">
+            <svg width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+            </svg>
+          </button>` : '';
+
     const row = document.createElement('tr');
     row.dataset.ref = r.ref;
+    // ERROR/TIMEOUT rows get coral background tint
+    if (dec === 'ERROR' || dec === 'TIMEOUT') row.style.background = 'rgba(224,80,80,.04)';
     row.innerHTML = `
       <td class="ref-cell">${escHtml(r.ref)}</td>
       <td><span class="bulk-badge ${dec}">${_bulkDecLabel(dec)}</span></td>
@@ -9692,7 +9858,7 @@ function _bulkRenderTable() {
         </div>
       </td>
       ${sCell}
-      <td>${r.n_findings || '—'}</td>
+      <td>${r.n_findings || (dec === 'ERROR' || dec === 'TIMEOUT' ? '—' : '0')}</td>
       <td style="color:var(--muted);font-size:.78rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${topFinding}</td>
       <td>
         <div class="bulk-row-actions">
@@ -9700,6 +9866,7 @@ function _bulkRenderTable() {
                   onclick="bulkToggleExpand(this,'${expandId}')">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
+          ${shareBtn}
           ${r.analysis_id ? `<button class="bulk-action-btn" title="Download PDF" onclick="bulkDownloadRowPdf(${JSON.stringify(r.analysis_id)})">
             <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
           </button>` : ''}
@@ -9766,20 +9933,45 @@ async function bulkDownloadRowPdf(analysisId) {
 // ---------------------------------------------------------------------------
 // Export
 // ---------------------------------------------------------------------------
-async function bulkExportCsv() {
-  if (!_bulkBatchId) return;
+function bulkExportCsv() {
+  if (!_bulkAllResults.length) return;
   const btn = document.getElementById('bulk-export-csv-btn');
   btn.disabled = true;
   try {
-    const res = await fetch(
-      apiUrl() + '/api/v1/analyze/bulk/' + _bulkBatchId + '/export/csv',
-      { headers: _authToken ? { Authorization: 'Bearer ' + _authToken } : {} }
-    );
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const blob = await res.blob();
+    const csvEsc = v => {
+      if (v == null) return '';
+      const s = String(v);
+      return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? '"' + s.replace(/"/g, '""') + '"'
+        : s;
+    };
+    const headers = [
+      'reference_id','decision','risk_score','risk_level',
+      'n_findings','top_finding',
+      'sustainability_grade','sustainability_signals',
+      'active_modules','status','error_message',
+    ];
+    const rows = [headers.join(',')];
+    _bulkAllResults.forEach(r => {
+      rows.push([
+        csvEsc(r.ref),
+        csvEsc(r.decision),
+        csvEsc(r.risk_score != null ? r.risk_score.toFixed(4) : ''),
+        csvEsc(r.risk_level || ''),
+        csvEsc(r.n_findings),
+        csvEsc(r.top_finding),
+        csvEsc(r.sustainability_grade),
+        csvEsc((r.sustainability_signals || []).join(' | ')),
+        csvEsc((r.active_modules || []).join(' | ')),
+        csvEsc(r.status),
+        csvEsc(r.error_message),
+      ].join(','));
+    });
+    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
-    a.href = url; a.download = 'portguard_batch_' + _bulkBatchId.slice(0,8) + '.csv';
+    a.href = url;
+    a.download = 'portguard_batch_' + (_bulkBatchId || 'export').slice(0,8) + '.csv';
     document.body.appendChild(a); a.click();
     document.body.removeChild(a); URL.revokeObjectURL(url);
   } catch (e) {
@@ -9829,6 +10021,22 @@ function bulkShareLink() {
   });
 }
 
+function bulkShareRowLink(resultId, btnEl) {
+  if (!resultId) return;
+  const url = window.location.origin + window.location.pathname + '#result/' + resultId;
+  const copyFn = () => {
+    navigator.clipboard.writeText(url).then(() => {
+      const orig = btnEl.innerHTML;
+      btnEl.insertAdjacentHTML('afterend', '<span class="bulk-share-row-copied" id="bsr-copied-' + resultId + '">Link copied!</span>');
+      setTimeout(() => {
+        const el = document.getElementById('bsr-copied-' + resultId);
+        if (el) el.remove();
+      }, 2000);
+    }).catch(() => { prompt('Copy this link:', url); });
+  };
+  copyFn();
+}
+
 // ---------------------------------------------------------------------------
 // Reset back to upload view
 // ---------------------------------------------------------------------------
@@ -9865,9 +10073,89 @@ document.addEventListener('keydown', e => {
 });
 
 // ---------------------------------------------------------------------------
+// Share-link loaders (WI2)
+// ---------------------------------------------------------------------------
+
+async function _bulkLoadSharedBatch(batchId) {
+  document.getElementById('bulk-upload-section').style.display = 'none';
+  document.getElementById('bulk-results-screen').classList.remove('visible');
+  document.getElementById('bulk-progress-screen').classList.add('visible');
+  document.getElementById('bulk-progress-text').textContent = 'Loading shared batch…';
+  document.getElementById('bulk-progress-pct').textContent  = '';
+  document.getElementById('bulk-progress-fill').classList.remove('indeterminate');
+  document.getElementById('bulk-progress-fill').style.width = '0';
+
+  // Clear the hash/query from the URL after reading, so refresh works cleanly
+  history.replaceState(null, '', window.location.pathname);
+
+  try {
+    const res = await fetch(
+      apiUrl() + '/api/v1/analyze/bulk/' + batchId + '/status',
+      { headers: _authToken ? { Authorization: 'Bearer ' + _authToken } : {} }
+    );
+    if (res.status === 401) { handle401(); return; }
+    if (res.status === 404) { _bulkShowProgressError('Batch not found or access denied.'); return; }
+    if (!res.ok) { _bulkShowProgressError('Could not load batch — server error.'); return; }
+
+    const d = await res.json();
+    _bulkBatchId = batchId;
+
+    if (d.status === 'COMPLETE' || d.status === 'FAILED') {
+      await _bulkLoadResults();
+    } else {
+      _bulkSetProgress(d.processed || 0, d.total || 0, 0);
+      _bulkStartPolling(d.total || 0);
+    }
+  } catch (e) {
+    _bulkShowProgressError('Network error: ' + e.message);
+  }
+}
+
+async function _loadResultById(resultId) {
+  // Clear the hash from URL so refresh doesn't re-trigger the modal
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+
+  try {
+    const res = await fetch(
+      apiUrl() + '/api/v1/results/' + resultId,
+      { headers: _authToken ? { Authorization: 'Bearer ' + _authToken } : {} }
+    );
+    if (res.status === 401) { handle401(); return; }
+    if (res.status === 403) {
+      showError('This result belongs to a different organization.');
+      return;
+    }
+    if (res.status === 404) {
+      showError('Result not found or has expired.');
+      return;
+    }
+    if (!res.ok) {
+      showError('Could not load result — server error.');
+      return;
+    }
+    const data = await res.json();
+    // Render in single-doc analyze view
+    renderResults(data);
+  } catch (e) {
+    showError('Network error loading result: ' + e.message);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
 renderTabs();
+
+// Read deep-link parameters before showing auth overlay.
+// ?batch=<id>    → share link for a batch (WI2)
+// #result/<id>   → share link for a single result (WI2)
+(function _readDeepLink() {
+  const batchParam = new URLSearchParams(window.location.search).get('batch');
+  if (batchParam) { _pendingBatchId = batchParam; }
+  const hash = window.location.hash;
+  const resultMatch = hash.match(/^#result\/(.+)/);
+  if (resultMatch) { _pendingResultId = resultMatch[1]; }
+})();
 
 // Show auth overlay immediately on page load — app requires authentication.
 showAuthOverlay();
