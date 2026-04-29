@@ -2403,7 +2403,7 @@
     /* Results table */
     .bulk-table-wrap {
       background: var(--bg-card); border: 1px solid var(--border);
-      border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 1.25rem;
+      border-radius: var(--radius-lg); overflow-x: auto; margin-bottom: 1.25rem;
     }
     .bulk-table {
       width: 100%; border-collapse: collapse; font-size: .83rem;
@@ -2449,6 +2449,7 @@
     .bulk-badge.REJECT               { background: rgba(224,80,80,.15);   color: #E05050; }
     .bulk-badge.ERROR                { background: rgba(74,104,128,.15);  color: #8BAABF; }
     .bulk-badge.PENDING              { background: rgba(74,104,128,.1);   color: var(--faint); }
+    .bulk-badge.TIMEOUT              { background: rgba(224,80,80,.15);   color: #E05050; }
 
     /* Row expand inline analysis */
     .bulk-row-expand {
@@ -2798,11 +2799,11 @@
       border: 1.5px solid currentColor; white-space: nowrap;
       margin-top: .25rem;
     }
-    .sustain-badge-A { color: #1DB87A; background: rgba(29,184,122,.12); }
-    .sustain-badge-B { color: #1BA8A8; background: rgba(27,168,168,.12); }
-    .sustain-badge-C { color: #E8A838; background: rgba(232,168,56,.12); }
-    .sustain-badge-D { color: #E05050; background: rgba(224,80,80,.12); }
-    .sustain-badge-NA{ color: var(--faint); background: rgba(255,255,255,.05); }
+    .sustain-badge-A { color: #22c55e; background: rgba(34,197,94,.12); }
+    .sustain-badge-B { color: #14b8a6; background: rgba(20,184,166,.12); }
+    .sustain-badge-C { color: #f59e0b; background: rgba(245,158,11,.12); }
+    .sustain-badge-D { color: #ef4444; background: rgba(239,68,68,.12); }
+    .sustain-badge-NA{ color: #6b7280; background: rgba(107,114,128,.1); }
 
     /* ---- Sustainability card ---- */
     .sustain-grade-display {
@@ -9690,7 +9691,7 @@ function _bulkShowProgressError(msg) {
   if (_bulkPollTimer) { clearInterval(_bulkPollTimer); _bulkPollTimer = null; }
   document.getElementById('bulk-progress-text').textContent = '⚠ ' + msg;
   document.getElementById('bulk-progress-text').style.color = 'var(--red)';
-  document.getElementById('bulk-cancel-btn').disabled = true;
+  document.getElementById('bulk-cancel-btn').disabled = false;
 }
 
 // ---------------------------------------------------------------------------
@@ -9789,6 +9790,7 @@ function bulkSort(key) {
     if (!el) return;
     el.textContent = _bulkSortKey === k ? (_bulkSortAsc ? '↑' : '↓') : '';
   });
+  document.querySelectorAll('.bulk-table th').forEach(t => t.classList.remove('sorted'));
   document.getElementById('bsort-' + _bulkSortKey)?.parentElement?.classList.add('sorted');
   _bulkRenderTable();
 }
@@ -9823,7 +9825,7 @@ function _bulkRenderTable() {
       ? r.error_message
       : (r.top_finding || '');
     const topFinding = displaySummary ? escHtml(displaySummary.slice(0, 80)) + (displaySummary.length > 80 ? '…' : '') : '—';
-    const expandId = 'bulk-expand-' + r.ref.replace(/[^a-z0-9]/gi,'_');
+    const expandId = 'bulk-expand-' + (r.ref || r.result_id || 'row').replace(/[^a-z0-9]/gi,'_');
 
     // Sustainability badge cell
     const sGrade = r.sustainability_grade;
@@ -9845,11 +9847,11 @@ function _bulkRenderTable() {
           </button>` : '';
 
     const row = document.createElement('tr');
-    row.dataset.ref = r.ref;
+    row.dataset.ref = r.ref || '';
     // ERROR/TIMEOUT rows get coral background tint
     if (dec === 'ERROR' || dec === 'TIMEOUT') row.style.background = 'rgba(224,80,80,.04)';
     row.innerHTML = `
-      <td class="ref-cell">${escHtml(r.ref)}</td>
+      <td class="ref-cell">${escHtml(r.ref || r.result_id || '—')}</td>
       <td><span class="bulk-badge ${dec}">${_bulkDecLabel(dec)}</span></td>
       <td>
         <div class="bulk-risk-bar-wrap">
