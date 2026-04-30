@@ -69,6 +69,104 @@
       /* ── Easing ── */
       --ease-out:    cubic-bezier(0, 0, 0.2, 1);
       --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+      /* ── Extended Teal Scale ── */
+      --teal-800:  #0A4A54;
+      --teal-100:  #B8EEF4;
+
+      /* ── Coral / Container Red Scale ── */
+      --coral-700: #8B1A1A;
+      --coral-600: #B02020;
+      --coral-500: #C0392B;
+      --coral-400: #D94F42;
+      --coral-300: #E87D74;
+      --coral-100: #F9D4D0;
+
+      /* ── Amber / Sunset Gold Scale ── */
+      --amber-700: #7A4F0A;
+      --amber-400: #F0BE5A;
+      --amber-300: #F5D07A;
+
+      /* ── Semantic Status Colors ── */
+      --success:      #1DB87A;
+      --success-dim:  #0F6B47;
+      --success-glow: rgba(29,184,122,.25);
+      --warning-dim:  #5C3D08;
+      --danger:       #E05050;
+      --danger-dim:   #5A1515;
+      --danger-glow:  rgba(224,80,80,.25);
+      --flag:         #D4773A;
+      --flag-dim:     #5C2D0A;
+      --purple-dim:   #3A1F6E;
+
+      /* ── Teal Border Variants ── */
+      --border-teal:    rgba(27,154,170,.3);
+      --border-teal-hi: rgba(27,154,170,.6);
+
+      /* ── Extended Glow System ── */
+      --glow-teal-lg:    0 0 32px rgba(27,154,170,.45), 0 0 12px rgba(27,154,170,.25);
+      --glow-danger-sm:  0 0 10px rgba(224,80,80,.2);
+      --glow-danger-md:  0 0 20px rgba(224,80,80,.3);
+      --glow-success-sm: 0 0 10px rgba(29,184,122,.2);
+      --glow-success-md: 0 0 22px rgba(29,184,122,.3);
+
+      /* ── Elevation Shadow ── */
+      --shadow-card-hover: 0 8px 36px rgba(0,0,0,.45), 0 2px 8px rgba(0,0,0,.25);
+
+      /* ── Typography Tokens ── */
+      --font-ui:   'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+
+      /* ── Spacing Scale (8px grid) ── */
+      --space-1:  0.25rem;
+      --space-2:  0.5rem;
+      --space-3:  0.75rem;
+      --space-4:  1rem;
+      --space-5:  1.25rem;
+      --space-6:  1.5rem;
+      --space-8:  2rem;
+      --space-10: 2.5rem;
+      --space-12: 3rem;
+      --space-16: 4rem;
+
+      /* ── Ocean Scene Palette Tokens (mutable — set by applyPalette()) ── */
+      --sky-top:          #010814;
+      --sky-mid:          #061020;
+      --sky-horizon:      #0A1628;
+      --sky-bottom:       #0A1628;
+      --horizon-color:    rgba(27,154,170,.08);
+      --horizon-water:    rgba(27,154,170,.15);
+      --ocean-surface:    #061830;
+      --ocean-mid:        #041420;
+      --ocean-deep:       #020C1A;
+      --ocean-foam:       rgba(77,207,223,.12);
+      --ambient-tint:     rgba(27,154,170,.04);
+      --celestial-color:  #FFFFFF;
+      --sun-color:        #FFFFFF;
+      --celestial-glow:   rgba(255,255,255,.15);
+      --sun-glow:         rgba(255,255,255,.15);
+      --sun-outer:        rgba(255,255,255,.06);
+      --star-opacity:     0.85;
+      --stars-opacity:    0.85;
+      --cloud-color:      rgba(255,255,255,.8);
+      --cloud-opacity:    0.06;
+      --horizon-haze:     rgba(27,154,170,.08);
+      --dock-silhouette:  #020A14;
+      --dock-brightness:  0.4;
+      --water-highlight:  rgba(232,239,248,.04);
+      --celestial-top:    18%;
+      --celestial-left:   55%;
+
+      /* ── Frosted Glass System ── */
+      --glass-bg:           rgba(10,22,40,.72);
+      --glass-border:       rgba(77,207,223,.12);
+      --glass-blur:         blur(18px);
+      --glass-shadow:       0 8px 32px rgba(0,0,0,.45), 0 1px 0 rgba(77,207,223,.08) inset;
+      --glass-bg-light:     rgba(15,32,64,.65);
+      --glass-border-light: rgba(77,207,223,.18);
+
+      /* ── Ripple ── */
+      --ripple-color: rgba(77,207,223,.35);
     }
 
     html { scroll-behavior: smooth; }
@@ -133,18 +231,17 @@
       animation: fade-up .5s var(--ease-out) forwards;
     }
 
-    /* Wave background SVG layer */
-    #wave-bg {
+    /* Ocean scene background — replaces #wave-bg */
+    #ocean-scene {
       position: fixed; inset: 0; pointer-events: none; z-index: 0;
-      width: 100%; height: 100%; overflow: hidden;
+      overflow: hidden;
     }
-    #wave-bg svg { width: 200%; height: 100%; }
     @keyframes wave-drift-left  { from { transform: translateX(0); }    to { transform: translateX(-50%); } }
     @keyframes wave-drift-right { from { transform: translateX(-50%); } to { transform: translateX(0); } }
     @media (prefers-reduced-motion: reduce) {
       .pg-fade-up { animation: none; opacity: 1; }
-      #wave-bg { display: none; }
-      body::before { display: none; }
+      #ocean-scene { display: none; }
+      body::before { opacity: .3; }
     }
 
     /* ---- Header ---- */
@@ -1140,7 +1237,6 @@
     }
     .dash-refresh-btn:hover { color: var(--text); border-color: var(--border-hi); }
     .dash-refresh-btn.spinning svg { animation: spin .7s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
 
     /* --- KPI Cards --- */
     .kpi-row {
@@ -2860,6 +2956,418 @@
       color: var(--teal-300);
     }
 
+    /* ============================================================
+       OCEAN SCENE — LAYER CSS
+       ============================================================ */
+
+    #sky-layer {
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to bottom,
+        var(--sky-top)     0%,
+        var(--sky-mid)     45%,
+        var(--sky-horizon) 100%);
+      transition: background 90s ease;
+    }
+
+    #celestial-body {
+      position: absolute;
+      width: 60px; height: 60px;
+      border-radius: 50%;
+      pointer-events: none;
+      background: var(--celestial-color, #FFFFFF);
+      box-shadow:
+        0 0 90px var(--sun-glow, rgba(255,255,255,.15)),
+        0 0 40px var(--sun-glow, rgba(255,255,255,.15)),
+        0 0 160px var(--sun-outer, rgba(255,255,255,.06));
+      top:  var(--celestial-top,  18%);
+      left: var(--celestial-left, 55%);
+      transform: translate(-50%, -50%);
+      animation: celestial-pulse 4s ease-in-out infinite;
+      transition: background 90s ease, box-shadow 90s ease,
+                  top 90s ease, left 90s ease, width 90s ease, height 90s ease;
+      will-change: transform;
+    }
+
+    #stars-canvas {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 1;
+      opacity: var(--stars-opacity, 0.85);
+      transition: opacity 90s ease;
+    }
+
+    #cloud-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .cloud {
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .cloud-puff {
+      position: absolute;
+      pointer-events: none;
+      will-change: transform;
+      opacity: var(--cloud-opacity, 0.06);
+      transition: opacity 90s ease;
+    }
+
+    #cloud-1 {
+      width: 320px; height: 80px;
+      top: 8%;
+      left: 10%;
+      animation: cloudDrift 90s linear infinite;
+      background:
+        radial-gradient(ellipse 50% 40% at 50% 50%, rgba(255,255,255,.90) 0%, rgba(255,255,255,.50) 40%, transparent 70%),
+        radial-gradient(ellipse 30% 50% at 35% 60%, rgba(255,255,255,.70) 0%, transparent 60%),
+        radial-gradient(ellipse 25% 45% at 65% 55%, rgba(255,255,255,.60) 0%, transparent 55%);
+    }
+    #cloud-2 {
+      width: 220px; height: 60px;
+      top: 14%;
+      left: 60%;
+      animation: cloudDriftR 130s linear infinite;
+      background:
+        radial-gradient(ellipse 50% 40% at 50% 50%, rgba(255,255,255,.85) 0%, rgba(255,255,255,.45) 40%, transparent 70%),
+        radial-gradient(ellipse 28% 50% at 33% 60%, rgba(255,255,255,.65) 0%, transparent 60%);
+    }
+    #cloud-3 {
+      width: 160px; height: 45px;
+      top: 5%;
+      left: 80%;
+      animation: cloudDrift 110s linear infinite;
+      background:
+        radial-gradient(ellipse 50% 40% at 50% 50%, rgba(255,255,255,.80) 0%, rgba(255,255,255,.40) 40%, transparent 70%);
+    }
+    #cloud-4 {
+      width: 280px; height: 50px;
+      top: 20%;
+      left: 30%;
+      animation: cloudDriftR 150s linear infinite;
+      background:
+        radial-gradient(ellipse 50% 40% at 50% 50%, rgba(255,255,255,.75) 0%, rgba(255,255,255,.38) 40%, transparent 70%),
+        radial-gradient(ellipse 30% 45% at 40% 58%, rgba(255,255,255,.55) 0%, transparent 55%);
+    }
+    #cloud-5 {
+      width: 200px; height: 65px;
+      top: 10%;
+      left: -50px;
+      animation: cloudDrift 80s linear infinite;
+      background:
+        radial-gradient(ellipse 50% 40% at 50% 50%, rgba(255,255,255,.88) 0%, rgba(255,255,255,.48) 40%, transparent 70%),
+        radial-gradient(ellipse 28% 48% at 36% 58%, rgba(255,255,255,.68) 0%, transparent 58%);
+    }
+
+    #horizon-layer {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 30vh;
+      pointer-events: none;
+      z-index: 3;
+    }
+    #dock-svg {
+      width: 100%; height: 100%;
+      filter: brightness(var(--dock-brightness, 0.4));
+    }
+
+    #ocean-water {
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 22vh;
+      pointer-events: none;
+      z-index: 4;
+      overflow: hidden;
+    }
+    #ocean-water svg { width: 200%; height: 100%; }
+
+    #ships-layer {
+      position: absolute;
+      bottom: 16%;
+      left: 0; right: 0;
+      height: 120px;
+      overflow: hidden;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .bg-ship {
+      position: absolute;
+      bottom: 0;
+      pointer-events: none;
+      will-change: transform;
+    }
+
+    .ship-wake {
+      position: absolute;
+      bottom: -2px;
+      width: 120%;
+      left: -10%;
+      height: 8px;
+      opacity: 0.25;
+    }
+
+    /* Frosted glass utility classes */
+    .glass {
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      box-shadow: var(--glass-shadow);
+    }
+    .glass-light {
+      background: var(--glass-bg-light);
+      border: 1px solid var(--glass-border-light);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+      box-shadow: var(--glass-shadow);
+    }
+
+    /* Ripple click effect */
+    .btn-ripple {
+      position: relative;
+      overflow: hidden;
+    }
+    .ripple-wave {
+      position: absolute;
+      border-radius: 50%;
+      width: 40px; height: 40px;
+      background: var(--ripple-color);
+      pointer-events: none;
+      animation: ripple-expand 600ms var(--ease-out) forwards;
+    }
+
+    /* Analyze button float idle */
+    .btn-float-idle:not(:disabled) {
+      animation: btn-float 3s ease-in-out infinite;
+    }
+    .btn-float-idle:not(:disabled):hover,
+    .btn-float-idle:not(:disabled):focus {
+      animation: none;
+    }
+
+    /* Spring lift — secondary buttons */
+    .spring-lift {
+      transition: transform 150ms var(--ease-spring), box-shadow 150ms ease-out;
+    }
+    .spring-lift:hover:not(:disabled) {
+      transform: translateY(-1px);
+      box-shadow: var(--glow-teal-sm);
+    }
+    .spring-lift:active:not(:disabled) {
+      transform: translateY(0);
+      box-shadow: none;
+    }
+
+    /* Quick-load emoji bounce */
+    .quick-btn:hover .quick-emoji {
+      animation: quick-bounce 400ms var(--ease-spring);
+    }
+
+    /* Settings gear spin */
+    .settings-gear-btn:hover svg {
+      animation: gear-spin 300ms var(--ease-spring) forwards;
+    }
+
+    /* Stat pill staggered bob — additive to existing .stat-pill base */
+    .stat-pill:nth-child(1) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 0s; }
+    .stat-pill:nth-child(2) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 0.25s; }
+    .stat-pill:nth-child(3) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 0.50s; }
+    .stat-pill:nth-child(4) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 0.75s; }
+    .stat-pill:nth-child(5) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 1.00s; }
+    .stat-pill:nth-child(6) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 1.25s; }
+
+    /* Module card — enhanced hover (extends existing rule) */
+    .module-card {
+      transition: transform 200ms var(--ease-out), border-color 180ms ease, box-shadow 180ms ease;
+    }
+    .module-card:hover:not(.locked) {
+      transform: translateX(4px);
+      border-color: var(--border-teal);
+      box-shadow: var(--glow-teal-sm);
+    }
+
+    /* Preset button — enhanced hover (extends existing rule) */
+    .preset-btn {
+      transition: transform 200ms var(--ease-spring), background 180ms ease,
+                  border-color 180ms ease, color 180ms ease;
+    }
+    .preset-btn:hover { transform: translateY(-2px) scale(1.03); }
+    .preset-btn:active { transform: translateY(0) scale(0.98); }
+
+    /* Progress bar ship rider */
+    .bulk-progress-bar { position: relative; }
+    .bulk-progress-ship {
+      position: absolute;
+      top: -14px;
+      font-size: 1.1rem; line-height: 1;
+      pointer-events: none;
+      transform: translateX(-50%);
+      animation: ship-rider-bounce 1.5s ease-in-out infinite;
+      transition: left 400ms ease-out;
+      z-index: 2;
+      user-select: none;
+    }
+
+    /* ============================================================
+       OCEAN SCENE — KEYFRAME ANIMATIONS
+       ============================================================ */
+
+    /* Ship crossing — left direction */
+    @keyframes shipSailLeft {
+      from { transform: translateX(110vw); }
+      to   { transform: translateX(-320px); }
+    }
+    /* Ship crossing — right direction */
+    @keyframes shipSailRight {
+      from { transform: translateX(-320px) scaleX(-1); }
+      to   { transform: translateX(110vw)  scaleX(-1); }
+    }
+    /* Build-plan aliases used by JS Phase 3 */
+    @keyframes ship-cross-left {
+      from { transform: translateX(110vw); }
+      to   { transform: translateX(-320px); }
+    }
+    @keyframes ship-cross-right {
+      from { transform: scaleX(-1) translateX(110vw); }
+      to   { transform: scaleX(-1) translateX(-320px); }
+    }
+
+    /* Cloud drift — leftward */
+    @keyframes cloudDrift {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-110vw); }
+    }
+    /* Cloud drift — rightward */
+    @keyframes cloudDriftR {
+      from { transform: translateX(0); }
+      to   { transform: translateX(110vw); }
+    }
+    /* Build-plan aliases */
+    @keyframes cloud-drift-left {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-110vw); }
+    }
+    @keyframes cloud-drift-right {
+      from { transform: translateX(0); }
+      to   { transform: translateX(110vw); }
+    }
+
+    /* Cloud gentle bob */
+    @keyframes cloudBob {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-6px); }
+    }
+
+    /* Ship bob on water */
+    @keyframes shipBob {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-4px); }
+    }
+
+    /* Wake pulse */
+    @keyframes wakePulse {
+      0%, 100% { opacity: 0.15; }
+      50%       { opacity: 0.30; }
+    }
+
+    /* Wave roll — continuous translate for wave paths */
+    @keyframes waveRoll {
+      from { transform: translateX(0); }
+      to   { transform: translateX(-50%); }
+    }
+
+    /* Foam pop / flash on wave crests */
+    @keyframes foamPop {
+      0%, 100% { opacity: 0; }
+      50%       { opacity: .6; }
+    }
+    @keyframes foam-flash {
+      0%, 100% { opacity: 0; }
+      50%       { opacity: .6; }
+    }
+
+    /* Star twinkle — canvas handled, this is CSS fallback */
+    @keyframes star-twinkle {
+      0%, 100% { opacity: var(--star-opacity, .85); }
+      50%       { opacity: calc(var(--star-opacity, .85) * .3); }
+    }
+
+    /* Ripple click wave */
+    @keyframes ripple-expand {
+      from { transform: scale(0); opacity: 1; }
+      to   { transform: scale(4); opacity: 0; }
+    }
+
+    /* Analyze button float */
+    @keyframes btn-float {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-3px); }
+    }
+
+    /* Stat pill bob */
+    @keyframes stat-bob {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-2px); }
+    }
+
+    /* Progress bar ship rider bounce */
+    @keyframes ship-rider-bounce {
+      0%, 100% { transform: translateY(0) translateX(-50%); }
+      50%       { transform: translateY(-3px) translateX(-50%); }
+    }
+
+    /* Celestial body glow pulse */
+    @keyframes celestial-pulse {
+      0%, 100% { filter: blur(6px); }
+      50%       { filter: blur(8px); }
+    }
+
+    /* Quick-load emoji bounce */
+    @keyframes quick-bounce {
+      0%, 100% { transform: translateY(0); }
+      40%       { transform: translateY(-5px); }
+      70%       { transform: translateY(-2px); }
+    }
+
+    /* Settings gear spin on hover */
+    @keyframes gear-spin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(30deg); }
+    }
+
+    /* Mobile: hide ocean scene on small screens */
+    @media (max-width: 640px) {
+      #ocean-scene { display: none; }
+    }
+
+    /* Comprehensive reduced-motion suppression */
+    @media (prefers-reduced-motion: reduce) {
+      #ocean-scene,
+      #sky-layer,
+      #cloud-layer,
+      #ships-layer { display: none !important; }
+
+      .stat-pill { animation: none !important; }
+      #analyze-btn { animation: none !important; }
+      .bulk-progress-ship { animation: none !important; }
+      .star-static { animation: none !important; }
+      .ripple-wave { display: none !important; }
+
+      .spring-lift:hover { transform: none !important; }
+      .quick-btn:hover { transform: none !important; }
+      .preset-btn:hover { transform: none !important; }
+      .module-card:hover { transform: none !important; }
+      .settings-gear-btn:hover svg { animation: none !important; }
+
+      body::before { opacity: .3 !important; }
+    }
+
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -2872,20 +3380,207 @@
 </head>
 <body>
 
-<!-- ===================== WAVE BACKGROUND ===================== -->
-<div id="wave-bg" aria-hidden="true">
-  <svg xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none" viewBox="0 0 1200 800"
-       style="animation: wave-drift-left 28s linear infinite">
-    <path d="M0,400 Q150,340 300,400 Q450,460 600,400 Q750,340 900,400 Q1050,460 1200,400
-             Q1350,340 1500,400 Q1650,460 1800,400 Q1950,340 2100,400 Q2250,460 2400,400"
-          fill="none" stroke="rgba(27,154,170,.025)" stroke-width="1.5"/>
-    <path d="M0,500 Q150,440 300,500 Q450,560 600,500 Q750,440 900,500 Q1050,560 1200,500
-             Q1350,440 1500,500 Q1650,560 1800,500"
-          fill="none" stroke="rgba(27,154,170,.018)" stroke-width="1"/>
-    <path d="M0,600 Q200,550 400,600 Q600,650 800,600 Q1000,550 1200,600
-             Q1400,650 1600,600 Q1800,550 2000,600"
-          fill="none" stroke="rgba(34,181,200,.015)" stroke-width="1.2"/>
-  </svg>
+<!-- ===================== OCEAN SCENE ===================== -->
+<div id="ocean-scene" aria-hidden="true">
+
+  <!-- Layer 1: Sky — gradient + celestial body -->
+  <div id="sky-layer">
+    <div id="celestial-body"></div>
+  </div>
+
+  <!-- Layer 2: Stars canvas -->
+  <canvas id="stars-canvas"></canvas>
+
+  <!-- Layer 3: Clouds — 5 independent puffs -->
+  <div id="cloud-layer">
+    <div class="cloud"><div class="cloud-puff" id="cloud-1" data-speed="90"  data-dir="left"  data-y="8"  data-opacity="0.6"></div></div>
+    <div class="cloud"><div class="cloud-puff" id="cloud-2" data-speed="130" data-dir="right" data-y="14" data-opacity="0.45"></div></div>
+    <div class="cloud"><div class="cloud-puff" id="cloud-3" data-speed="110" data-dir="left"  data-y="5"  data-opacity="0.55"></div></div>
+    <div class="cloud"><div class="cloud-puff" id="cloud-4" data-speed="150" data-dir="right" data-y="20" data-opacity="0.35"></div></div>
+    <div class="cloud"><div class="cloud-puff" id="cloud-5" data-speed="80"  data-dir="left"  data-y="10" data-opacity="0.50"></div></div>
+  </div>
+
+  <!-- Layer 4: Horizon — dock silhouette SVG -->
+  <div id="horizon-layer">
+    <svg id="dock-svg" xmlns="http://www.w3.org/2000/svg"
+         viewBox="0 0 1440 320" preserveAspectRatio="xMidYMax meet"
+         width="100%" height="100%">
+
+      <!-- Far background buildings -->
+      <rect x="40"  y="120" width="160" height="200" rx="2"
+            fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="220" y="160" width="30"  height="160"
+            fill="var(--dock-silhouette,#0A0A14)"/>
+      <ellipse cx="235" cy="160" rx="25" ry="15"
+            fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="280" y="140" width="220" height="180"
+            fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="540" y="60"  width="80"  height="260" rx="1"
+            fill="var(--dock-silhouette,#0A0A14)"/>
+      <!-- Office tower windows -->
+      <rect x="548" y="70"  width="10" height="12" rx="1" fill="var(--dock-silhouette,#0A0A14)" opacity="0.3"/>
+      <rect x="564" y="70"  width="10" height="12" rx="1" fill="var(--dock-silhouette,#0A0A14)" opacity="0.3"/>
+      <rect x="580" y="70"  width="10" height="12" rx="1" fill="var(--dock-silhouette,#0A0A14)" opacity="0.3"/>
+      <rect x="596" y="70"  width="10" height="12" rx="1" fill="var(--dock-silhouette,#0A0A14)" opacity="0.3"/>
+      <rect x="548" y="90"  width="10" height="12" rx="1" fill="var(--dock-silhouette,#0A0A14)" opacity="0.3"/>
+      <rect x="564" y="90"  width="10" height="12" rx="1" fill="var(--dock-silhouette,#0A0A14)" opacity="0.3"/>
+      <rect x="580" y="90"  width="10" height="12" rx="1" fill="var(--dock-silhouette,#0A0A14)" opacity="0.3"/>
+      <rect x="596" y="90"  width="10" height="12" rx="1" fill="var(--dock-silhouette,#0A0A14)" opacity="0.3"/>
+      <rect x="660" y="130" width="200" height="190"
+            fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="900" y="160" width="300" height="160"
+            fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1250" y="50" width="16"  height="270"
+            fill="var(--dock-silhouette,#0A0A14)"/>
+
+      <!-- ── Gantry Crane 1 (center ~350) ── -->
+      <rect x="316" y="200" width="12" height="120" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="372" y="200" width="12" height="120" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="310" y="198" width="80" height="10"  fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="344" y="80"  width="12" height="125" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="180" y="77"  width="170" height="8"  fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="355" y="77"  width="120" height="8"  fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="466" y="65"  width="20"  height="22" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="348" y="85"  width="8"   height="80"
+            stroke="rgba(255,255,255,.06)" stroke-width="1" fill="none"/>
+      <rect x="338" y="162" width="28"  height="6"  fill="var(--dock-silhouette,#0A0A14)"/>
+      <circle cx="350" cy="75" r="4" fill="#FF4040" opacity="0.7"/>
+
+      <!-- ── Gantry Crane 2 (foreground ~780) ── -->
+      <rect x="742" y="190" width="14" height="130" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="810" y="190" width="14" height="130" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="734" y="187" width="92" height="12"  fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="776" y="60"  width="14" height="135" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="580" y="56"  width="200" height="9"  fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="789" y="56"  width="160" height="9"  fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="936" y="42"  width="24"  height="26" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="780" y="65"  width="8"   height="95" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="768" y="157" width="32"  height="7"  fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="769" y="100" width="22"  height="18" rx="1" fill="var(--dock-silhouette,#0A0A14)"/>
+      <circle cx="783" cy="52" r="5" fill="#FF4040" opacity="0.8"/>
+
+      <!-- ── Gantry Crane 3 (right background ~1180) ── -->
+      <rect x="1154" y="210" width="10" height="110" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1202" y="210" width="10" height="110" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1148" y="208" width="70" height="9"   fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1172" y="100" width="10" height="115" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1020" y="97"  width="155" height="7"  fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1181" y="97"  width="100" height="7"  fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1272" y="85"  width="18"  height="20" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1174" y="105" width="6"   height="70" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1167" y="172" width="22"  height="5"  fill="var(--dock-silhouette,#0A0A14)"/>
+      <circle cx="1177" cy="93" r="3.5" fill="#FF4040" opacity="0.65"/>
+
+      <!-- ── Container Stacks ── -->
+      <!-- Row 1 — bottom (y=262) -->
+      <rect x="460" y="262" width="32" height="18" rx="1" fill="rgba(192,57,43,.40)"/>
+      <rect x="494" y="262" width="32" height="18" rx="1" fill="rgba(232,168,56,.40)"/>
+      <rect x="528" y="262" width="32" height="18" rx="1" fill="rgba(27,154,170,.40)"/>
+      <rect x="562" y="262" width="32" height="18" rx="1" fill="rgba(192,57,43,.40)"/>
+      <rect x="596" y="262" width="32" height="18" rx="1" fill="rgba(232,168,56,.40)"/>
+      <rect x="630" y="262" width="32" height="18" rx="1" fill="rgba(80,100,130,.40)"/>
+      <rect x="664" y="262" width="32" height="18" rx="1" fill="rgba(192,57,43,.40)"/>
+      <rect x="698" y="262" width="32" height="18" rx="1" fill="rgba(27,154,170,.40)"/>
+      <!-- Row 2 — middle (y=242) -->
+      <rect x="468" y="242" width="32" height="18" rx="1" fill="rgba(232,168,56,.35)"/>
+      <rect x="502" y="242" width="32" height="18" rx="1" fill="rgba(192,57,43,.35)"/>
+      <rect x="536" y="242" width="32" height="18" rx="1" fill="rgba(27,154,170,.35)"/>
+      <rect x="570" y="242" width="32" height="18" rx="1" fill="rgba(80,100,130,.35)"/>
+      <rect x="604" y="242" width="32" height="18" rx="1" fill="rgba(192,57,43,.35)"/>
+      <rect x="638" y="242" width="32" height="18" rx="1" fill="rgba(232,168,56,.35)"/>
+      <!-- Row 3 — top (y=222) -->
+      <rect x="476" y="222" width="32" height="18" rx="1" fill="rgba(192,57,43,.30)"/>
+      <rect x="510" y="222" width="32" height="18" rx="1" fill="rgba(27,154,170,.30)"/>
+      <rect x="544" y="222" width="32" height="18" rx="1" fill="rgba(232,168,56,.30)"/>
+      <rect x="578" y="222" width="32" height="18" rx="1" fill="rgba(80,100,130,.30)"/>
+
+      <!-- ── Wharf edge + bollards ── -->
+      <rect x="0" y="295" width="1440" height="25" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="40"  y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="120" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="200" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="280" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="360" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="440" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="760" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="840" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1000" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1080" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1160" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1240" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1320" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1400" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
+
+      <!-- Navigation beacon left pier -->
+      <line x1="80" y1="295" x2="80" y2="240"
+            stroke="var(--dock-silhouette,#0A0A14)" stroke-width="3"/>
+      <circle cx="80" cy="236" r="6" fill="#FF8000" opacity="0.7"/>
+
+      <!-- Right skyline extension -->
+      <rect x="1300" y="140" width="80"  height="180"
+            fill="var(--dock-silhouette,#0A0A14)"/>
+      <rect x="1390" y="100" width="50"  height="220"
+            fill="var(--dock-silhouette,#0A0A14)"/>
+    </svg>
+  </div>
+
+  <!-- Layer 5: Ocean water — animated waves + foam -->
+  <div id="ocean-water">
+    <svg xmlns="http://www.w3.org/2000/svg"
+         viewBox="0 0 1440 200" preserveAspectRatio="xMidYMax meet"
+         width="100%" height="100%">
+      <defs>
+        <linearGradient id="ocean-depth-grad" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="var(--ocean-surface)" stop-opacity="0.95"/>
+          <stop offset="100%" stop-color="var(--ocean-deep)"    stop-opacity="1"/>
+        </linearGradient>
+        <radialGradient id="foam-grad">
+          <stop offset="0%"   stop-color="white" stop-opacity="0.8"/>
+          <stop offset="100%" stop-color="white" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+
+      <!-- Deep ocean base fill -->
+      <rect x="0" y="0" width="1440" height="200" fill="url(#ocean-depth-grad)"/>
+
+      <!-- Primary wave — moves left 22s -->
+      <path id="wave-primary"
+        d="M0,80 C180,60 360,100 540,80 C720,60 900,100 1080,80 C1260,60 1440,100 1620,80
+           C1800,60 1980,100 2160,80 C2340,60 2520,100 2700,80 L2700,200 L0,200 Z"
+        fill="var(--ocean-surface)" opacity="0.7"
+        style="animation: wave-drift-left 22s linear infinite; will-change: transform;"/>
+
+      <!-- Secondary wave — moves right 28s -->
+      <path id="wave-secondary"
+        d="M0,95 C240,75 480,115 720,95 C960,75 1200,115 1440,95
+           C1680,75 1920,115 2160,95 C2400,75 2640,115 2880,95 L2880,200 L0,200 Z"
+        fill="var(--ocean-surface)" opacity="0.45"
+        style="animation: wave-drift-right 28s linear infinite; will-change: transform;"/>
+
+      <!-- Horizon shimmer line -->
+      <line x1="0" y1="4" x2="1440" y2="4"
+        stroke="var(--water-highlight)" stroke-width="1.5" opacity="0.6"
+        style="animation: wave-drift-left 18s linear infinite;"/>
+
+      <!-- Foam sparkles — 12 ellipses at wave crests -->
+      <ellipse cx="120"  cy="78" rx="18" ry="5" fill="url(#foam-grad)" style="animation: foam-flash 3.2s ease-in-out infinite; animation-delay: 0.0s;"/>
+      <ellipse cx="310"  cy="92" rx="12" ry="4" fill="url(#foam-grad)" style="animation: foam-flash 2.8s ease-in-out infinite; animation-delay: 0.5s;"/>
+      <ellipse cx="520"  cy="75" rx="22" ry="6" fill="url(#foam-grad)" style="animation: foam-flash 3.5s ease-in-out infinite; animation-delay: 1.1s;"/>
+      <ellipse cx="700"  cy="88" rx="14" ry="4" fill="url(#foam-grad)" style="animation: foam-flash 2.6s ease-in-out infinite; animation-delay: 0.3s;"/>
+      <ellipse cx="860"  cy="80" rx="20" ry="5" fill="url(#foam-grad)" style="animation: foam-flash 3.0s ease-in-out infinite; animation-delay: 1.8s;"/>
+      <ellipse cx="1050" cy="93" rx="16" ry="5" fill="url(#foam-grad)" style="animation: foam-flash 3.3s ease-in-out infinite; animation-delay: 0.8s;"/>
+      <ellipse cx="1200" cy="78" rx="10" ry="3" fill="url(#foam-grad)" style="animation: foam-flash 2.9s ease-in-out infinite; animation-delay: 2.1s;"/>
+      <ellipse cx="1360" cy="88" rx="18" ry="5" fill="url(#foam-grad)" style="animation: foam-flash 3.1s ease-in-out infinite; animation-delay: 0.6s;"/>
+      <ellipse cx="220"  cy="85" rx="8"  ry="3" fill="url(#foam-grad)" style="animation: foam-flash 2.7s ease-in-out infinite; animation-delay: 1.4s;"/>
+      <ellipse cx="640"  cy="82" rx="14" ry="4" fill="url(#foam-grad)" style="animation: foam-flash 3.4s ease-in-out infinite; animation-delay: 2.5s;"/>
+      <ellipse cx="980"  cy="76" rx="11" ry="3" fill="url(#foam-grad)" style="animation: foam-flash 2.5s ease-in-out infinite; animation-delay: 0.9s;"/>
+      <ellipse cx="1290" cy="91" rx="16" ry="5" fill="url(#foam-grad)" style="animation: foam-flash 3.6s ease-in-out infinite; animation-delay: 1.7s;"/>
+    </svg>
+  </div>
+
+  <!-- Layer 6: Ships — dynamically spawned by JS -->
+  <div id="ships-layer"></div>
+
 </div>
 
 <!-- ===================== AUTH OVERLAY ===================== -->
