@@ -3368,6 +3368,88 @@
       body::before { opacity: .3 !important; }
     }
 
+    /* ============================================================
+       PHASE 4 + 6 POLISH — Auth, Banners, Hero, Module Cards
+       ============================================================ */
+
+    /* Auth overlay — translucent so ocean scene shows through */
+    #auth-overlay {
+      background: rgba(5,12,26,0.78);
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+    }
+
+    /* Auth card — deep frosted glass */
+    .auth-card {
+      background: rgba(10,22,40,0.82) !important;
+      border: 1px solid rgba(77,207,223,0.14) !important;
+      backdrop-filter: blur(20px) !important;
+      -webkit-backdrop-filter: blur(20px) !important;
+      box-shadow:
+        0 24px 80px rgba(0,0,0,.6),
+        0 8px 24px rgba(0,0,0,.3),
+        0 1px 0 rgba(77,207,223,.08) inset !important;
+      position: relative;
+      overflow: hidden;
+    }
+    .auth-card::after {
+      content: '';
+      position: absolute;
+      bottom: -30px; right: -30px;
+      width: 180px; height: 110px;
+      opacity: 0.035;
+      pointer-events: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 70' fill='none'%3E%3Cpath d='M8,30 L0,42 L4,60 L196,60 L200,42 L192,30Z' fill='%234DCFDF'/%3E%3Crect x='20' y='14' width='28' height='16' rx='1' fill='%234DCFDF'/%3E%3Crect x='54' y='14' width='28' height='16' rx='1' fill='%234DCFDF'/%3E%3Crect x='88' y='14' width='28' height='16' rx='1' fill='%234DCFDF'/%3E%3Crect x='140' y='10' width='44' height='20' rx='2' fill='%234DCFDF'/%3E%3C/svg%3E");
+      background-size: contain;
+      background-repeat: no-repeat;
+      background-position: bottom right;
+    }
+
+    /* Decision banners — frosted + enhanced color glows */
+    .decision-banner {
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+    }
+    .decision-banner.REJECT {
+      box-shadow: var(--shadow-card), 0 0 28px rgba(224,80,80,.18);
+    }
+    .decision-banner.FLAG_FOR_INSPECTION {
+      box-shadow: var(--shadow-card), 0 0 24px rgba(212,119,58,.15);
+    }
+    .decision-banner.REVIEW_RECOMMENDED {
+      box-shadow: var(--shadow-card), 0 0 22px rgba(155,108,214,.15);
+    }
+    .decision-banner.APPROVE,
+    .decision-banner.CLEAR {
+      box-shadow: var(--shadow-card), 0 0 20px rgba(29,184,122,.12);
+    }
+
+    /* Hero H1 — three-stop gradient + drop-shadow depth */
+    .hero h1 {
+      background: linear-gradient(135deg, #EDF2F8 0%, #B8EEF4 55%, #4DCFDF 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      filter: drop-shadow(0 2px 12px rgba(77,207,223,.18));
+    }
+
+    /* Hero badge — subtle glow pulse */
+    @keyframes badge-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(77,207,223,0); }
+      50%       { box-shadow: 0 0 14px 3px rgba(77,207,223,.18); }
+    }
+    .hero-badge { animation: badge-pulse 3.5s ease-in-out infinite; }
+
+    /* Module card enabled — teal-tinted fill + stronger hover */
+    .module-card.enabled {
+      background: rgba(27,154,170,.06);
+    }
+    .module-card.enabled:hover {
+      background: rgba(27,154,170,.1);
+      border-color: var(--border-teal-hi);
+      box-shadow: var(--glow-teal-sm);
+    }
+
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -3744,7 +3826,7 @@
   <!-- Drawer header -->
   <div class="drawer-header">
     <div class="drawer-header-left">
-      <div class="drawer-title">Screening Modules</div>
+      <div class="drawer-title">⚓ Screening Modules</div>
       <div class="drawer-subtitle">Customize which certification frameworks PortGuard screens for. Core compliance modules are always active.</div>
       <div class="drawer-active-badge" id="drawer-active-badge">
         <svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3" fill="currentColor"/></svg>
@@ -3818,7 +3900,7 @@
     Rule-Based Compliance Engine
   </div>
   <h1 class="pg-fade-up" style="animation-delay:.16s">Automated Import<br>Compliance Screening</h1>
-  <p class="pg-fade-up" style="animation-delay:.24s">Paste your shipping documents and get an instant compliance decision, risk score, and actionable findings.</p>
+  <p class="pg-fade-up" style="animation-delay:.24s">Paste your shipping documents and get an instant compliance decision, risk score, and actionable findings — before your cargo ever touches port.</p>
   <div class="hero-stats pg-fade-up" style="animation-delay:.32s">
     <div class="stat-pill"><strong>333</strong> Section 301 tariff HTS prefixes</div>
     <div class="stat-pill"><strong>14</strong> active AD/CVD orders</div>
@@ -4259,9 +4341,27 @@
 
     <!-- Empty state (hidden until detected) -->
     <div class="dash-empty" id="dash-empty" style="display:none">
-      <div class="dash-empty-icon">&#128202;</div>
-      <div class="dash-empty-title">No shipments analyzed yet</div>
-      <div class="dash-empty-sub">Run your first analysis to see fraud trends, decision breakdowns, and shipper intelligence appear here.</div>
+      <div class="dash-empty-icon" style="width:auto;height:auto;border-radius:0;border:none;background:none;padding:0">
+        <div style="position:relative;width:80px;height:60px;margin:0 auto 1rem">
+          <svg width="80" height="60" viewBox="0 0 80 60" fill="none" style="position:absolute;inset:0">
+            <path d="M0,45 Q20,42 40,45 Q60,48 80,45" stroke="rgba(27,154,170,.3)" stroke-width="1.5" fill="none"/>
+            <path d="M0,50 Q25,47 50,50 Q65,53 80,50" stroke="rgba(27,154,170,.2)" stroke-width="1" fill="none"/>
+          </svg>
+          <div style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);animation:stat-bob 3s ease-in-out infinite">
+            <svg width="54" height="22" viewBox="0 0 54 22" fill="none">
+              <path d="M2,10 L0,16 L2,20 L52,20 L54,16 L52,10Z" fill="#1B9AAA" opacity="0.6"/>
+              <line x1="0" y1="16" x2="54" y2="16" stroke="#4DCFDF" stroke-width="0.8" opacity="0.55"/>
+              <rect x="5"  y="5" width="9" height="5" rx="0.5" fill="#C0392B" opacity="0.55"/>
+              <rect x="16" y="5" width="9" height="5" rx="0.5" fill="#E8A838" opacity="0.55"/>
+              <rect x="27" y="5" width="9" height="5" rx="0.5" fill="#1B9AAA" opacity="0.55"/>
+              <rect x="37" y="7" width="10" height="8" rx="1"   fill="#162845" opacity="0.7"/>
+              <rect x="39" y="4" width="3"  height="5" rx="0.5" fill="#C0392B" opacity="0.6"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+      <div class="dash-empty-title">Harbor is quiet — no shipments yet</div>
+      <div class="dash-empty-sub">Screen your first shipment to watch the analytics fill in. Run your first analysis to see fraud trends, decision breakdowns, and shipper intelligence appear here.</div>
       <button class="dash-empty-cta" onclick="showSection('analyze')">
         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path d="M9 12h6M9 16h6M7 4H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2"/>
@@ -11705,6 +11805,55 @@ function escH(str) {
     _rippleObserver.observe(document.body, { childList: true, subtree: true });
   }
 
+  // ── 14a. injectAnalyzeBtnEmoji() ─────────────────────────────────────────
+  function injectAnalyzeBtnEmoji() {
+    const btn = document.getElementById('analyze-btn');
+    if (!btn || btn.querySelector('.btn-anchor-emoji')) return;
+    const span = document.createElement('span');
+    span.className = 'btn-anchor-emoji';
+    span.textContent = '⚓';
+    span.style.cssText = 'font-size:.9em;margin-right:.4em;display:inline-block';
+    btn.insertBefore(span, btn.firstChild);
+    btn.classList.add('btn-float-idle');
+  }
+
+  // ── 14b. injectQuickLoadEmojis() ─────────────────────────────────────────
+  function injectQuickLoadEmojis() {
+    const map = { clean: '🚢', suspicious: '🚨', incomplete: '📋' };
+    document.querySelectorAll('.quick-btn').forEach(btn => {
+      const m = btn.getAttribute('onclick')?.match(/loadScenario\('(\w+)'\)/);
+      const key = m?.[1];
+      if (!key || !map[key] || btn.querySelector('.quick-emoji')) return;
+      const span = document.createElement('span');
+      span.className = 'quick-emoji';
+      span.textContent = map[key] + ' ';
+      span.style.cssText = 'font-style:normal;display:inline-block';
+      btn.insertBefore(span, btn.firstChild);
+    });
+    injectAnalyzeBtnEmoji();
+  }
+
+  // ── 14c. injectNavTabIcons() ──────────────────────────────────────────────
+  function injectNavTabIcons() {
+    const navMap = [
+      { id: 'nav-analyze',   emoji: '⚓' },
+      { id: 'nav-dashboard', emoji: '🧭' },
+      { id: 'nav-bulk',      emoji: '📦' },
+    ];
+    navMap.forEach(({ id, emoji }) => {
+      const btn = document.getElementById(id);
+      if (!btn || btn.querySelector('.nav-emoji')) return;
+      const svg = btn.querySelector('svg');
+      if (svg) svg.style.display = 'none';
+      const span = document.createElement('span');
+      span.className = 'nav-emoji';
+      span.setAttribute('aria-hidden', 'true');
+      span.textContent = emoji;
+      span.style.cssText = 'font-size:1em;margin-right:.35em';
+      btn.insertBefore(span, btn.firstChild);
+    });
+  }
+
   // ── 14. initOceanScene() ──────────────────────────────────────────────────
   let _oceanInit      = false;
   let _lastHour       = -1;
@@ -11736,6 +11885,10 @@ function escH(str) {
 
     // Wire up button ripple system
     attachAllRipples();
+
+    // Inject maritime emoji into nav tabs, quick-load buttons, and analyze button
+    injectNavTabIcons();
+    injectQuickLoadEmojis();
 
     // 60-second palette poll — only transitions when clock hour changes
     setInterval(() => {
