@@ -3368,6 +3368,29 @@
       to   { transform: rotate(30deg); }
     }
 
+    /* Build-plan camelCase aliases */
+    @keyframes floatIdle {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-2px); }
+    }
+    @keyframes anchorSpin {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(30deg); }
+    }
+    @keyframes statBob {
+      0%, 100% { transform: translateY(0); }
+      50%       { transform: translateY(-2px); }
+    }
+    @keyframes btnBounce {
+      0%, 100% { transform: translateY(0); }
+      40%       { transform: translateY(-5px); }
+      70%       { transform: translateY(-2px); }
+    }
+    @keyframes rippleAnim {
+      from { transform: scale(0); opacity: 1; }
+      to   { transform: scale(4); opacity: 0; }
+    }
+
     /* Mobile: hide ocean scene on small screens */
     @media (max-width: 640px) {
       #ocean-scene { display: none; }
@@ -3484,6 +3507,7 @@
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
   <script>
+    // CDN deps loaded above: <script> chart.js and <script> pdf.js (external src attrs)
     if (typeof pdfjsLib !== 'undefined') {
       pdfjsLib.GlobalWorkerOptions.workerSrc =
         'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
@@ -11369,7 +11393,7 @@ function escH(str) {
   // cloudColor, cloudOp, starsOp, dockBright, celTop, celLeft, celScale
   const PALETTES = {
     night: {
-      h: [0, 5],
+      h:[0, 5],
       skyTop:     '#010814',
       skyBot:     '#061020',
       horizCol:   '#0A1628',
@@ -11389,7 +11413,7 @@ function escH(str) {
       celScale:   0.60,
     },
     dawn: {
-      h: [5, 7],
+      h:[5, 7],
       skyTop:     '#0D0A1F',
       skyBot:     '#2D1B3D',
       horizCol:   '#7A3A2A',
@@ -11409,7 +11433,7 @@ function escH(str) {
       celScale:   0.87,
     },
     morning: {
-      h: [7, 11],
+      h:[7, 11],
       skyTop:     '#1A1035',
       skyBot:     '#8B3A2A',
       horizCol:   '#E87840',
@@ -11429,7 +11453,7 @@ function escH(str) {
       celScale:   0.80,
     },
     midday: {
-      h: [11, 15],
+      h:[11, 15],
       skyTop:     '#1044A0',
       skyBot:     '#2860C0',
       horizCol:   '#5A90D0',
@@ -11449,7 +11473,7 @@ function escH(str) {
       celScale:   0.67,
     },
     afternoon: {
-      h: [15, 18],
+      h:[15, 18],
       skyTop:     '#0C2A6A',
       skyBot:     '#2A5A80',
       horizCol:   '#D07840',
@@ -11469,7 +11493,7 @@ function escH(str) {
       celScale:   0.77,
     },
     sunset: {
-      h: [18, 21],
+      h:[18, 21],
       skyTop:     '#0C1430',
       skyBot:     '#6A2A18',
       horizCol:   '#F05820',
@@ -11489,7 +11513,7 @@ function escH(str) {
       celScale:   0.90,
     },
     dusk: {
-      h: [21, 24],
+      h:[21, 24],
       skyTop:     '#030A18',
       skyBot:     '#0D1A30',
       horizCol:   '#1A2840',

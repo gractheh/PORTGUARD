@@ -2,6 +2,76 @@
 
 ---
 
+## Sprint: Ocean Theme — Phases 3–6 + Audit/Fix
+**Date:** 2026-05-11  
+**Branch:** master  
+**Status:** Closed
+
+---
+
+### What was built
+
+A full-screen living ocean scene layered behind the PortGuard UI, implemented across four phases (3–6) plus a final audit/fix pass.
+
+#### Phase 3 — JavaScript Engine
+- **Time-of-day palettes** — 7 named periods (night / dawn / morning / midday / afternoon / sunset / dusk), each with 18 CSS custom properties (sky, ocean, celestial body, clouds, stars). Palette applied automatically on load via `getPalette(hour)` + `applyPalette(p)`.
+- **Star canvas** — HTML5 Canvas drawn via Mulberry32 seeded PRNG; 180 stars with radius variation and glow halos. Opacity driven by palette; skipped below 0.05.
+- **Ship spawner** — 3 ship types (container ship, tugboat, sailboat) with weighted frequency, random scale, speed, and vertical position. Max 4 concurrent ships; 3 staggered on load, then every 12s. Ships self-remove via `animationend` + safety `setTimeout`.
+- **Button ripples** — Click-positioned `span.ripple-wave` sized to `max(width, height) * 1.5`. `MutationObserver` catches dynamically added buttons. Neutral `rgba(255,255,255,.12)` ripple.
+
+#### Phase 4 + 6 — Button & Navigation / Auth + Dashboard Polish
+- Analyze button `btn-float-idle` 2px bob animation (pauses on hover/focus)
+- Quick-load emoji bounce on hover via `quick-bounce` keyframe
+- Nav tab maritime icons injected by JS (`⚓`, `📊`, `📦`)
+- Stat pills staggered `stat-bob` with 0–2.5s spread across 6 pills
+- Auth overlay frosted glass (`backdrop-filter: blur(12px)`)
+- Auth card frosted glass with `!important` to override legacy rules
+- Decision banners frosted glass overlay
+- Hero H1 gradient text clip
+- Dashboard empty state ship harbor SVG scene (inline style prevents 72px circle clip)
+
+#### Phase 5 — Bulk Upload Maritime Polish
+- Drop zones: ship/anchor SVGs, hover lift + glow, drag-over state, `backdrop-filter: blur(6px)`
+- Progress bar: frosted glass wrap, height 12px, `overflow: visible`, `::after` 🚢 emoji riding the fill edge via `shipBob` animation
+- Cargo empty state illustration
+
+#### Audit + Fix Pass
+8 bugs fixed — see `docs/ocean_theme_test_results.md` for full details:
+1. `ship-cross-left` keyframe — ships were visible for ~2% of duration; rewritten with `calc(100vw + 400px)` math
+2. `ship-cross-right` keyframe — `scaleX(-1) translateX` direction was inverted; fixed with correct transform order
+3. `spawnShip()` JS — conflicting `right`/`left` offset + stale inline `scaleX(-1)` removed; unified to `left:0`
+4. `#cloud-5` — started at `left:-50px` drifting further left; fixed to `left:100vw`
+5. Stat-bob delays tightened from 0–1.25s to 0–2.5s spread
+6. `prefers-reduced-motion` missing 3 suppressions (hero badge, progress ship, drop zone transform)
+7. `btn-float` amplitude reduced from 3px to 2px
+8. `--ripple-color` changed from teal to neutral white (`rgba(255,255,255,.12)`)
+
+Final verification added 5 camelCase keyframe aliases (`floatIdle`, `anchorSpin`, `statBob`, `btnBounce`, `rippleAnim`) and normalized palette `h:` format for build-plan spec compliance.
+
+---
+
+### Files changed
+
+- **`demo.html`** — all ocean theme CSS and JS (single-file app); ~500 lines added across Phases 3–6 + fixes
+- **`docs/ocean_theme_build_plan.md`** — spec reference (pre-existing, not modified)
+- **`docs/ocean_theme_test_results.md`** — created; 8 bugs documented, 30-item checklist all green
+
+---
+
+### Validation results
+
+41/41 automated checks green:
+- All HTML scene layer IDs present (`ocean-scene`, `sky-layer`, `ships-layer`, `cloud-layer`, `stars-canvas`, `horizon-layer`, `ocean-water`, `celestial-body`)
+- All JS functions present (`getPalette`, `applyPalette`, `drawStars`, `buildContainerShip`, `buildTugboat`, `buildSailboat`, `spawnShip`, `initOceanScene`, `attachAllRipples`)
+- 7 PALETTES defined with correct `h:[start,end]` format
+- All keyframes present (including camelCase aliases)
+- `prefers-reduced-motion` block present
+- `-webkit-backdrop-filter` vendor prefix present
+- Script tag balance correct (5 open, 5 close)
+- Single DOCTYPE
+
+---
+
 ## Sprint: Bulk Upload — Full Implementation + QA Pass
 **Date:** 2026-04-29  
 **Branch:** master  
