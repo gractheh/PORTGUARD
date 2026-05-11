@@ -11206,5 +11206,574 @@ function escH(str) {
 </script>
 <!-- Toast container for module toggle notifications -->
 <div id="dash-toast-container"></div>
+
+<!-- ===================== OCEAN SCENE JS ENGINE ===================== -->
+<script>
+(function () {
+  'use strict';
+
+  // ── 1. PALETTES ────────────────────────────────────────────────────────────
+  // Each palette: h[start,end], skyTop, skyBot, horizCol, horizWater,
+  // oceanDeep, oceanMid, oceanSurf, sunColor, sunGlow, sunOuter,
+  // cloudColor, cloudOp, starsOp, dockBright, celTop, celLeft, celScale
+  const PALETTES = {
+    night: {
+      h: [0, 5],
+      skyTop:     '#010814',
+      skyBot:     '#061020',
+      horizCol:   '#0A1628',
+      horizWater: 'rgba(27,154,170,.06)',
+      oceanDeep:  '#020C1A',
+      oceanMid:   '#041420',
+      oceanSurf:  '#061830',
+      sunColor:   '#E8EFF8',
+      sunGlow:    'rgba(232,239,248,.18)',
+      sunOuter:   'rgba(232,239,248,.06)',
+      cloudColor: 'rgba(255,255,255,.8)',
+      cloudOp:    0.04,
+      starsOp:    0.92,
+      dockBright: 0.25,
+      celTop:     '20%',
+      celLeft:    '55%',
+      celScale:   0.60,
+    },
+    dawn: {
+      h: [5, 7],
+      skyTop:     '#0D0A1F',
+      skyBot:     '#2D1B3D',
+      horizCol:   '#7A3A2A',
+      horizWater: 'rgba(180,120,80,.12)',
+      oceanDeep:  '#060E1A',
+      oceanMid:   '#0D1825',
+      oceanSurf:  '#122035',
+      sunColor:   '#FF9060',
+      sunGlow:    'rgba(255,144,96,.35)',
+      sunOuter:   'rgba(255,144,96,.12)',
+      cloudColor: 'rgba(255,200,160,.8)',
+      cloudOp:    0.10,
+      starsOp:    0.25,
+      dockBright: 0.30,
+      celTop:     '60%',
+      celLeft:    '12%',
+      celScale:   0.87,
+    },
+    morning: {
+      h: [7, 11],
+      skyTop:     '#1A1035',
+      skyBot:     '#8B3A2A',
+      horizCol:   '#E87840',
+      horizWater: 'rgba(232,168,64,.18)',
+      oceanDeep:  '#0A1828',
+      oceanMid:   '#152535',
+      oceanSurf:  '#1A3A50',
+      sunColor:   '#FFB040',
+      sunGlow:    'rgba(255,176,64,.50)',
+      sunOuter:   'rgba(255,176,64,.18)',
+      cloudColor: 'rgba(255,220,180,.85)',
+      cloudOp:    0.22,
+      starsOp:    0.03,
+      dockBright: 0.42,
+      celTop:     '38%',
+      celLeft:    '26%',
+      celScale:   0.80,
+    },
+    midday: {
+      h: [11, 15],
+      skyTop:     '#1044A0',
+      skyBot:     '#2860C0',
+      horizCol:   '#5A90D0',
+      horizWater: 'rgba(255,255,255,.22)',
+      oceanDeep:  '#07243A',
+      oceanMid:   '#0D3555',
+      oceanSurf:  '#0E4870',
+      sunColor:   '#FFFDE0',
+      sunGlow:    'rgba(255,253,224,.60)',
+      sunOuter:   'rgba(255,253,224,.20)',
+      cloudColor: 'rgba(255,255,255,.9)',
+      cloudOp:    0.65,
+      starsOp:    0.00,
+      dockBright: 0.60,
+      celTop:     '10%',
+      celLeft:    '50%',
+      celScale:   0.67,
+    },
+    afternoon: {
+      h: [15, 18],
+      skyTop:     '#0C2A6A',
+      skyBot:     '#2A5A80',
+      horizCol:   '#D07840',
+      horizWater: 'rgba(255,200,140,.14)',
+      oceanDeep:  '#061A2E',
+      oceanMid:   '#0C2E48',
+      oceanSurf:  '#0C3858',
+      sunColor:   '#FFD060',
+      sunGlow:    'rgba(255,208,96,.45)',
+      sunOuter:   'rgba(255,208,96,.15)',
+      cloudColor: 'rgba(255,240,210,.85)',
+      cloudOp:    0.50,
+      starsOp:    0.00,
+      dockBright: 0.48,
+      celTop:     '30%',
+      celLeft:    '74%',
+      celScale:   0.77,
+    },
+    sunset: {
+      h: [18, 21],
+      skyTop:     '#0C1430',
+      skyBot:     '#6A2A18',
+      horizCol:   '#F05820',
+      horizWater: 'rgba(240,88,32,.15)',
+      oceanDeep:  '#080E1C',
+      oceanMid:   '#10182A',
+      oceanSurf:  '#16283A',
+      sunColor:   '#FF6020',
+      sunGlow:    'rgba(255,96,32,.55)',
+      sunOuter:   'rgba(255,96,32,.18)',
+      cloudColor: 'rgba(255,160,100,.8)',
+      cloudOp:    0.35,
+      starsOp:    0.18,
+      dockBright: 0.30,
+      celTop:     '58%',
+      celLeft:    '87%',
+      celScale:   0.90,
+    },
+    dusk: {
+      h: [21, 24],
+      skyTop:     '#030A18',
+      skyBot:     '#0D1A30',
+      horizCol:   '#1A2840',
+      horizWater: 'rgba(77,207,223,.08)',
+      oceanDeep:  '#020C1A',
+      oceanMid:   '#040E1C',
+      oceanSurf:  '#06142A',
+      sunColor:   '#C8D8F0',
+      sunGlow:    'rgba(200,216,240,.15)',
+      sunOuter:   'rgba(200,216,240,.05)',
+      cloudColor: 'rgba(255,255,255,.7)',
+      cloudOp:    0.06,
+      starsOp:    0.72,
+      dockBright: 0.20,
+      celTop:     '24%',
+      celLeft:    '62%',
+      celScale:   0.60,
+    },
+  };
+
+  // ── 2. getPalette(hour) ────────────────────────────────────────────────────
+  function getPalette(hour) {
+    const h = ((hour % 24) + 24) % 24;
+    if (h < 5)  return PALETTES.night;
+    if (h < 7)  return PALETTES.dawn;
+    if (h < 11) return PALETTES.morning;
+    if (h < 15) return PALETTES.midday;
+    if (h < 18) return PALETTES.afternoon;
+    if (h < 21) return PALETTES.sunset;
+    return PALETTES.dusk;
+  }
+
+  // ── 3. applyPalette(p) ────────────────────────────────────────────────────
+  function applyPalette(p) {
+    const root = document.documentElement.style;
+    root.setProperty('--sky-top',         p.skyTop);
+    root.setProperty('--sky-mid',         p.skyBot);
+    root.setProperty('--sky-horizon',     p.horizCol);
+    root.setProperty('--sky-bottom',      p.horizCol);
+    root.setProperty('--horizon-color',   p.horizCol);
+    root.setProperty('--horizon-water',   p.horizWater);
+    root.setProperty('--ocean-deep',      p.oceanDeep);
+    root.setProperty('--ocean-mid',       p.oceanMid);
+    root.setProperty('--ocean-surface',   p.oceanSurf);
+    root.setProperty('--sun-color',       p.sunColor);
+    root.setProperty('--celestial-color', p.sunColor);
+    root.setProperty('--sun-glow',        p.sunGlow);
+    root.setProperty('--celestial-glow',  p.sunGlow);
+    root.setProperty('--sun-outer',       p.sunOuter);
+    root.setProperty('--cloud-color',     p.cloudColor);
+    root.setProperty('--cloud-opacity',   String(p.cloudOp));
+    root.setProperty('--star-opacity',    String(p.starsOp));
+    root.setProperty('--stars-opacity',   String(p.starsOp));
+    root.setProperty('--dock-brightness', String(p.dockBright));
+    root.setProperty('--celestial-top',   p.celTop);
+    root.setProperty('--celestial-left',  p.celLeft);
+
+    // Sky layer background gradient (inline — CSS transition handles fade)
+    const sky = document.getElementById('sky-layer');
+    if (sky) {
+      sky.style.background =
+        `linear-gradient(to bottom, ${p.skyTop} 0%, ${p.skyBot} 50%, ${p.horizCol} 100%)`;
+    }
+
+    // Celestial body: size, color, glow
+    const cel = document.getElementById('celestial-body');
+    if (cel) {
+      const sz = Math.round(60 * p.celScale);
+      cel.style.width      = sz + 'px';
+      cel.style.height     = sz + 'px';
+      cel.style.background = p.sunColor;
+      cel.style.boxShadow  =
+        `0 0 ${Math.round(sz * 1.5)}px ${p.sunGlow}, ` +
+        `0 0 ${Math.round(sz * 0.6)}px ${p.sunGlow}, ` +
+        `0 0 ${Math.round(sz * 2.8)}px ${p.sunOuter}`;
+    }
+
+    // Stars canvas opacity (the CSS transition handles the 90s fade)
+    const canvas = document.getElementById('stars-canvas');
+    if (canvas) canvas.style.opacity = String(p.starsOp);
+
+    // Per-cloud opacity = palette.cloudOp × (cloud's data-opacity / 0.5 baseline)
+    document.querySelectorAll('.cloud-puff').forEach(c => {
+      const base = parseFloat(c.dataset.opacity || '0.5');
+      c.style.opacity = Math.min(1, p.cloudOp * (base / 0.5)).toFixed(3);
+    });
+
+    drawStars(p.starsOp);
+  }
+
+  // ── 4. drawStars(opacity) ─────────────────────────────────────────────────
+  function drawStars(opacity) {
+    const canvas = document.getElementById('stars-canvas');
+    if (!canvas) return;
+
+    canvas.width  = window.innerWidth;
+    canvas.height = Math.round(window.innerHeight * 0.65);
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (opacity < 0.05) return;
+
+    // Mulberry32 seeded PRNG — deterministic star field on every draw
+    let seed = 0xDEADBEEF;
+    function rnd() {
+      seed ^= seed << 13;
+      seed ^= seed >> 17;
+      seed ^= seed << 5;
+      return (seed >>> 0) / 0xFFFFFFFF;
+    }
+
+    const COUNT = 180;
+    for (let i = 0; i < COUNT; i++) {
+      const x   = rnd() * canvas.width;
+      const y   = rnd() * canvas.height;
+      const r   = 0.4 + rnd() * 1.8;
+      const a   = (0.20 + rnd() * 0.80) * opacity;
+      const hue = rnd() < 0.3 ? 210 : (rnd() < 0.5 ? 50 : 0);
+      const sat = rnd() < 0.4 ? Math.round(rnd() * 30) : 0;
+
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fillStyle = `hsla(${hue},${sat}%,98%,${a})`;
+      ctx.fill();
+
+      // Glow halo on larger stars
+      if (r > 1.4) {
+        const grad = ctx.createRadialGradient(x, y, r, x, y, r * 3.5);
+        grad.addColorStop(0, `hsla(${hue},${sat}%,98%,${(a * 0.4).toFixed(3)})`);
+        grad.addColorStop(1, 'transparent');
+        ctx.beginPath();
+        ctx.arc(x, y, r * 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = grad;
+        ctx.fill();
+      }
+    }
+  }
+
+  // ── 5. positionClouds() ───────────────────────────────────────────────────
+  // Randomise each cloud's animation phase so they start at different positions
+  function positionClouds() {
+    const cfg = [
+      { id: 'cloud-1', dur: 90  },
+      { id: 'cloud-2', dur: 130 },
+      { id: 'cloud-3', dur: 110 },
+      { id: 'cloud-4', dur: 150 },
+      { id: 'cloud-5', dur: 80  },
+    ];
+    cfg.forEach(({ id, dur }) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      // Negative animation-delay starts the cloud mid-cycle (random phase)
+      el.style.animationDelay = `-${(Math.random() * dur).toFixed(1)}s`;
+      // Slight scale variation (0.88–1.12) for depth parallax
+      const sc = (0.88 + Math.random() * 0.24).toFixed(2);
+      el.style.transform = `scaleX(${sc})`;
+    });
+  }
+
+  // ── 6. buildContainerShip(scale) ─────────────────────────────────────────
+  function buildContainerShip(scale) {
+    const w  = Math.round(220 * scale);
+    const h  = Math.round(70  * scale);
+    const id = 'csg' + (Math.random() * 1e6 | 0);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 220 70" fill="none">
+      <defs>
+        <linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"   stop-color="#1B9AAA"/>
+          <stop offset="60%"  stop-color="#0D6B7A"/>
+          <stop offset="100%" stop-color="#072B30"/>
+        </linearGradient>
+      </defs>
+      <path d="M8,32 L0,44 L4,56 L216,56 L220,44 L212,32Z" fill="url(#${id})"/>
+      <path d="M2,52 L218,52 L216,56 L4,56Z" fill="#041520" opacity="0.55"/>
+      <line x1="0" y1="44" x2="220" y2="44" stroke="#4DCFDF" stroke-width="1" opacity="0.55"/>
+      <rect x="16"  y="20" width="26" height="12" rx="1" fill="#C0392B"/>
+      <rect x="44"  y="20" width="26" height="12" rx="1" fill="#E8A838"/>
+      <rect x="72"  y="20" width="26" height="12" rx="1" fill="#1B9AAA"/>
+      <rect x="100" y="20" width="26" height="12" rx="1" fill="#1DB87A"/>
+      <rect x="128" y="20" width="26" height="12" rx="1" fill="#C0392B"/>
+      <rect x="16"  y="8"  width="26" height="12" rx="1" fill="#E8A838"/>
+      <rect x="44"  y="8"  width="26" height="12" rx="1" fill="#1B9AAA"/>
+      <rect x="72"  y="8"  width="26" height="12" rx="1" fill="#C0392B"/>
+      <rect x="100" y="8"  width="26" height="12" rx="1" fill="#E8A838"/>
+      <rect x="128" y="8"  width="26" height="12" rx="1" fill="#1DB87A"/>
+      <rect x="158" y="16" width="44" height="18" rx="2" fill="#162845"/>
+      <rect x="158" y="16" width="44" height="3"  rx="1" fill="#22B5C8" opacity="0.4"/>
+      <rect x="162" y="21" width="6"  height="6"  rx="0.5" fill="#4DCFDF" opacity="0.55"/>
+      <rect x="172" y="21" width="6"  height="6"  rx="0.5" fill="#4DCFDF" opacity="0.55"/>
+      <rect x="178" y="7"  width="9"  height="11" rx="1.5" fill="#C0392B"/>
+      <rect x="178" y="13" width="9"  height="3"  fill="#E8A838" opacity="0.9"/>
+      <ellipse cx="110" cy="58" rx="80" ry="4" fill="#4DCFDF" opacity="0.10"/>
+    </svg>`;
+  }
+
+  // ── 7. buildTugboat(scale) ────────────────────────────────────────────────
+  function buildTugboat(scale) {
+    const w = Math.round(100 * scale);
+    const h = Math.round(56  * scale);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 100 56" fill="none">
+      <path d="M6,26 L0,38 L3,46 L97,46 L100,38 L94,26Z" fill="#C0392B"/>
+      <path d="M1,44 L99,44 L97,46 L3,46Z" fill="#7A1A1A" opacity="0.55"/>
+      <path d="M3,38 L97,38 L97,41 L3,41Z" fill="#E8A838" opacity="0.45"/>
+      <line x1="0" y1="38" x2="100" y2="38" stroke="#E8A838" stroke-width="1.5" opacity="0.7"/>
+      <rect x="28" y="12" width="36" height="16" rx="2" fill="#162845"/>
+      <rect x="28" y="12" width="36" height="3"  rx="1" fill="#22B5C8" opacity="0.45"/>
+      <rect x="33" y="17" width="5"  height="6"  rx="0.5" fill="#4DCFDF" opacity="0.65"/>
+      <rect x="43" y="17" width="5"  height="6"  rx="0.5" fill="#4DCFDF" opacity="0.65"/>
+      <rect x="50" y="4"  width="10" height="12" rx="2" fill="#8B1A1A"/>
+      <rect x="50" y="10" width="10" height="3"  fill="#E8A838" opacity="0.85"/>
+      <rect x="78" y="22" width="6"  height="14" rx="1" fill="#0A4A54"/>
+      <circle cx="14" cy="39" r="4" fill="#0A1628" stroke="#1B9AAA" stroke-width="1" opacity="0.5"/>
+      <circle cx="84" cy="39" r="4" fill="#0A1628" stroke="#1B9AAA" stroke-width="1" opacity="0.5"/>
+      <ellipse cx="50" cy="48" rx="38" ry="3" fill="#4DCFDF" opacity="0.12"/>
+    </svg>`;
+  }
+
+  // ── 8. buildSailboat(scale) ───────────────────────────────────────────────
+  function buildSailboat(scale) {
+    const w = Math.round(66 * scale);
+    const h = Math.round(95 * scale);
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 66 95" fill="none">
+      <path d="M5,64 L0,74 L3,80 L63,80 L66,74 L61,64Z" fill="#1B9AAA"/>
+      <path d="M1,78 L65,78 L63,80 L3,80Z" fill="#072B30" opacity="0.55"/>
+      <line x1="0" y1="74" x2="66" y2="74" stroke="#4DCFDF" stroke-width="1" opacity="0.6"/>
+      <line x1="33" y1="8" x2="33" y2="64" stroke="#1A3259" stroke-width="2.5"/>
+      <path d="M33,10 L33,60 L8,60Z" fill="white" opacity="0.85"/>
+      <path d="M33,16 L33,58 L58,60Z" fill="#E8A838" opacity="0.55"/>
+      <line x1="8" y1="60" x2="58" y2="60" stroke="#1A3259" stroke-width="1.5"/>
+      <ellipse cx="33" cy="82" rx="24" ry="3" fill="#4DCFDF" opacity="0.12"/>
+    </svg>`;
+  }
+
+  // ── 9. SHIP_TYPES ─────────────────────────────────────────────────────────
+  // 4 entries: builder fn, render scale, [minSpeed,maxSpeed]s,
+  // baseBottom (vh from ocean bottom), cumulative spawn frequency
+  const SHIP_TYPES = [
+    { builder: buildContainerShip, scale: 1.00, speed: [110, 160], baseBottom: 18, freq: 0.45 },
+    { builder: buildContainerShip, scale: 0.60, speed: [150, 200], baseBottom: 22, freq: 0.20 },
+    { builder: buildTugboat,       scale: 0.80, speed: [90,  130], baseBottom: 18, freq: 0.22 },
+    { builder: buildSailboat,      scale: 0.70, speed: [130, 180], baseBottom: 19, freq: 0.13 },
+  ];
+
+  const MAX_SHIPS = 4;
+
+  // ── 10. spawnShip() ───────────────────────────────────────────────────────
+  function spawnShip() {
+    const layer = document.getElementById('ships-layer');
+    if (!layer) return;
+    if (layer.querySelectorAll('.bg-ship').length >= MAX_SHIPS) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    // Weighted type selection
+    let rnd = Math.random(), cum = 0, type = SHIP_TYPES[0];
+    for (const t of SHIP_TYPES) {
+      cum += t.freq;
+      if (rnd < cum) { type = t; break; }
+    }
+
+    const goLeft   = Math.random() < 0.70;
+    const dur      = type.speed[0] + Math.random() * (type.speed[1] - type.speed[0]);
+    const bottom   = type.baseBottom + (Math.random() * 4 - 2); // ±2 vh
+
+    const div      = document.createElement('div');
+    div.className  = 'bg-ship';
+    div.style.bottom = bottom + 'vh';
+
+    if (goLeft) {
+      div.style.right     = '-280px';
+      div.style.animation = `ship-cross-left ${dur.toFixed(0)}s linear forwards`;
+    } else {
+      div.style.left      = '-280px';
+      div.style.transform = 'scaleX(-1)';
+      div.style.animation = `ship-cross-right ${dur.toFixed(0)}s linear forwards`;
+    }
+
+    div.innerHTML = type.builder(type.scale);
+
+    // Wake trail
+    const wake        = document.createElement('div');
+    wake.className    = 'ship-wake';
+    wake.innerHTML    =
+      '<svg width="100%" height="8" viewBox="0 0 120 8" preserveAspectRatio="none" fill="none">' +
+      '<path d="M0,4 Q30,0 60,4 Q90,8 120,4" stroke="rgba(77,207,223,.3)" stroke-width="1.5"/>' +
+      '</svg>';
+    div.appendChild(wake);
+
+    layer.appendChild(div);
+
+    div.addEventListener('animationend', () => div.remove(), { once: true });
+    // Safety: animationend may not fire when tab is backgrounded
+    setTimeout(() => { if (div.parentNode) div.remove(); }, (dur + 5) * 1000);
+  }
+
+  // ── 11. startShipSpawner() ────────────────────────────────────────────────
+  function startShipSpawner() {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    // 3 staggered initial ships so harbor feels alive on load
+    spawnShip();
+    setTimeout(spawnShip, 3000);
+    setTimeout(spawnShip, 6000);
+    // Then maintain population at MAX_SHIPS, checking every 12s
+    setInterval(spawnShip, 12000);
+  }
+
+  // ── 12. attachRipple(btn) ─────────────────────────────────────────────────
+  function attachRipple(btn) {
+    if (!btn || btn._rippleAttached) return;
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    btn._rippleAttached = true;
+    btn.classList.add('btn-ripple');   // position:relative + overflow:hidden via CSS
+
+    btn.addEventListener('click', e => {
+      const rect = btn.getBoundingClientRect();
+      const size = Math.max(rect.width, rect.height) * 1.5;
+      const x    = e.clientX - rect.left - size / 2;
+      const y    = e.clientY - rect.top  - size / 2;
+
+      const wave       = document.createElement('span');
+      wave.className   = 'ripple-wave';
+      wave.style.width  = size + 'px';
+      wave.style.height = size + 'px';
+      wave.style.left   = x + 'px';
+      wave.style.top    = y + 'px';
+
+      btn.appendChild(wave);
+      wave.addEventListener('animationend', () => wave.remove(), { once: true });
+      // Safety: remove after 700ms even if animationend doesn't fire
+      setTimeout(() => { if (wave.parentNode) wave.remove(); }, 700);
+    });
+  }
+
+  // ── 13. attachAllRipples() ────────────────────────────────────────────────
+  let _rippleObserver = null;
+
+  function attachAllRipples() {
+    const sel = [
+      '#analyze-btn', '#bulk-submit-btn', '#download-report-btn', '#single-share-btn',
+      '#login-btn', '#register-btn', '#logout-btn', '#settings-gear-btn',
+      '.section-nav-btn', '.quick-btn',
+      '#feedback-fraud-btn', '#feedback-clear-btn',
+      '#ph-reset-btn', '.ph-load-btn', '.rej-try-again',
+      '#modal-confirm-btn', '.modal-cancel', '.modal-confirm',
+      '.drawer-close-btn', '.preset-btn',
+      '#dash-refresh-btn', '.dash-empty-cta',
+      '#bulk-add-slot-btn', '#bulk-cancel-btn', '.bulk-new-batch-btn',
+      '.bulk-filter-btn', '.bulk-export-btn', '#bulk-share-btn',
+      '.bulk-modal-cancel', '.bulk-modal-confirm', '.bulk-template-btn',
+    ].join(',');
+
+    document.querySelectorAll(sel).forEach(attachRipple);
+
+    // MutationObserver: attach ripple to any buttons added dynamically
+    if (_rippleObserver) return;
+    _rippleObserver = new MutationObserver(mutations => {
+      for (const m of mutations) {
+        for (const node of m.addedNodes) {
+          if (node.nodeType !== 1) continue;
+          if (node.matches?.('button,[role="button"]')) attachRipple(node);
+          node.querySelectorAll?.('button,[role="button"]').forEach(attachRipple);
+        }
+      }
+    });
+    _rippleObserver.observe(document.body, { childList: true, subtree: true });
+  }
+
+  // ── 14. initOceanScene() ──────────────────────────────────────────────────
+  let _oceanInit      = false;
+  let _lastHour       = -1;
+  let _currentPalette = null;
+
+  function initOceanScene() {
+    if (_oceanInit) return;
+    _oceanInit = true;
+
+    // Allow ships to enter from off-screen (overflow:hidden set in CSS blocks entry)
+    const shipsLayer = document.getElementById('ships-layer');
+    if (shipsLayer) shipsLayer.style.overflow = 'visible';
+
+    // Ensure ocean water SVG path content isn't clipped by viewBox
+    const oceanSvg = document.querySelector('#ocean-water svg');
+    if (oceanSvg) oceanSvg.setAttribute('overflow', 'visible');
+
+    // First palette paint
+    const hour      = new Date().getHours();
+    _lastHour       = hour;
+    _currentPalette = getPalette(hour);
+    applyPalette(_currentPalette);
+
+    // Randomise cloud starting positions
+    positionClouds();
+
+    // Start ambient ship traffic
+    startShipSpawner();
+
+    // Wire up button ripple system
+    attachAllRipples();
+
+    // 60-second palette poll — only transitions when clock hour changes
+    setInterval(() => {
+      const h = new Date().getHours();
+      if (h !== _lastHour) {
+        _lastHour       = h;
+        _currentPalette = getPalette(h);
+        applyPalette(_currentPalette);
+      }
+    }, 60_000);
+
+    // Resize: redraw star canvas
+    let _resizeTimer = null;
+    window.addEventListener('resize', () => {
+      clearTimeout(_resizeTimer);
+      _resizeTimer = setTimeout(
+        () => drawStars(_currentPalette ? _currentPalette.starsOp : 0),
+        200
+      );
+    });
+
+    // Pause ship animations when tab is hidden (saves paint, prevents stale cleanup)
+    document.addEventListener('visibilitychange', () => {
+      const state = document.hidden ? 'paused' : 'running';
+      document.querySelectorAll('.bg-ship').forEach(s => {
+        s.style.animationPlayState = state;
+      });
+    });
+  }
+
+  // ── 15. DOMContentLoaded guard ────────────────────────────────────────────
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initOceanScene);
+  } else {
+    initOceanScene();
+  }
+
+})();
+</script>
 </body>
 </html>
