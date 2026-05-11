@@ -166,7 +166,7 @@
       --glass-border-light: rgba(77,207,223,.18);
 
       /* ── Ripple ── */
-      --ripple-color: rgba(77,207,223,.35);
+      --ripple-color: rgba(255,255,255,.12);
     }
 
     html { scroll-behavior: smooth; }
@@ -3084,7 +3084,7 @@
     #cloud-5 {
       width: 200px; height: 65px;
       top: 10%;
-      left: -50px;
+      left: 100vw;
       animation: cloudDrift 80s linear infinite;
       background:
         radial-gradient(ellipse 50% 40% at 50% 50%, rgba(255,255,255,.88) 0%, rgba(255,255,255,.48) 40%, transparent 70%),
@@ -3203,11 +3203,11 @@
 
     /* Stat pill staggered bob — additive to existing .stat-pill base */
     .stat-pill:nth-child(1) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 0s; }
-    .stat-pill:nth-child(2) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 0.25s; }
-    .stat-pill:nth-child(3) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 0.50s; }
-    .stat-pill:nth-child(4) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 0.75s; }
-    .stat-pill:nth-child(5) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 1.00s; }
-    .stat-pill:nth-child(6) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 1.25s; }
+    .stat-pill:nth-child(2) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 0.50s; }
+    .stat-pill:nth-child(3) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 1.00s; }
+    .stat-pill:nth-child(4) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 1.50s; }
+    .stat-pill:nth-child(5) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 2.00s; }
+    .stat-pill:nth-child(6) { animation: stat-bob 3.0s ease-in-out infinite; animation-delay: 2.50s; }
 
     /* Module card — enhanced hover (extends existing rule) */
     .module-card {
@@ -3257,12 +3257,12 @@
     }
     /* Build-plan aliases used by JS Phase 3 */
     @keyframes ship-cross-left {
-      from { transform: translateX(110vw); }
-      to   { transform: translateX(-320px); }
+      from { transform: translateX(calc(100vw + 400px)); }
+      to   { transform: translateX(-400px); }
     }
     @keyframes ship-cross-right {
-      from { transform: scaleX(-1) translateX(110vw); }
-      to   { transform: scaleX(-1) translateX(-320px); }
+      from { transform: scaleX(-1) translateX(400px); }
+      to   { transform: scaleX(-1) translateX(calc(-100vw - 400px)); }
     }
 
     /* Cloud drift — leftward */
@@ -3334,7 +3334,7 @@
     /* Analyze button float */
     @keyframes btn-float {
       0%, 100% { transform: translateY(0); }
-      50%       { transform: translateY(-3px); }
+      50%       { transform: translateY(-2px); }
     }
 
     /* Stat pill bob */
@@ -3391,6 +3391,9 @@
       .preset-btn:hover { transform: none !important; }
       .module-card:hover { transform: none !important; }
       .settings-gear-btn:hover svg { animation: none !important; }
+      .hero-badge { animation: none !important; }
+      .bulk-progress-fill::after { display: none !important; }
+      .bulk-drop-zone:hover { transform: none !important; }
 
       body::before { opacity: .3 !important; }
     }
@@ -11755,11 +11758,10 @@ function escH(str) {
     div.style.bottom = bottom + 'vh';
 
     if (goLeft) {
-      div.style.right     = '-280px';
+      div.style.left      = '0';
       div.style.animation = `ship-cross-left ${dur.toFixed(0)}s linear forwards`;
     } else {
-      div.style.left      = '-280px';
-      div.style.transform = 'scaleX(-1)';
+      div.style.left      = '0';
       div.style.animation = `ship-cross-right ${dur.toFixed(0)}s linear forwards`;
     }
 
