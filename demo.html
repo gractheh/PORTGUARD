@@ -1569,6 +1569,14 @@
     .dash-toast.enable  { border-left-color: var(--teal-400); }
     .dash-toast.disable { border-left-color: #e05050; }
     .dash-toast-icon { font-size: .9rem; flex-shrink: 0; }
+    .dash-toast-msg  { flex: 1; }
+    .dash-toast-close {
+      background: none; border: none; cursor: pointer;
+      color: inherit; opacity: 0.6; font-size: 1rem;
+      line-height: 1; padding: 0 0 0 .75rem;
+      flex-shrink: 0; transition: opacity .15s;
+    }
+    .dash-toast-close:hover { opacity: 1; }
     @keyframes toast-in  { from { opacity:0; transform:translateX(20px); } to { opacity:1; transform:translateX(0); } }
     @keyframes toast-out { from { opacity:1; transform:translateX(0); } to { opacity:0; transform:translateX(20px); } }
 
@@ -9005,15 +9013,24 @@ function _updateSustainabilityKpiCard(sustainDist) {
 function _showModuleToast(message, type) {
   const container = document.getElementById('dash-toast-container');
   if (!container) return;
+
   const toast = document.createElement('div');
   toast.className = `dash-toast ${type}`;
   const icon = type === 'enable' ? '&#10003;' : '&#215;';
-  toast.innerHTML = `<span class="dash-toast-icon">${icon}</span>${escHtml(message)}`;
+  toast.innerHTML =
+    `<span class="dash-toast-icon">${icon}</span>` +
+    `<span class="dash-toast-msg">${escHtml(message)}</span>` +
+    `<button class="dash-toast-close" aria-label="Dismiss">✕</button>`;
   container.appendChild(toast);
-  setTimeout(() => {
+
+  function dismiss() {
+    clearTimeout(timer);
     toast.style.animation = 'toast-out .25s var(--ease-out) forwards';
     setTimeout(() => { if (toast.parentNode) toast.remove(); }, 280);
-  }, 3000);
+  }
+
+  const timer = setTimeout(dismiss, 3000);
+  toast.querySelector('.dash-toast-close').addEventListener('click', dismiss);
 }
 
 // ---------------------------------------------------------------------------
