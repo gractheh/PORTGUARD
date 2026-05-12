@@ -2829,7 +2829,7 @@
       transition: background .15s;
     }
     .drawer-layer-header:hover { background: rgba(255,255,255,.025); }
-    .drawer-layer-left { display: flex; align-items: center; gap: .7rem; }
+    .drawer-layer-left { display: flex; align-items: center; gap: .7rem; flex: 1; min-width: 0; }
     .layer-num {
       width: 22px; height: 22px; border-radius: 6px;
       display: flex; align-items: center; justify-content: center;
@@ -2842,6 +2842,7 @@
     .layer-5 .layer-num { background: rgba(192,57,43,.12); color: #E07070; }
     .drawer-layer-name {
       font-size: .88rem; font-weight: 600; color: var(--text);
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .layer-count-badge {
       display: inline-block; white-space: nowrap; flex-shrink: 0;
@@ -2853,7 +2854,7 @@
       background: rgba(27,154,170,.12); border-color: rgba(27,154,170,.25);
       color: var(--teal-300);
     }
-    .drawer-layer-right { display: flex; align-items: center; gap: .7rem; }
+    .drawer-layer-right { display: flex; align-items: center; gap: .7rem; flex-shrink: 0; }
     .layer-chevron {
       color: var(--faint); transition: transform .2s var(--ease-out);
       flex-shrink: 0;
