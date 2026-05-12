@@ -2824,6 +2824,31 @@
     }
     .layer-chevron.open { transform: rotate(180deg); }
 
+    /* Layer bulk action buttons */
+    .layer-bulk-btns {
+      display: flex; gap: .3rem;
+    }
+    .layer-bulk-btn {
+      font-size: .68rem; font-weight: 600; padding: .2rem .55rem;
+      border-radius: 4px; cursor: pointer; border: 1px solid;
+      transition: all .18s; letter-spacing: .02em; white-space: nowrap;
+    }
+    .layer-enable-all {
+      background: rgba(27,154,170,.1); border-color: rgba(27,154,170,.3);
+      color: var(--teal-300);
+    }
+    .layer-enable-all:hover {
+      background: rgba(27,154,170,.2); border-color: var(--teal-400);
+    }
+    .layer-disable-all {
+      background: rgba(255,255,255,.04); border-color: rgba(255,255,255,.12);
+      color: var(--muted);
+    }
+    .layer-disable-all:hover {
+      background: rgba(224,80,80,.08); border-color: rgba(224,80,80,.3);
+      color: #fca5a5;
+    }
+
     /* Layer body — module list */
     .drawer-layer-body {
       display: none;
@@ -11160,6 +11185,14 @@ function renderLayer(layer) {
       <span class="drawer-layer-name">${escH(layer.name)}</span>
     </div>
     <div class="drawer-layer-right">
+      ${!isL1 ? `<div class="layer-bulk-btns">
+        <button class="layer-bulk-btn layer-enable-all"
+                onclick="event.stopPropagation(); enableAllInLayer(${layer.layer})"
+                title="Enable all ${escH(layer.name)} modules">Enable All</button>
+        <button class="layer-bulk-btn layer-disable-all"
+                onclick="event.stopPropagation(); disableAllInLayer(${layer.layer})"
+                title="Disable all ${escH(layer.name)} modules">Disable All</button>
+      </div>` : ''}
       <span class="${badgeCls}" id="layer-badge-${layer.layer}">${escH(badgeTxt)}</span>
       <svg class="layer-chevron" id="chevron-${layer.layer}" width="14" height="14" fill="none"
            stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -11342,6 +11375,130 @@ function _refreshLayerBadge(moduleId) {
 
 function _refreshTotalBadge() {
   updateActiveBadge(_countActive());
+}
+
+// ── Bulk layer enable / disable ───────────────────────────────────────────────
+
+async function enableAllInLayer(layerNum) {
+  if (!_authToken || !_modulesCache) return;
+  const layer = _modulesCache.layers.find(l => l.layer === layerNum);
+  if (!layer) return;
+
+  // Only act on currently disabled toggleable modules
+  const toEnable = layer.modules
+    .filter(m => !m.always_on && !_moduleToggles[m.module_id])
+    .map(m => m.module_id);
+
+  if (toEnable.length === 0) return; // all already enabled — no-op
+
+  const updates = {};
+  toEnable.forEach(id => { updates[id] = true; });
+
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/modules', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _authToken },
+      body: JSON.stringify({ modules: updates }),
+    });
+    if (!res.ok) {
+      if (res.status === 401) { handle401(); return; }
+      console.warn('[PortGuard] enableAllInLayer PUT failed:', res.status);
+      return;
+    }
+
+    // Update local state and DOM in-place (no full re-render — preserves collapse state)
+    toEnable.forEach(id => {
+      _moduleToggles[id] = true;
+      const mod = _findModuleInCache(id);
+      if (mod) mod.enabled = true;
+      const card = document.getElementById('mcard-' + id);
+      if (card) {
+        card.classList.add('enabled');
+        const cb = card.querySelector('input[type="checkbox"]');
+        if (cb) cb.checked = true;
+      }
+    });
+
+    // Refresh layer badge
+    const enabledInLayer = layer.modules.filter(m => _moduleToggles[m.module_id]).length;
+    const badge = document.getElementById('layer-badge-' + layerNum);
+    if (badge) {
+      badge.textContent = enabledInLayer + ' / ' + layer.modules.length + ' on';
+      badge.className = enabledInLayer > 0 ? 'layer-count-badge has-enabled' : 'layer-count-badge';
+    }
+    updateActiveBadge(_countActive());
+
+    _showModuleToast('All ' + layer.name + ' modules enabled', 'enable');
+
+    clearTimeout(_moduleRefreshTimer);
+    _moduleRefreshTimer = setTimeout(() => {
+      if (_dashLoaded) _refreshModuleSensitiveCharts();
+    }, 1000);
+  } catch (e) {
+    console.warn('[PortGuard] enableAllInLayer error:', e);
+  }
+}
+
+async function disableAllInLayer(layerNum) {
+  if (!_authToken || !_modulesCache) return;
+  if (layerNum === 1) return; // Layer 1 is always-on — guard even though button is hidden
+
+  const layer = _modulesCache.layers.find(l => l.layer === layerNum);
+  if (!layer) return;
+
+  // Only act on currently enabled toggleable modules
+  const toDisable = layer.modules
+    .filter(m => !m.always_on && _moduleToggles[m.module_id])
+    .map(m => m.module_id);
+
+  if (toDisable.length === 0) return; // all already disabled — no-op
+
+  const updates = {};
+  toDisable.forEach(id => { updates[id] = false; });
+
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/modules', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + _authToken },
+      body: JSON.stringify({ modules: updates }),
+    });
+    if (!res.ok) {
+      if (res.status === 401) { handle401(); return; }
+      console.warn('[PortGuard] disableAllInLayer PUT failed:', res.status);
+      return;
+    }
+
+    // Update local state and DOM in-place
+    toDisable.forEach(id => {
+      _moduleToggles[id] = false;
+      const mod = _findModuleInCache(id);
+      if (mod) mod.enabled = false;
+      const card = document.getElementById('mcard-' + id);
+      if (card) {
+        card.classList.remove('enabled');
+        const cb = card.querySelector('input[type="checkbox"]');
+        if (cb) cb.checked = false;
+      }
+    });
+
+    // Refresh layer badge
+    const enabledInLayer = layer.modules.filter(m => _moduleToggles[m.module_id]).length;
+    const badge = document.getElementById('layer-badge-' + layerNum);
+    if (badge) {
+      badge.textContent = enabledInLayer + ' / ' + layer.modules.length + ' on';
+      badge.className = enabledInLayer > 0 ? 'layer-count-badge has-enabled' : 'layer-count-badge';
+    }
+    updateActiveBadge(_countActive());
+
+    _showModuleToast('All ' + layer.name + ' modules disabled', 'disable');
+
+    clearTimeout(_moduleRefreshTimer);
+    _moduleRefreshTimer = setTimeout(() => {
+      if (_dashLoaded) _refreshModuleSensitiveCharts();
+    }, 1000);
+  } catch (e) {
+    console.warn('[PortGuard] disableAllInLayer error:', e);
+  }
 }
 
 // ── Industry presets ──────────────────────────────────────────────────────────
