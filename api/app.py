@@ -2985,12 +2985,34 @@ def get_result(
     payload_json = _pattern_db.get_report_payload(result_id, org_id)
     if payload_json is not None:
         try:
-            return json.loads(payload_json)
+            payload = json.loads(payload_json)
         except Exception:
             raise HTTPException(
                 status_code=500,
                 detail={"code": "RESULT_CORRUPT", "message": "Stored result could not be deserialised."},
             )
+        # shipment_id is null in the stored payload (serialised before the DB
+        # write that assigned it). Inject the stable ID so the share link and
+        # download buttons render correctly on the shared-result view.
+        if not payload.get("shipment_id"):
+            payload["shipment_id"] = result_id
+        # Inject the analysis timestamp for the shared-result banner.
+        if not payload.get("analyzed_at"):
+            try:
+                from sqlalchemy import text as _text
+                with _pattern_db._engine.connect() as _conn:
+                    _row = _conn.execute(
+                        _text(
+                            "SELECT analyzed_at FROM shipment_history"
+                            " WHERE analysis_id = :id AND organization_id = :org"
+                        ),
+                        {"id": result_id, "org": org_id},
+                    ).mappings().fetchone()
+                if _row:
+                    payload["analyzed_at"] = _row["analyzed_at"]
+            except Exception:
+                pass
+        return payload
 
     owner_org = _pattern_db.get_result_owner(result_id)
     if owner_org is None:

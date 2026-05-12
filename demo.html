@@ -1214,6 +1214,41 @@
     #dashboard-panel.visible { display: block; }
     #analyze-panel.hidden { display: none; }
 
+    /* Shared result view — hide form elements, show only the result */
+    #analyze-panel.shared-result-view .hero,
+    #analyze-panel.shared-result-view .section-label,
+    #analyze-panel.shared-result-view .quick-load,
+    #analyze-panel.shared-result-view #scenario-label,
+    #analyze-panel.shared-result-view #tabs-bar,
+    #analyze-panel.shared-result-view #doc-pane,
+    #analyze-panel.shared-result-view .analyze-wrap,
+    #analyze-panel.shared-result-view #agent-pipeline,
+    #analyze-panel.shared-result-view #rejection-screen { display: none !important; }
+
+    /* Shared result banner */
+    .shared-result-banner {
+      display: flex; align-items: center; gap: 1rem;
+      background: rgba(27,154,170,.08); border: 1px solid rgba(27,154,170,.22);
+      border-radius: var(--radius-lg); padding: .85rem 1.25rem;
+      margin-bottom: 1.5rem; flex-wrap: wrap;
+    }
+    .shared-result-banner-icon { font-size: 1.15rem; flex-shrink: 0; }
+    .shared-result-banner-content { flex: 1; min-width: 0; }
+    .shared-result-banner-title {
+      font-size: .88rem; font-weight: 600; color: var(--text);
+    }
+    .shared-result-banner-sub {
+      font-size: .76rem; color: var(--muted); margin-top: .18rem;
+    }
+    .shared-result-cta {
+      font-size: .78rem; font-weight: 600; padding: .38rem .85rem;
+      border-radius: var(--radius); border: 1px solid rgba(27,154,170,.4);
+      color: var(--teal-300); background: rgba(27,154,170,.1);
+      cursor: pointer; text-decoration: none; white-space: nowrap;
+      transition: background .15s, border-color .15s; flex-shrink: 0;
+    }
+    .shared-result-cta:hover { background: rgba(27,154,170,.2); border-color: var(--teal-400); }
+
     .dash-container {
       max-width: 1100px; margin: 0 auto;
       padding: 2rem 1.5rem 5rem;
@@ -7562,6 +7597,9 @@ function updateTabBadges(validations) {
 // Render results
 // ---------------------------------------------------------------------------
 function renderResults(data) {
+  // A new analysis replaces any previous shared-result view
+  _exitSharedResultView();
+
   const decision = data.decision || 'REVIEW_RECOMMENDED';
   const cfg = DECISION_CONFIG[decision] || DECISION_CONFIG['REVIEW_RECOMMENDED'];
 
@@ -7897,7 +7935,8 @@ function singleShareResult() {
   const url = window.location.origin + window.location.pathname + '#result/' + shipmentId;
   navigator.clipboard.writeText(url).then(() => {
     btn.classList.add('copied');
-    labelEl.textContent = 'Link copied!';
+    labelEl.textContent = '✓ Copied!';
+    _showModuleToast('Link copied! Anyone with this link can view the result.', 'enable');
     setTimeout(() => {
       btn.classList.remove('copied');
       labelEl.textContent = 'Share Result';
@@ -11021,7 +11060,7 @@ async function _bulkLoadSharedBatch(batchId) {
 }
 
 async function _loadResultById(resultId) {
-  // Clear the hash from URL so refresh doesn't re-trigger the modal
+  // Clear the hash from URL so refresh doesn't re-trigger
   history.replaceState(null, '', window.location.pathname + window.location.search);
 
   try {
@@ -11035,7 +11074,7 @@ async function _loadResultById(resultId) {
       return;
     }
     if (res.status === 404) {
-      showError('Result not found or has expired.');
+      showError('This result has expired or the link is invalid.');
       return;
     }
     if (!res.ok) {
@@ -11043,11 +11082,57 @@ async function _loadResultById(resultId) {
       return;
     }
     const data = await res.json();
-    // Render in single-doc analyze view
     renderResults(data);
+    _enterSharedResultView(data);
   } catch (e) {
     showError('Network error loading result: ' + e.message);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Shared-result view helpers
+// ---------------------------------------------------------------------------
+
+function _enterSharedResultView(data) {
+  document.getElementById('analyze-panel').classList.add('shared-result-view');
+
+  // Remove any stale banner from a previous load
+  const stale = document.getElementById('shared-result-banner');
+  if (stale) stale.remove();
+
+  // Format the analysis date if the backend provided it
+  let dateStr = '';
+  if (data.analyzed_at) {
+    try { dateStr = new Date(data.analyzed_at).toLocaleString(); } catch (_) {}
+  }
+  const subText = dateStr
+    ? 'This report was generated on ' + dateStr
+    : 'This is a read-only shared compliance report.';
+
+  const banner = document.createElement('div');
+  banner.id = 'shared-result-banner';
+  banner.className = 'shared-result-banner';
+  banner.innerHTML =
+    '<span class="shared-result-banner-icon">📋</span>' +
+    '<div class="shared-result-banner-content">' +
+    '<div class="shared-result-banner-title">Shared Result — Viewing a shared compliance report</div>' +
+    '<div class="shared-result-banner-sub">' + escHtml(subText) + '</div>' +
+    '</div>' +
+    '<button class="shared-result-cta" onclick="_exitSharedResultView()">Run Your Own Analysis →</button>';
+
+  const results = document.getElementById('results');
+  if (results) results.prepend(banner);
+}
+
+function _exitSharedResultView() {
+  const panel = document.getElementById('analyze-panel');
+  if (!panel || !panel.classList.contains('shared-result-view')) return;
+  panel.classList.remove('shared-result-view');
+  const banner = document.getElementById('shared-result-banner');
+  if (banner) banner.remove();
+  // Hide the results section so the user sees a clean form
+  const results = document.getElementById('results');
+  if (results) { results.style.display = 'none'; results.classList.remove('visible'); }
 }
 
 // ---------------------------------------------------------------------------
