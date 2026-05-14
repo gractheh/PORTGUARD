@@ -6,7 +6,7 @@ clean, typed Python API that the rest of the system uses; no SQL leaks out of th
 
 Architecture overview (from docs/pattern_learning_architecture.md)
 ------------------------------------------------------------------
-Five tables:
+Core tables:
 
   shipment_history      — canonical record for every analysis run (one row per POST /analyze)
   pattern_outcomes      — officer-recorded verdicts (CONFIRMED_FRAUD | CLEARED | UNRESOLVED)
@@ -15,6 +15,12 @@ Five tables:
   route_risk_profiles   — fraud rates per origin-country → port-of-entry corridor
   hs_code_baselines     — Welford running mean/variance of declared unit values per HS prefix
   schema_migrations     — forward-only migration log; tracks applied migrations by name
+
+Unified signal store (migration 010):
+
+  pattern_store         — one row per (organization_email, signal_type, signal_key);
+                          signal_type ∈ {SHIPPER_REP, ROUTE_RISK, VALUE_ANOMALY,
+                          CONFIRMED_FRAUD, CLEARED}; denormalized for fast UI reads
 
 Public API
 ----------
@@ -154,6 +160,55 @@ class HSBaseline:
     min_value: Optional[float]
     max_value: Optional[float]
     exists: bool
+
+
+@dataclass
+class PatternStoreRecord:
+    """One row from the ``pattern_store`` unified signal table.
+
+    The composite primary key is ``(organization_email, signal_type, signal_key)``.
+
+    ``signal_type`` values
+    ----------------------
+    SHIPPER_REP      — per-shipper reputation aggregate
+    ROUTE_RISK       — per-route (origin→destination) fraud-rate aggregate
+    VALUE_ANOMALY    — per-HS-prefix value anomaly aggregate
+    CONFIRMED_FRAUD  — per-entity confirmed-fraud event record
+    CLEARED          — per-entity cleared event record
+
+    ``signal_key`` convention
+    -------------------------
+    SHIPPER_REP   → normalized shipper name
+    ROUTE_RISK    → ``"<origin_iso2>→<port_of_entry>"``  e.g. ``"CN→Los Angeles"``
+    VALUE_ANOMALY → HS prefix  e.g. ``"8542"``
+    CONFIRMED_FRAUD / CLEARED → normalized entity name
+    """
+
+    organization_email: str
+    signal_type: str
+    signal_key: str
+    occurrence_count: int
+    flag_count: int
+    fraud_confirmed_count: int
+    cleared_count: int
+    last_seen: str           # ISO-8601 UTC
+    first_seen: str          # ISO-8601 UTC
+    avg_risk_score: float
+    last_decision: Optional[str]
+    notes: Optional[str]
+    exists: bool = True      # False when the record was not found in DB
+
+
+# Signal type constants for pattern_store
+SIGNAL_SHIPPER_REP = "SHIPPER_REP"
+SIGNAL_ROUTE_RISK = "ROUTE_RISK"
+SIGNAL_VALUE_ANOMALY = "VALUE_ANOMALY"
+SIGNAL_CONFIRMED_FRAUD = "CONFIRMED_FRAUD"
+SIGNAL_CLEARED = "CLEARED"
+VALID_SIGNAL_TYPES: frozenset[str] = frozenset({
+    SIGNAL_SHIPPER_REP, SIGNAL_ROUTE_RISK, SIGNAL_VALUE_ANOMALY,
+    SIGNAL_CONFIRMED_FRAUD, SIGNAL_CLEARED,
+})
 
 
 # ---------------------------------------------------------------------------
@@ -633,6 +688,46 @@ _MIGRATIONS: list[tuple[str, str | list[str]]] = [
     (
         "009_bulk_shipments_active_modules",
         "ALTER TABLE bulk_shipments ADD COLUMN active_modules_snapshot TEXT;",
+    ),
+    (
+        "010_pattern_store_table",
+        # Unified signal store: one row per (org, signal_type, signal_key) triple.
+        # Composite PK enables deterministic upserts without a surrogate key.
+        # All columns have server defaults so ALTER TABLE ADD COLUMN on an
+        # existing schema never breaks live rows.
+        [
+            """CREATE TABLE IF NOT EXISTS pattern_store (
+    organization_email      TEXT    NOT NULL DEFAULT '__system__',
+    signal_type             TEXT    NOT NULL
+                                CHECK(signal_type IN (
+                                    'SHIPPER_REP',
+                                    'ROUTE_RISK',
+                                    'VALUE_ANOMALY',
+                                    'CONFIRMED_FRAUD',
+                                    'CLEARED'
+                                )),
+    signal_key              TEXT    NOT NULL DEFAULT '',
+    occurrence_count        INTEGER NOT NULL DEFAULT 1,
+    flag_count              INTEGER NOT NULL DEFAULT 0,
+    fraud_confirmed_count   INTEGER NOT NULL DEFAULT 0,
+    cleared_count           INTEGER NOT NULL DEFAULT 0,
+    last_seen               TEXT    NOT NULL DEFAULT '1970-01-01T00:00:00Z',
+    first_seen              TEXT    NOT NULL DEFAULT '1970-01-01T00:00:00Z',
+    avg_risk_score          REAL    NOT NULL DEFAULT 0.0,
+    last_decision           TEXT,
+    notes                   TEXT,
+    PRIMARY KEY (organization_email, signal_type, signal_key)
+)""",
+            # org + type lookup (most common query path: load all signals for an org)
+            """CREATE INDEX IF NOT EXISTS idx_pattern_store_org_type
+    ON pattern_store(organization_email, signal_type)""",
+            # org + key lookup (check a specific entity across all signal types)
+            """CREATE INDEX IF NOT EXISTS idx_pattern_store_org_key
+    ON pattern_store(organization_email, signal_key)""",
+            # recency ordering within an org (dashboard "recently seen" queries)
+            """CREATE INDEX IF NOT EXISTS idx_pattern_store_last_seen
+    ON pattern_store(organization_email, last_seen DESC)""",
+        ],
     ),
 ]
 
