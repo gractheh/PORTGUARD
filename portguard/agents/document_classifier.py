@@ -175,10 +175,40 @@ in Python and React. My references are available upon request.
 
 Yours sincerely,
 Jane Doe"""),
+
+        ("Certificate of Analysis", True,
+         """CERTIFICATE OF ANALYSIS
+Product: Cotton Yarn Batch #CY-2024-0891
+Supplier: Guangdong Textile Mill Co. Ltd, China
+Purchase Order: PO-2024-0312
+Batch No: CY-0891  Lot: LOT-44B
+Test Results:
+  Tensile Strength: 42N (pass)
+  Moisture Content: 8.2% (pass)
+  Color Fastness: Grade 4 (pass)
+QC Approved for export. Issued by: QC Department"""),
+
+        ("Factory Compliance Certificate", True,
+         """FACTORY COMPLIANCE CERTIFICATE
+This certifies that Shenzhen Electronics Manufacturing Co. meets all
+required standards for export production.
+Facility ID: SZ-FAC-00234
+ISO 9001:2015 Certified. REACH compliant. RoHS compliant.
+Approved for export to: United States, European Union
+Third-party audit completed. Certificate valid 12 months."""),
+
+        ("Supplier Compliance Declaration", True,
+         """SUPPLIER COMPLIANCE DECLARATION
+We, Vietnam Garment Co., declare that goods supplied under
+Purchase Order PO #VGC-2024-0312 comply with all applicable
+regulations including REACH, RoHS, and country of origin requirements.
+Exporter: Vietnam Garment Co., Ho Chi Minh City, Vietnam
+Importer: Fashion Forward Inc., Chicago, USA
+Supply chain traceability confirmed."""),
     ]
 
     print("=" * 70)
-    print("PortGuard DocumentClassifier — Self-Test (11 tests)")
+    print("PortGuard DocumentClassifier — Self-Test (14 tests)")
     print("=" * 70)
     passed = 0
     failed = 0
@@ -201,7 +231,7 @@ Jane Doe"""),
             print(f"  warning: {result['warning']}")
 
     print(f"\n{'=' * 70}")
-    print(f"Results: {passed}/{len(tests)} passed, {failed} failed")
+    print(f"\nResults: {passed}/{len(tests)} passed, {failed} failed")
     print("=" * 70)
     if failed:
         raise SystemExit(1)

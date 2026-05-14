@@ -137,6 +137,41 @@ PRO_SHIPPING_TERMS = [
     (r"\bkimberley\s+process\b", 3.0),
     (r"\bcites\b", 2.5),
     (r"\breach\b.*\bregulation\b|\btsca\b", 2.0),
+
+    # Compliance / quality / certification documents
+    (r"\bcertificate\s+of\s+analysis\b", 4.0),
+    (r"\bcoa\b", 3.0),
+    (r"\bfactory\s+(compliance|audit|inspection)\b", 3.5),
+    (r"\bsupplier\s+(compliance|declaration|audit)\b", 3.5),
+    (r"\bquality\s+(inspection|certificate|report)\b", 3.0),
+    (r"\bmill\s+(test|certificate)\b", 3.5),
+    (r"\bconformity\s+(certificate|declaration)\b", 3.5),
+    (r"\bdeclaration\s+of\s+conformity\b", 4.0),
+    (r"\bproduct\s+(compliance|certification|testing)\b", 3.0),
+    (r"\bbatch\s+(number|no\.?|id|approved|certificate)\b", 2.5),
+    (r"\blot\s+(number|no\.?|id)\b", 2.0),
+    (r"\btest\s+(results?|report|certificate)\b", 2.5),
+    (r"\biso\s*(9001|14001|45001|22000|13485)\b", 3.0),
+    (r"\breach\b", 2.5),
+    (r"\brohs\b", 2.5),
+    (r"\bpo\s*(number|no\.?|#)\s*[:\-]?\s*\w+", 3.0),
+    (r"\bpurchase\s+order\b", 2.5),
+    (r"\bexport\s+(production|compliance|license)\b", 3.0),
+    (r"\bfacility\s+(id|number|code|audit)\b", 2.5),
+    (r"\bqc\s+(department|approved|report|passed)\b", 2.5),
+    (r"\bquality\s+control\b", 2.5),
+    (r"\bmanufacturer['\s]+s?\s+(declaration|cert)\b", 3.0),
+    (r"\bthird[\s-]+party\s+(audit|inspection|cert)\b", 3.0),
+    (r"\bsupply\s+chain\b", 2.0),
+    (r"\bgoods\s+(supplied|manufactured|produced)\b", 2.5),
+    (r"\bapproved\s+for\s+export\b", 3.5),
+    (r"\bcomply\s+with\s+(all|applicable|required)\b", 2.5),
+    (r"\bregulatory\s+(compliance|requirement)\b", 2.5),
+    (r"\bcountry\s+of\s+origin\s+requirement\b", 3.0),
+    (r"\btraceability\b", 2.5),
+    (r"\baudit\s+(report|finding|result|trail)\b", 2.5),
+    (r"\binspection\s+(report|result|finding|passed)\b", 2.5),
+    (r"\bshipment\s+(reference|no\.?|id)\b", 2.5),
 ]
 
 # Document type fingerprints — (name, code, required_patterns, supporting_patterns, min_required)
@@ -293,6 +328,20 @@ DOC_TYPE_FINGERPRINTS = [
                        r"\bcertif(y|ied)\b"],
         "min_required": 1,
     },
+    {
+        "name": "Compliance / Quality Certificate",
+        "code": "CQC",
+        "required": [r"\b(certificate|certification|declaration|report)\b"],
+        "supporting": [
+            r"\b(compliance|conformity|analysis|quality|inspection|audit)\b",
+            r"\b(supplier|factory|manufacturer|exporter|facility)\b",
+            r"\b(batch|lot|product|goods|shipment)\b",
+            r"\b(approved|certified|complies?|meets?|satisfies?)\b",
+            r"\b(iso|reach|rohs|po\s*number|purchase\s+order|export)\b",
+            r"\b(test\s+result|qc|quality\s+control|standard)\b",
+        ],
+        "min_required": 1,
+    },
 ]
 
 # Hard format signals — structural evidence this is a trade document
@@ -362,11 +411,11 @@ ANTI_PATTERNS = [
                                                          "ACADEMIC", 6.0, "Research abstract"),
     (r"\bbibliography\b|\breferences?\s*\n\s*\[?\d+\]",  "ACADEMIC", 5.0, "Bibliography/references"),
     (r"\bhypothesis\b",                                  "ACADEMIC", 4.0, "Hypothesis"),
-    (r"\bmethodology\b|\bresearch\s+method\b",           "ACADEMIC", 3.0, "Methodology section"),
+    (r"\b(research\s+methodology|study\s+methodology|our\s+methodology)\b", "ACADEMIC", 3.0, "Research methodology"),
     (r"\bthesis\s+(statement|proposal|defense|committee)\b", "ACADEMIC", 5.0, "Thesis"),
     (r"\b(professor|dr\.|lecturer|supervisor|advisor)\b.*\b(department|faculty|university)\b",
                                                          "ACADEMIC", 4.0, "Academic faculty"),
-    (r"\b(semester|quarter|term|course|credit\s+hours?|enrollment)\b", "ACADEMIC", 3.0, "Academic terms"),
+    (r"\b(credit\s+hours?|enrollment\s+in|course\s+catalog|semester\s+grades?)\b", "ACADEMIC", 3.0, "Academic enrollment context"),
     (r"\bliterature\s+review\b",                         "ACADEMIC", 4.0, "Literature review"),
     (r"\bp[-\s]value\b|\bstatistical\s+significance\b",  "ACADEMIC", 4.0, "Statistical analysis"),
     (r"\bpeer[-\s]reviewed?\b",                          "ACADEMIC", 3.0, "Peer review"),
@@ -376,12 +425,13 @@ ANTI_PATTERNS = [
     (r"\b(diagnosis|diagnoses)\b",                       "MEDICAL", 6.0, "Medical diagnosis"),
     (r"\bprescription\b",                                "MEDICAL", 6.0, "Prescription"),
     (r"\b(patient|patient\s+(id|name|dob))\b",           "MEDICAL", 5.0, "Patient record"),
-    (r"\bdosage\b|\b(mg|mcg)\s+per\s+(day|dose|kg)\b",   "MEDICAL", 4.0, "Medical dosage"),
+    (r"\bdosage\b.*\b(patient|physician|prescription|medication|drug|tablet|capsule)\b", "MEDICAL", 4.0, "Medical dosage in clinical context"),
+    (r"\b(patient|physician|prescription|clinical\s+trial)\b", "MEDICAL", 4.0, "Direct medical context"),
     (r"\b(physician|doctor|md|rn|nurse|surgeon)\b",      "MEDICAL", 4.0, "Medical professional"),
     (r"\b(icd[-\s]?\d+|cpt\s+code|ndc\s+code)\b",        "MEDICAL", 5.0, "Medical billing codes"),
     (r"\b(hospital|clinic|medical\s+center|emergency\s+room)\b", "MEDICAL", 3.0, "Medical facility"),
     (r"\bhealth\s+insurance\b|\bmedical\s+coverage\b",   "MEDICAL", 3.0, "Health insurance"),
-    (r"\b(allergy|symptom|treatment\s+plan|medication|antibiotic)\b", "MEDICAL", 3.0, "Medical terms"),
+    (r"\b(allergy|symptom|treatment\s+plan|medication|antibiotic)\b.*\b(patient|physician|prescription|clinic|hospital)\b", "MEDICAL", 3.0, "Medical terms in clinical context"),
     (r"\bblood\s+(pressure|type|test|count)\b",          "MEDICAL", 4.0, "Medical test"),
 
     # ---- LEGAL (non-trade) ----
@@ -621,7 +671,11 @@ class DocumentClassifier:
         else:
             anti_ratio = 1.0
 
-        if anti_ratio >= self.ANTI_DOMINATE and anti_score >= 6.0:
+        anti_dominate_threshold = self.ANTI_DOMINATE  # default 0.60
+        if doc_type:
+            anti_dominate_threshold = 0.75  # harder to reject when fingerprint matched
+
+        if anti_ratio >= anti_dominate_threshold and anti_score >= 6.0:
             # Unless we have a strong doc-type fingerprint match
             if not (doc_type and fp_bonus >= 8.0):
                 return self._make_rejection(
