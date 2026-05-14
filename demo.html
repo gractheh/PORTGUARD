@@ -877,42 +877,6 @@
       border-radius: 50%; animation: spin .7s linear infinite;
     }
 
-    /* ---- Pattern Intelligence ---- */
-    .pattern-history-indicator {
-      font-size: .82rem; color: var(--muted); margin-bottom: 1rem;
-      display: flex; align-items: center; gap: .5rem;
-    }
-    .phi-dot {
-      width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0;
-    }
-    .phi-dot.active   { background: var(--teal-500); box-shadow: 0 0 6px var(--teal-500); }
-    .phi-dot.building { background: var(--amber); }
-
-    .pattern-row {
-      display: grid; grid-template-columns: 160px 1fr; gap: 1.2rem; align-items: start;
-    }
-    @media(max-width:600px) { .pattern-row { grid-template-columns: 1fr; } }
-    .pattern-gauge-label {
-      font-size: .7rem; font-weight: 700; letter-spacing: .1em;
-      text-transform: uppercase; color: var(--faint); margin-bottom: .5rem;
-    }
-
-    .signal-list { display: flex; flex-direction: column; gap: .45rem; }
-    .signal-card {
-      display: flex; align-items: flex-start; gap: .65rem;
-      padding: .5rem .7rem; border-radius: 7px;
-      font-size: .82rem; line-height: 1.5; color: var(--text);
-    }
-    .signal-CRITICAL { background: rgba(224,80,80,.1);   border-left: 3px solid var(--red); }
-    .signal-HIGH     { background: rgba(212,119,58,.1);  border-left: 3px solid var(--orange); }
-    .signal-MEDIUM   { background: rgba(232,168,56,.1);  border-left: 3px solid var(--amber); }
-    .signal-LOW      { background: rgba(27,154,170,.08); border-left: 3px solid var(--teal-500); }
-    .signal-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; margin-top: .38rem; }
-    .signal-CRITICAL .signal-dot { background: var(--red);    box-shadow: 0 0 6px var(--red); }
-    .signal-HIGH     .signal-dot { background: var(--orange);  box-shadow: 0 0 6px var(--orange); }
-    .signal-MEDIUM   .signal-dot { background: var(--amber);   box-shadow: 0 0 6px var(--amber); }
-    .signal-LOW      .signal-dot { background: var(--teal-500); }
-
     /* ---- Feedback UI ---- */
     .feedback-card {
       background: var(--bg-card); border: 1px solid var(--border);
@@ -1016,22 +980,31 @@
       font-size: .67rem; color: var(--muted); text-transform: uppercase;
       letter-spacing: .08em; margin-top: .2rem;
     }
-    .pattern-section { margin-bottom: .75rem; }
+    .pattern-section { margin-bottom: 0.9rem; overflow: visible; width: 100%; }
     .pattern-section-title {
-      font-size: .7rem; font-weight: 700; letter-spacing: .1em;
-      text-transform: uppercase; color: var(--faint); margin-bottom: .4rem;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 0.75rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.08em; color: rgba(255,255,255,0.65); margin-bottom: 0.45rem;
     }
     .pattern-row {
       display: flex; justify-content: space-between; align-items: center;
-      padding: .35rem .6rem; background: var(--card); border: 1px solid var(--border);
-      border-radius: var(--radius-sm); margin-bottom: .25rem;
+      padding: 0.45rem 0.6rem; border-radius: 8px; margin-bottom: 0.3rem;
+      background: rgba(255,255,255,0.04); gap: 0.6rem; min-width: 0;
+      box-sizing: border-box; overflow: visible; width: 100%;
     }
-    .pattern-key { font-size: .82rem; color: var(--text); }
+    .pattern-key {
+      font-family: 'Inter', sans-serif; font-size: 0.8rem; font-weight: 500;
+      color: rgba(255,255,255,0.85); overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; min-width: 0; flex: 1 1 0; text-transform: none;
+    }
     .pattern-badge {
-      font-size: .72rem; font-weight: 600; padding: .15rem .5rem; border-radius: 4px;
+      font-family: 'Inter', sans-serif; font-size: 0.7rem; font-weight: 600;
+      padding: 0.2rem 0.55rem; border-radius: 999px; white-space: nowrap;
+      flex-shrink: 0; min-width: fit-content; display: inline-flex;
+      align-items: center; box-sizing: border-box;
     }
-    .pattern-badge.danger { background: rgba(224,80,80,.15); color: var(--red); }
-    .pattern-badge.success { background: rgba(29,184,122,.15); color: var(--green); }
+    .pattern-badge.danger { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.35); }
+    .pattern-badge.success { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
     .pattern-empty-state { text-align: center; padding: 2rem 1rem; }
     .pattern-empty-icon { font-size: 2rem; margin-bottom: .5rem; }
     .pattern-empty-title { font-size: 1rem; font-weight: 600; margin-bottom: .4rem; color: var(--text); }
@@ -1039,35 +1012,29 @@
 
     /* ---- Pattern Intel Result (per-analysis card) ---- */
     .pi-result-card {
-      background: var(--card); border: 1px solid var(--border);
-      border-radius: var(--radius); padding: 1rem 1.2rem;
+      background: rgba(27,154,170,0.06); border: 1px solid rgba(27,154,170,0.2);
+      border-radius: 12px; padding: 1rem 1.1rem; margin-top: 1rem;
+      width: 100%; box-sizing: border-box; overflow: hidden; display: block;
     }
     .pi-result-title {
-      font-size: .7rem; font-weight: 700; letter-spacing: .1em;
-      text-transform: uppercase; color: var(--faint); margin-bottom: .75rem;
+      font-family: 'Space Grotesk', sans-serif; font-size: 0.85rem; font-weight: 700;
+      color: #4DCFDF; margin-bottom: 0.6rem;
     }
     .pi-hard-flag {
-      background: rgba(224,80,80,.12); border: 1px solid rgba(224,80,80,.3);
-      border-radius: var(--radius-sm); padding: .55rem .75rem;
-      color: var(--red); font-size: .86rem; font-weight: 600;
-      margin-bottom: .5rem; line-height: 1.4;
+      background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.4);
+      border-radius: 10px; padding: 0.65rem 0.9rem; color: #ef4444;
+      font-size: 0.82rem; font-family: 'Inter', sans-serif; font-weight: 600;
+      line-height: 1.5; margin-bottom: 0.5rem; word-break: break-word;
+      overflow-wrap: break-word; width: 100%; box-sizing: border-box; display: block;
+      text-align: left;
     }
     .pi-warning {
-      background: rgba(232,168,56,.08); border: 1px solid rgba(232,168,56,.22);
-      border-radius: var(--radius-sm); padding: .45rem .75rem;
-      color: var(--amber); font-size: .82rem; margin-bottom: .35rem; line-height: 1.4;
+      color: #f59e0b; font-size: 0.82rem; padding: 0.25rem 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
     }
-    .pi-boost {
-      background: rgba(29,184,122,.08); border: 1px solid rgba(29,184,122,.22);
-      border-radius: var(--radius-sm); padding: .45rem .75rem;
-      color: var(--green); font-size: .82rem; margin-bottom: .35rem; line-height: 1.4;
-    }
-    .pi-history {
-      color: var(--muted); font-size: .8rem; margin-top: .5rem; padding-left: .1rem;
-    }
-    .pi-neutral {
-      color: var(--faint); font-size: .82rem; font-style: italic;
-    }
+    .pi-boost { color: #22c55e; font-size: 0.82rem; padding: 0.25rem 0; }
+    .pi-history { color: rgba(255,255,255,0.5); font-size: 0.78rem; margin-top: 0.4rem; }
+    .pi-neutral { color: rgba(255,255,255,0.4); font-size: 0.82rem; font-style: italic; }
 
     /* Pattern Intelligence Panel — refined overrides */
     .pattern-empty-state { text-align: center; padding: 2rem 1rem; }
@@ -1082,15 +1049,16 @@
     .pattern-stat.danger .pattern-stat-value { color: #ef4444; }
     .pattern-stat-label { font-size: 0.72rem; color: rgba(255,255,255,0.6); margin-top: 0.2rem; }
 
-    .pattern-section { margin-bottom: 0.75rem; overflow: visible; }
-    .pattern-section-title { font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.4rem; }
-    .pattern-row { display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0; gap: 0.5rem; min-width: 0; box-sizing: border-box; border-bottom: 1px solid rgba(255,255,255,0.05); }
-    .pattern-key { font-family: 'Inter', sans-serif; font-size: 0.82rem; color: rgba(255,255,255,0.75); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 0; min-width: 0; }
-    .pattern-badge { font-size: 0.72rem; padding: 0.2rem 0.5rem; border-radius: 999px; white-space: nowrap; flex-shrink: 0; min-width: fit-content; }
-    .pattern-badge.danger { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+    .pattern-section { margin-bottom: 0.9rem; overflow: visible; width: 100%; }
+    .pattern-section-title { font-family: 'Space Grotesk', sans-serif; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: rgba(255,255,255,0.65); margin-bottom: 0.45rem; }
+    .pattern-row { display: flex; justify-content: space-between; align-items: center; padding: 0.45rem 0.6rem; border-radius: 8px; margin-bottom: 0.3rem; background: rgba(255,255,255,0.04); gap: 0.6rem; min-width: 0; box-sizing: border-box; overflow: visible; width: 100%; }
+    .pattern-key { font-family: 'Inter', sans-serif; font-size: 0.8rem; font-weight: 500; color: rgba(255,255,255,0.85); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; flex: 1 1 0; text-transform: none; }
+    .pattern-badge { font-family: 'Inter', sans-serif; font-size: 0.7rem; font-weight: 600; padding: 0.2rem 0.55rem; border-radius: 999px; white-space: nowrap; flex-shrink: 0; min-width: fit-content; display: inline-flex; align-items: center; box-sizing: border-box; }
+    .pattern-badge.danger { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.35); }
+    .pattern-badge.fraud { background: rgba(239,68,68,0.22); color: #ef4444; border: 1px solid rgba(239,68,68,0.55); font-weight: 700; }
     .pattern-badge.success { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
-    .pattern-badge.fraud { background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); font-weight: 700; }
-    .pattern-badge-stack { display: flex; align-items: center; gap: 0.3rem; flex-shrink: 0; }
+    .pattern-badge.warning { background: rgba(245,158,11,0.15); color: #f59e0b; border: 1px solid rgba(245,158,11,0.3); }
+    .pattern-badge-stack { display: flex; gap: 0.3rem; flex-shrink: 0; align-items: center; }
 
     .ph-header .section-label { color: rgba(255,255,255,0.85); font-weight: 600; }
 
@@ -1102,9 +1070,9 @@
     .pattern-health-pct { font-size: 0.72rem; color: rgba(255,255,255,0.6); width: 42px; text-align: right; flex-shrink: 0; }
 
     /* Pattern Intel in Results */
-    .pi-result-card { background: rgba(27,154,170,0.06); border: 1px solid rgba(27,154,170,0.2); border-radius: 12px; padding: 1rem 1.25rem; margin-top: 1rem; width: 100%; box-sizing: border-box; overflow: hidden; }
+    .pi-result-card { background: rgba(27,154,170,0.06); border: 1px solid rgba(27,154,170,0.2); border-radius: 12px; padding: 1rem 1.1rem; margin-top: 1rem; width: 100%; box-sizing: border-box; overflow: hidden; display: block; }
     .pi-result-title { font-family: 'Space Grotesk', sans-serif; font-size: 0.85rem; font-weight: 700; color: #4DCFDF; margin-bottom: 0.6rem; }
-    .pi-hard-flag { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 0.6rem 0.9rem; color: #ef4444; font-size: 0.83rem; margin-bottom: 0.4rem; font-weight: 600; word-break: break-word; overflow-wrap: break-word; width: 100%; box-sizing: border-box; display: block; }
+    .pi-hard-flag { background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.4); border-radius: 10px; padding: 0.65rem 0.9rem; color: #ef4444; font-size: 0.82rem; font-family: 'Inter', sans-serif; font-weight: 600; line-height: 1.5; margin-bottom: 0.5rem; word-break: break-word; overflow-wrap: break-word; width: 100%; box-sizing: border-box; display: block; text-align: left; }
     .pi-warning { color: #f59e0b; font-size: 0.82rem; padding: 0.25rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
     .pi-boost { color: #22c55e; font-size: 0.82rem; padding: 0.25rem 0; }
     .pi-history { color: rgba(255,255,255,0.5); font-size: 0.78rem; margin-top: 0.4rem; }
@@ -4362,35 +4330,6 @@
 
     <!-- Pattern Intelligence findings (per-analysis) -->
     <div class="pattern-intel-result-section" id="pattern-intel-result" style="display:none;margin-bottom:1rem"></div>
-
-    <!-- Pattern Intelligence -->
-    <div class="card" id="pattern-section" style="margin-bottom:1rem;display:none">
-      <div class="card-title">Pattern Intelligence</div>
-      <div class="pattern-history-indicator" id="phi-indicator">
-        <div class="phi-dot building"></div>
-        <span id="phi-text">Building history...</span>
-      </div>
-      <div class="pattern-row">
-        <div>
-          <div class="pattern-gauge-label">Pattern Score</div>
-          <div class="gauge-wrap">
-            <svg class="gauge" viewBox="0 0 200 116">
-              <path class="gauge-bg"    d="M 20,100 A 80,80 0 0,1 180,100"/>
-              <path class="gauge-track" d="M 20,100 A 80,80 0 0,1 180,100"/>
-              <path class="gauge-fill"  id="pgauge-fill" d="M 20,100 A 80,80 0 0,1 180,100"/>
-              <text class="gauge-score" id="pgauge-score" x="100" y="88" font-size="28">--</text>
-              <text class="gauge-risk"  id="pgauge-risk"  x="100" y="108" fill="#4A6880">--</text>
-              <text class="gauge-corner" x="14" y="114">0</text>
-              <text class="gauge-corner" x="172" y="114">1.0</text>
-            </svg>
-          </div>
-        </div>
-        <div>
-          <div class="pattern-gauge-label">Detected Signals</div>
-          <div class="signal-list" id="signal-list"></div>
-        </div>
-      </div>
-    </div>
 
     <!-- Feedback UI -->
     <div class="feedback-card" id="feedback-section" style="display:none">
@@ -7973,7 +7912,6 @@ function renderResults(data) {
   renderSustainability(data);
 
   // Pattern Intelligence + Feedback
-  renderPatternIntelligence(data);
   renderPatternIntelResult(data.pattern_intelligence);
   renderFeedbackUI(data);
   fetchAndRenderPatternStats();
@@ -8609,97 +8547,6 @@ function _pdfClearPreview(tab) {
 
 let _lastShipmentId = null;
 let _feedbackSubmitted = false;
-
-function _inferSignalSeverity(text) {
-  const t = text.toLowerCase();
-  if (t.includes('critical') || t.includes('sanction') || t.includes('embargo') || t.includes('prohibited')) return 'CRITICAL';
-  if (t.includes('high') || t.includes('elevated') || t.includes('fraud history') || t.includes('anomal')) return 'HIGH';
-  if (t.includes('medium') || t.includes('unusual') || t.includes('moderate') || t.includes('below')) return 'MEDIUM';
-  return 'LOW';
-}
-
-function updatePatternGauge(score) {
-  const fill = Math.max(0, Math.min(1, score)) * ARC_LEN;
-  const pgFill  = document.getElementById('pgauge-fill');
-  const pgScore = document.getElementById('pgauge-score');
-  const pgRisk  = document.getElementById('pgauge-risk');
-
-  pgFill.style.strokeDasharray = `${fill} ${ARC_LEN + 20}`;
-  pgScore.textContent = score.toFixed(2);
-
-  let color, level;
-  if (score <= 0.25)      { color = '#1DB87A'; level = 'LOW'; }
-  else if (score <= 0.50) { color = '#E8A838'; level = 'MEDIUM'; }
-  else if (score <= 0.75) { color = '#D4773A'; level = 'HIGH'; }
-  else                    { color = '#E05050'; level = 'CRITICAL'; }
-
-  pgFill.style.stroke = color;
-  pgRisk.textContent  = level;
-  pgRisk.style.fill   = color;
-}
-
-function renderPatternIntelligence(data) {
-  const section  = document.getElementById('pattern-section');
-  const signals  = data.pattern_signals || [];
-  const hasScore = data.pattern_score != null;
-
-  if (!hasScore && signals.length === 0) {
-    section.style.display = 'none';
-    return;
-  }
-  section.style.display = 'block';
-
-  // History indicator
-  const indEl   = document.getElementById('phi-indicator');
-  const textEl  = document.getElementById('phi-text');
-  const dotEl   = indEl.querySelector('.phi-dot');
-  const depth   = data.pattern_history_depth || 0;
-
-  if (data.history_available) {
-    dotEl.className = 'phi-dot active';
-    textEl.textContent = `Scoring active \u2014 based on ${depth} prior shipment${depth !== 1 ? 's' : ''}`;
-  } else if (depth > 0) {
-    dotEl.className = 'phi-dot building';
-    const _needed = Math.max(0, 3 - depth);
-    const _needStr = _needed > 0 ? ` (${_needed} more for full scoring)` : '';
-    textEl.textContent = `Building confidence \u2014 ${depth} shipment${depth !== 1 ? 's' : ''} in history${_needStr}`;
-  } else {
-    dotEl.className = 'phi-dot building';
-    textEl.textContent = 'Pattern learning started \u2014 this analysis has been recorded';
-  }
-
-  // Pattern gauge
-  if (hasScore) {
-    const pgFill = document.getElementById('pgauge-fill');
-    pgFill.style.transition = 'none';
-    pgFill.style.strokeDasharray = `0 ${ARC_LEN + 20}`;
-    document.getElementById('pgauge-score').textContent = '--';
-    document.getElementById('pgauge-risk').textContent  = '--';
-    document.getElementById('pgauge-risk').style.fill   = '#4A6880';
-    setTimeout(() => {
-      pgFill.style.transition = 'stroke-dasharray 1.1s cubic-bezier(.4,0,.2,1), stroke .6s ease';
-      updatePatternGauge(data.pattern_score);
-    }, 220);
-  }
-
-  // Signal cards
-  const listEl = document.getElementById('signal-list');
-  listEl.innerHTML = '';
-  if (signals.length === 0) {
-    const card = document.createElement('div');
-    card.className = 'signal-card signal-LOW';
-    card.innerHTML = '<div class="signal-dot"></div><span>No pattern anomalies detected for this shipment.</span>';
-    listEl.appendChild(card);
-  } else {
-    signals.forEach(sig => {
-      const sev  = _inferSignalSeverity(sig);
-      const card = document.createElement('div');
-      card.className = `signal-card signal-${sev}`;
-      card.innerHTML = `<div class="signal-dot"></div><span>${escHtml(sig)}</span>`;
-      listEl.appendChild(card);
-    });
-  }
-}
 
 function renderPatternIntelResult(pi) {
   const section = document.getElementById('pattern-intel-result');
