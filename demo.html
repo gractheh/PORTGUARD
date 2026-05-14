@@ -8542,12 +8542,15 @@ function renderPatternIntelligence(data) {
 
   if (data.history_available) {
     dotEl.className = 'phi-dot active';
-    textEl.textContent = `Based on ${depth} prior shipment${depth !== 1 ? 's' : ''}`;
+    textEl.textContent = `Scoring active \u2014 based on ${depth} prior shipment${depth !== 1 ? 's' : ''}`;
+  } else if (depth > 0) {
+    dotEl.className = 'phi-dot building';
+    const _needed = Math.max(0, 3 - depth);
+    const _needStr = _needed > 0 ? ` (${_needed} more for full scoring)` : '';
+    textEl.textContent = `Building confidence \u2014 ${depth} shipment${depth !== 1 ? 's' : ''} in history${_needStr}`;
   } else {
     dotEl.className = 'phi-dot building';
-    textEl.textContent = depth > 0
-      ? `Building history \u2014 ${depth} shipment${depth !== 1 ? 's' : ''} analyzed so far`
-      : 'Building history \u2014 first shipment recorded';
+    textEl.textContent = 'Pattern learning started \u2014 this analysis has been recorded';
   }
 
   // Pattern gauge

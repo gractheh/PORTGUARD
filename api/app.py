@@ -1743,15 +1743,16 @@ def analyze(
                 pattern_result = _pattern_engine.score(scoring_req)
                 pattern_score_val = pattern_result.pattern_score
                 history_available = not pattern_result.is_cold_start
-                pattern_signals = pattern_result.explanations
+                pattern_signals = list(pattern_result.explanations)
                 pattern_history_depth_val = pattern_result.history_depth
 
-                if history_available:
-                    # Weighted blend: rule 65%, pattern 35%
-                    blended = _RULE_WEIGHT * rule_score + _PATTERN_WEIGHT * pattern_score_val
+                # Blend from depth ≥ 1 using effective_pattern_score, which
+                # already applies ×0.5 cold-start damping at depth 1–2.
+                # This makes every prior analysis contribute to the decision
+                # rather than being discarded until the third shipment.
+                if pattern_result.history_depth >= 1:
+                    blended = _RULE_WEIGHT * rule_score + _PATTERN_WEIGHT * pattern_result.effective_pattern_score
                     final_score = round(min(1.0, blended), 4)
-                    # Re-derive decision from the blended score so that pattern
-                    # signals can push a borderline APPROVE to REVIEW_RECOMMENDED.
                     final_decision = _make_decision(
                         result.get("_risk_factors", []),
                         result.get("_missing_msgs", []),
@@ -1761,6 +1762,29 @@ def analyze(
                     )
         except Exception as exc:
             logger.warning("PatternEngine.score() failed (non-fatal): %s", exc)
+
+    # Confirmed-fraud hard flag: a shipper or consignee with any confirmed fraud
+    # in this org's history is escalated to minimum REVIEW_RECOMMENDED regardless
+    # of rule score, and a prominent signal is prepended to pattern_signals.
+    if _pattern_db is not None:
+        try:
+            _shipper_n = sd.get("exporter")
+            _consignee_n = sd.get("importer") or sd.get("consignee")
+            for _fn, _fg in ((_shipper_n, "get_shipper_profile"), (_consignee_n, "get_consignee_profile")):
+                if not _fn:
+                    continue
+                _fp = getattr(_pattern_db, _fg)(_fn, org_id)
+                if _fp.total_confirmed_fraud > 0:
+                    pattern_signals.insert(
+                        0,
+                        f"⚠ CONFIRMED FRAUD HISTORY: {_fn} has "
+                        f"{_fp.total_confirmed_fraud} confirmed fraud outcome(s) on record "
+                        "— manual review required",
+                    )
+                    if final_decision == "APPROVE":
+                        final_decision = "REVIEW_RECOMMENDED"
+        except Exception as _fexc:
+            logger.warning("Fraud flag check failed (non-fatal): %s", _fexc)
 
     # Recompute risk level from the final (possibly blended) score
     if final_score <= 0.25:
@@ -1853,6 +1877,10 @@ def analyze(
         report_payload_json=_report_payload_json,
     )
 
+    # Correct depth to reflect post-recording state — pattern scoring ran before
+    # the write, so the depth in the response is off by 1.
+    if shipment_id is not None and pattern_history_depth_val is not None:
+        analyze_response.pattern_history_depth = pattern_history_depth_val + 1
     analyze_response.shipment_id = shipment_id
     _write_sustainability_fields(shipment_id, org_id, analyze_response)
     return analyze_response
@@ -2050,10 +2078,10 @@ async def analyze_files(
                 pattern_result = _pattern_engine.score(scoring_req)
                 pattern_score_val = pattern_result.pattern_score
                 history_available = not pattern_result.is_cold_start
-                pattern_signals = pattern_result.explanations
+                pattern_signals = list(pattern_result.explanations)
                 pattern_history_depth_val = pattern_result.history_depth
-                if history_available:
-                    blended = _RULE_WEIGHT * rule_score + _PATTERN_WEIGHT * pattern_score_val
+                if pattern_result.history_depth >= 1:
+                    blended = _RULE_WEIGHT * rule_score + _PATTERN_WEIGHT * pattern_result.effective_pattern_score
                     final_score = round(min(1.0, blended), 4)
                     final_decision = _make_decision(
                         result_data.get("_risk_factors", []),
@@ -2064,6 +2092,26 @@ async def analyze_files(
                     )
         except Exception as exc:
             logger.warning("PatternEngine.score() failed (non-fatal): %s", exc)
+
+    if _pattern_db is not None:
+        try:
+            _shipper_nf = sd.get("exporter")
+            _consignee_nf = sd.get("importer") or sd.get("consignee")
+            for _fnf, _fgf in ((_shipper_nf, "get_shipper_profile"), (_consignee_nf, "get_consignee_profile")):
+                if not _fnf:
+                    continue
+                _fpf = getattr(_pattern_db, _fgf)(_fnf, org_id)
+                if _fpf.total_confirmed_fraud > 0:
+                    pattern_signals.insert(
+                        0,
+                        f"⚠ CONFIRMED FRAUD HISTORY: {_fnf} has "
+                        f"{_fpf.total_confirmed_fraud} confirmed fraud outcome(s) on record "
+                        "— manual review required",
+                    )
+                    if final_decision == "APPROVE":
+                        final_decision = "REVIEW_RECOMMENDED"
+        except Exception as _fexcf:
+            logger.warning("Fraud flag check failed (non-fatal): %s", _fexcf)
 
     if final_score <= 0.25:
         final_risk_level = "LOW"
@@ -2148,6 +2196,8 @@ async def analyze_files(
         report_payload_json=_report_payload_json_files,
     )
 
+    if shipment_id is not None and pattern_history_depth_val is not None:
+        analyze_response_files.pattern_history_depth = pattern_history_depth_val + 1
     analyze_response_files.shipment_id = shipment_id
     _write_sustainability_fields(shipment_id, org_id, analyze_response_files)
     return analyze_response_files
@@ -3214,11 +3264,11 @@ def _run_bulk_single_analysis(
                 pattern_result = _pattern_engine.score(scoring_req)
                 pattern_score_val = pattern_result.pattern_score
                 history_available = not pattern_result.is_cold_start
-                pattern_signals = pattern_result.explanations
+                pattern_signals = list(pattern_result.explanations)
                 pattern_history_depth_val = pattern_result.history_depth
 
-                if history_available:
-                    blended = _RULE_WEIGHT * rule_score + _PATTERN_WEIGHT * pattern_score_val
+                if pattern_result.history_depth >= 1:
+                    blended = _RULE_WEIGHT * rule_score + _PATTERN_WEIGHT * pattern_result.effective_pattern_score
                     final_score = round(min(1.0, blended), 4)
                     final_decision = _make_decision(
                         result.get("_risk_factors", []),
@@ -3229,6 +3279,26 @@ def _run_bulk_single_analysis(
                     )
         except Exception as exc:
             logger.warning("PatternEngine.score() failed in bulk (non-fatal): %s", exc)
+
+    if _pattern_db is not None:
+        try:
+            _shipper_nb = sd.get("exporter")
+            _consignee_nb = sd.get("importer") or sd.get("consignee")
+            for _fnb, _fgb in ((_shipper_nb, "get_shipper_profile"), (_consignee_nb, "get_consignee_profile")):
+                if not _fnb:
+                    continue
+                _fpb = getattr(_pattern_db, _fgb)(_fnb, org_id)
+                if _fpb.total_confirmed_fraud > 0:
+                    pattern_signals.insert(
+                        0,
+                        f"⚠ CONFIRMED FRAUD HISTORY: {_fnb} has "
+                        f"{_fpb.total_confirmed_fraud} confirmed fraud outcome(s) on record "
+                        "— manual review required",
+                    )
+                    if final_decision == "APPROVE":
+                        final_decision = "REVIEW_RECOMMENDED"
+        except Exception as _fexcb:
+            logger.warning("Fraud flag check failed in bulk (non-fatal): %s", _fexcb)
 
     # Risk level from final score
     if final_score <= 0.25:
@@ -3321,6 +3391,8 @@ def _run_bulk_single_analysis(
         organization_id=org_id,
         report_payload_json=report_json,
     )
+    if shipment_id is not None and pattern_history_depth_val is not None:
+        analyze_response.pattern_history_depth = pattern_history_depth_val + 1
     analyze_response.shipment_id = shipment_id
 
     return analyze_response.model_dump()
