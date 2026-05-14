@@ -1080,20 +1080,31 @@
     .pattern-stat.danger { background: rgba(192,57,43,0.08); border: 1px solid rgba(192,57,43,0.2); }
     .pattern-stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 1.6rem; font-weight: 700; color: #4DCFDF; }
     .pattern-stat.danger .pattern-stat-value { color: #ef4444; }
-    .pattern-stat-label { font-size: 0.72rem; color: rgba(255,255,255,0.45); margin-top: 0.2rem; }
+    .pattern-stat-label { font-size: 0.72rem; color: rgba(255,255,255,0.6); margin-top: 0.2rem; }
 
-    .pattern-section { margin-bottom: 0.75rem; }
-    .pattern-section-title { font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.4rem; }
-    .pattern-row { display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
-    .pattern-key { font-size: 0.82rem; color: rgba(255,255,255,0.75); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
-    .pattern-badge { font-size: 0.72rem; padding: 0.2rem 0.5rem; border-radius: 999px; white-space: nowrap; }
+    .pattern-section { margin-bottom: 0.75rem; overflow: visible; }
+    .pattern-section-title { font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.6); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.4rem; }
+    .pattern-row { display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0; gap: 0.5rem; min-width: 0; box-sizing: border-box; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .pattern-key { font-family: 'Inter', sans-serif; font-size: 0.82rem; color: rgba(255,255,255,0.75); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 0; min-width: 0; }
+    .pattern-badge { font-size: 0.72rem; padding: 0.2rem 0.5rem; border-radius: 999px; white-space: nowrap; flex-shrink: 0; min-width: fit-content; }
     .pattern-badge.danger { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
     .pattern-badge.success { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+    .pattern-badge.fraud { background: rgba(239,68,68,0.2); color: #ef4444; border: 1px solid rgba(239,68,68,0.4); font-weight: 700; }
+    .pattern-badge-stack { display: flex; align-items: center; gap: 0.3rem; flex-shrink: 0; }
+
+    .ph-header .section-label { color: rgba(255,255,255,0.85); font-weight: 600; }
+
+    .pattern-health-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.4rem; }
+    .pattern-health-label { font-size: 0.72rem; color: rgba(255,255,255,0.5); width: 90px; flex-shrink: 0; }
+    .pattern-health-bar-wrap { flex: 1; height: 6px; background: rgba(255,255,255,0.08); border-radius: 999px; overflow: hidden; }
+    .pattern-health-bar { height: 100%; border-radius: 999px; background: #22c55e; transition: width 0.4s ease; }
+    .pattern-health-bar.risk { background: #ef4444; }
+    .pattern-health-pct { font-size: 0.72rem; color: rgba(255,255,255,0.6); width: 42px; text-align: right; flex-shrink: 0; }
 
     /* Pattern Intel in Results */
-    .pi-result-card { background: rgba(27,154,170,0.06); border: 1px solid rgba(27,154,170,0.2); border-radius: 12px; padding: 1rem 1.25rem; margin-top: 1rem; }
+    .pi-result-card { background: rgba(27,154,170,0.06); border: 1px solid rgba(27,154,170,0.2); border-radius: 12px; padding: 1rem 1.25rem; margin-top: 1rem; width: 100%; box-sizing: border-box; overflow: hidden; }
     .pi-result-title { font-family: 'Space Grotesk', sans-serif; font-size: 0.85rem; font-weight: 700; color: #4DCFDF; margin-bottom: 0.6rem; }
-    .pi-hard-flag { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 0.5rem 0.75rem; color: #ef4444; font-size: 0.83rem; margin-bottom: 0.4rem; font-weight: 600; }
+    .pi-hard-flag { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 0.6rem 0.9rem; color: #ef4444; font-size: 0.83rem; margin-bottom: 0.4rem; font-weight: 600; word-break: break-word; overflow-wrap: break-word; width: 100%; box-sizing: border-box; display: block; }
     .pi-warning { color: #f59e0b; font-size: 0.82rem; padding: 0.25rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
     .pi-boost { color: #22c55e; font-size: 0.82rem; padding: 0.25rem 0; }
     .pi-history { color: rgba(255,255,255,0.5); font-size: 0.78rem; margin-top: 0.4rem; }
@@ -8800,6 +8811,9 @@ function renderPatternStats(stats) {
     return;
   }
 
+  const approvalPct = typeof stats.approval_rate === 'number' ? Math.round(stats.approval_rate) : 100;
+  const riskPct = Math.min(100, Math.round(((stats.avg_org_risk_score || 0) / 10) * 100));
+
   patternPanel.innerHTML = `
     <div class="pattern-stats-grid">
       <div class="pattern-stat">
@@ -8814,21 +8828,33 @@ function renderPatternStats(stats) {
         <div class="pattern-stat-value">${stats.unique_routes_tracked}</div>
         <div class="pattern-stat-label">Routes Tracked</div>
       </div>
-      <div class="pattern-stat danger">
+      <div class="pattern-stat ${stats.confirmed_fraud_count > 0 ? 'danger' : ''}">
         <div class="pattern-stat-value">${stats.confirmed_fraud_count}</div>
         <div class="pattern-stat-label">Confirmed Fraud</div>
       </div>
     </div>
 
+    <div class="pattern-health-row">
+      <span class="pattern-health-label">Approval Rate</span>
+      <div class="pattern-health-bar-wrap"><div class="pattern-health-bar" style="width:${approvalPct}%"></div></div>
+      <span class="pattern-health-pct">${approvalPct}%</span>
+    </div>
+    <div class="pattern-health-row" style="margin-bottom:1rem">
+      <span class="pattern-health-label">Avg Risk Score</span>
+      <div class="pattern-health-bar-wrap"><div class="pattern-health-bar risk" style="width:${riskPct}%"></div></div>
+      <span class="pattern-health-pct">${stats.avg_org_risk_score || 0}/10</span>
+    </div>
+
     ${stats.high_risk_shippers.length > 0 ? `
     <div class="pattern-section">
       <div class="pattern-section-title">\u26a0\ufe0f High-Risk Shippers</div>
-      ${stats.high_risk_shippers.map(s => `
-        <div class="pattern-row">
+      ${stats.high_risk_shippers.map(s => {
+        const isFraud = (s.fraud_confirmed_count || 0) > 0;
+        return `<div class="pattern-row">
           <span class="pattern-key">${escHtml(s.signal_key)}</span>
-          <span class="pattern-badge danger">${s.flag_count}/${s.occurrence_count} flagged</span>
-        </div>
-      `).join('')}
+          <span class="pattern-badge-stack">${isFraud ? '<span class="pattern-badge fraud">FRAUD</span>' : ''}<span class="pattern-badge danger">${s.flag_rate}% flag rate</span></span>
+        </div>`;
+      }).join('')}
     </div>` : ''}
 
     ${stats.high_risk_routes.length > 0 ? `
@@ -8837,7 +8863,18 @@ function renderPatternStats(stats) {
       ${stats.high_risk_routes.map(r => `
         <div class="pattern-row">
           <span class="pattern-key">${escHtml(r.signal_key)}</span>
-          <span class="pattern-badge danger">${r.flag_count}/${r.occurrence_count} flagged</span>
+          <span class="pattern-badge danger">${r.flag_rate}% flag rate</span>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    ${(stats.value_anomalies || []).length > 0 ? `
+    <div class="pattern-section">
+      <div class="pattern-section-title">\ud83d\udcb0 Value Anomalies</div>
+      ${(stats.value_anomalies || []).map(v => `
+        <div class="pattern-row">
+          <span class="pattern-key">${escHtml(v.signal_key)}</span>
+          <span class="pattern-badge danger">${v.flag_rate}% flag rate</span>
         </div>
       `).join('')}
     </div>` : ''}
