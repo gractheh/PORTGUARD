@@ -1037,6 +1037,38 @@
     .pattern-empty-title { font-size: 1rem; font-weight: 600; margin-bottom: .4rem; color: var(--text); }
     .pattern-empty-sub { font-size: .82rem; color: var(--muted); }
 
+    /* ---- Pattern Intel Result (per-analysis card) ---- */
+    .pi-result-card {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 1rem 1.2rem;
+    }
+    .pi-result-title {
+      font-size: .7rem; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--faint); margin-bottom: .75rem;
+    }
+    .pi-hard-flag {
+      background: rgba(224,80,80,.12); border: 1px solid rgba(224,80,80,.3);
+      border-radius: var(--radius-sm); padding: .55rem .75rem;
+      color: var(--red); font-size: .86rem; font-weight: 600;
+      margin-bottom: .5rem; line-height: 1.4;
+    }
+    .pi-warning {
+      background: rgba(232,168,56,.08); border: 1px solid rgba(232,168,56,.22);
+      border-radius: var(--radius-sm); padding: .45rem .75rem;
+      color: var(--amber); font-size: .82rem; margin-bottom: .35rem; line-height: 1.4;
+    }
+    .pi-boost {
+      background: rgba(29,184,122,.08); border: 1px solid rgba(29,184,122,.22);
+      border-radius: var(--radius-sm); padding: .45rem .75rem;
+      color: var(--green); font-size: .82rem; margin-bottom: .35rem; line-height: 1.4;
+    }
+    .pi-history {
+      color: var(--muted); font-size: .8rem; margin-top: .5rem; padding-left: .1rem;
+    }
+    .pi-neutral {
+      color: var(--faint); font-size: .82rem; font-style: italic;
+    }
+
     /* ---- Document type badge (tab label) ---- */
     .doc-type-badge {
       display: inline-flex; align-items: center;
@@ -4287,6 +4319,9 @@
       <ul class="steps-list" id="steps-list"></ul>
     </div>
 
+    <!-- Pattern Intelligence findings (per-analysis) -->
+    <div class="pattern-intel-result-section" id="pattern-intel-result" style="display:none;margin-bottom:1rem"></div>
+
     <!-- Pattern Intelligence -->
     <div class="card" id="pattern-section" style="margin-bottom:1rem;display:none">
       <div class="card-title">Pattern Intelligence</div>
@@ -7406,6 +7441,8 @@ async function analyzeWithPipeline(documents) {
   document.getElementById('single-share-btn').style.display = 'none';
   document.getElementById('report-status').textContent = '';
   document.getElementById('report-status').className = '';
+  const _piEl = document.getElementById('pattern-intel-result');
+  if (_piEl) { _piEl.style.display = 'none'; _piEl.innerHTML = ''; }
 
   const agentKeys   = PIPELINE_AGENTS.map(a => a.key);
   const LAST_IDX    = agentKeys.length - 1;  // 5 = orchestrator
@@ -7896,6 +7933,7 @@ function renderResults(data) {
 
   // Pattern Intelligence + Feedback
   renderPatternIntelligence(data);
+  renderPatternIntelResult(data.pattern_intelligence);
   renderFeedbackUI(data);
   fetchAndRenderPatternStats();
 
@@ -8620,6 +8658,48 @@ function renderPatternIntelligence(data) {
       listEl.appendChild(card);
     });
   }
+}
+
+function renderPatternIntelResult(pi) {
+  const section = document.getElementById('pattern-intel-result');
+  if (!section) return;
+
+  if (!pi) {
+    section.style.display = 'none';
+    section.innerHTML = '';
+    return;
+  }
+
+  let html = '<div class="pi-result-card">';
+  html += '<div class="pi-result-title">🧠 Pattern Intelligence</div>';
+
+  if (pi.hard_flag) {
+    html += `<div class="pi-hard-flag">🚨 ${escHtml(pi.hard_flag_reason || 'Confirmed fraud history detected — manual review required')}</div>`;
+  }
+
+  if (pi.pattern_warnings && pi.pattern_warnings.length > 0) {
+    pi.pattern_warnings.forEach(w => {
+      html += `<div class="pi-warning">${escHtml(w)}</div>`;
+    });
+  }
+
+  if (pi.pattern_boosts && pi.pattern_boosts.length > 0) {
+    pi.pattern_boosts.forEach(b => {
+      html += `<div class="pi-boost">✅ ${escHtml(b)}</div>`;
+    });
+  }
+
+  if (pi.shipper_history) {
+    html += `<div class="pi-history">📋 ${escHtml(pi.shipper_history)}</div>`;
+  }
+
+  if (!pi.hard_flag && (!pi.pattern_warnings || pi.pattern_warnings.length === 0)) {
+    html += '<div class="pi-neutral">No anomalous patterns detected for this shipper or route.</div>';
+  }
+
+  html += '</div>';
+  section.innerHTML = html;
+  section.style.display = 'block';
 }
 
 function renderFeedbackUI(data) {

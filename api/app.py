@@ -1771,6 +1771,7 @@ def analyze(
             history_available = (_pre_depth + 1) >= 3
             _patt_intel = {
                 "hard_flag": bool(_patt_ctx.get("hard_flag")),
+                "hard_flag_reason": _patt_ctx.get("hard_flag_reason"),
                 "adjustments_applied": _patt_ctx.get("total_adjustment", 0.0),
                 "pattern_warnings": _patt_ctx.get("pattern_warnings", []),
                 "pattern_boosts": _patt_ctx.get("pattern_boosts", []),
@@ -2120,6 +2121,7 @@ async def analyze_files(
             history_available = (_pre_depth_f + 1) >= 3
             _patt_intel_f = {
                 "hard_flag": bool(_patt_ctx_f.get("hard_flag")),
+                "hard_flag_reason": _patt_ctx_f.get("hard_flag_reason"),
                 "adjustments_applied": _patt_ctx_f.get("total_adjustment", 0.0),
                 "pattern_warnings": _patt_ctx_f.get("pattern_warnings", []),
                 "pattern_boosts": _patt_ctx_f.get("pattern_boosts", []),
@@ -3376,6 +3378,7 @@ def _run_bulk_single_analysis(
             history_available = (_pre_depth_b + 1) >= 3
             _patt_intel_b = {
                 "hard_flag": bool(_patt_ctx_b.get("hard_flag")),
+                "hard_flag_reason": _patt_ctx_b.get("hard_flag_reason"),
                 "adjustments_applied": _patt_ctx_b.get("total_adjustment", 0.0),
                 "pattern_warnings": _patt_ctx_b.get("pattern_warnings", []),
                 "pattern_boosts": _patt_ctx_b.get("pattern_boosts", []),
