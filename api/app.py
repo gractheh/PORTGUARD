@@ -2430,6 +2430,11 @@ def reset_pattern_history(
 
     try:
         deleted = _pattern_db.reset(organization_id=current_org["organization_id"])
+        try:
+            from portguard.pattern_engine import reset_patterns as _reset_patt_store
+            _reset_patt_store(_pattern_db, current_org["email"])
+        except Exception as _rpe:
+            logger.warning("reset_patterns (pattern_store) failed (non-fatal): %s", _rpe)
     except Exception as exc:
         logger.error("pattern_db.reset() failed: %s", exc, exc_info=True)
         raise HTTPException(
@@ -2472,6 +2477,35 @@ def pattern_history(current_org: dict = Depends(get_current_organization)):
         return _pattern_db.get_summary_stats(organization_id=current_org["organization_id"])
     except Exception as exc:
         logger.warning("get_summary_stats() failed: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "STATS_ERROR", "message": str(exc)},
+        )
+
+
+@app.get("/api/v1/pattern-stats")
+def pattern_stats_endpoint(current_org: dict = Depends(get_current_organization)):
+    """Return pattern_store statistics for the Pattern Learning History panel.
+
+    Returns aggregate counts and ranked arrays for high-risk shippers,
+    high-risk routes, and cleared shippers — all sourced from the
+    ``pattern_store`` table (migration 010).
+
+    Returns 503 when pattern learning is disabled.
+    """
+    if _pattern_db is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "PATTERN_LEARNING_DISABLED",
+                "message": "Pattern learning is not enabled on this instance.",
+            },
+        )
+    try:
+        from portguard.pattern_engine import get_pattern_stats as _get_patt_stats
+        return _get_patt_stats(_pattern_db, current_org["email"])
+    except Exception as exc:
+        logger.warning("get_pattern_stats() failed: %s", exc)
         raise HTTPException(
             status_code=500,
             detail={"code": "STATS_ERROR", "message": str(exc)},

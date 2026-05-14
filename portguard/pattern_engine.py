@@ -456,28 +456,35 @@ def get_pattern_stats(db, org_email: str) -> dict:
     """Return aggregate statistics from pattern_store for a given org.
 
     Returns a dict with:
-        total_shipments_screened  int   sum of occurrence_count across all SHIPPER_REP rows
-        unique_shippers_tracked   int   count of distinct SHIPPER_REP rows
-        unique_routes_tracked     int   count of distinct ROUTE_RISK rows
-        confirmed_fraud_count     int   sum of fraud_confirmed_count across SHIPPER_REP rows
-        high_risk_shippers        int   SHIPPER_REP rows with flag_rate > 0.3
-        high_risk_routes          int   ROUTE_RISK rows with flag_rate > 0.3 and occ >= 3
-        cleared_shippers          int   SHIPPER_REP rows with cleared_count > 0
-        has_history               bool  True when at least one SHIPPER_REP row exists
+        total_shipments_screened  int        sum of occurrence_count across SHIPPER_REP rows
+        unique_shippers_tracked   int        count of distinct SHIPPER_REP rows
+        unique_routes_tracked     int        count of distinct ROUTE_RISK rows
+        confirmed_fraud_count     int        sum of fraud_confirmed_count across SHIPPER_REP rows
+        high_risk_shippers        list[dict] SHIPPER_REP rows with flag_rate > 0.3 (top 10)
+        high_risk_routes          list[dict] ROUTE_RISK rows with flag_rate > 0.3 and occ >= 3 (top 10)
+        cleared_shippers          list[dict] SHIPPER_REP rows with cleared_count > 0 (top 10)
+        has_history               bool       True when at least one SHIPPER_REP row exists
+
+    Each item in high_risk_shippers / high_risk_routes has:
+        signal_key, flag_count, occurrence_count, avg_risk_score
+
+    Each item in cleared_shippers has:
+        signal_key, cleared_count, occurrence_count
     """
     defaults: dict = {
         "total_shipments_screened": 0,
         "unique_shippers_tracked":  0,
         "unique_routes_tracked":    0,
         "confirmed_fraud_count":    0,
-        "high_risk_shippers":       0,
-        "high_risk_routes":         0,
-        "cleared_shippers":         0,
+        "high_risk_shippers":       [],
+        "high_risk_routes":         [],
+        "cleared_shippers":         [],
         "has_history":              False,
     }
 
     try:
         with db._engine.connect() as conn:
+            # Aggregate totals
             row = conn.execute(
                 text("""
                     SELECT
@@ -486,35 +493,93 @@ def get_pattern_stats(db, org_email: str) -> dict:
                         COUNT(CASE WHEN signal_type = 'SHIPPER_REP' THEN 1 END),
                         COUNT(CASE WHEN signal_type = 'ROUTE_RISK'  THEN 1 END),
                         SUM(CASE WHEN signal_type = 'SHIPPER_REP'
-                                 THEN fraud_confirmed_count ELSE 0 END),
-                        SUM(CASE WHEN signal_type = 'SHIPPER_REP'
-                                  AND occurrence_count > 0
-                                  AND CAST(flag_count AS REAL) / occurrence_count > 0.3
-                             THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN signal_type = 'ROUTE_RISK'
-                                  AND occurrence_count >= 3
-                                  AND CAST(flag_count AS REAL) / occurrence_count > 0.3
-                             THEN 1 ELSE 0 END),
-                        SUM(CASE WHEN signal_type = 'SHIPPER_REP'
-                                  AND cleared_count > 0
-                             THEN 1 ELSE 0 END)
+                                 THEN fraud_confirmed_count ELSE 0 END)
                     FROM pattern_store
                     WHERE organization_email = :org
                 """),
                 {"org": org_email},
             ).fetchone()
 
-            if row and row[1] is not None:
+            if row and row[1] is not None and int(row[1] or 0) > 0:
                 defaults.update({
                     "total_shipments_screened": int(row[0] or 0),
                     "unique_shippers_tracked":  int(row[1] or 0),
                     "unique_routes_tracked":    int(row[2] or 0),
                     "confirmed_fraud_count":    int(row[3] or 0),
-                    "high_risk_shippers":       int(row[4] or 0),
-                    "high_risk_routes":         int(row[5] or 0),
-                    "cleared_shippers":         int(row[6] or 0),
-                    "has_history":              bool(row[1] and row[1] > 0),
+                    "has_history":              True,
                 })
+
+                # High-risk shippers (flag_rate > 0.3, top 10 by flag_rate then occurrence)
+                hr_shippers = conn.execute(
+                    text("""
+                        SELECT signal_key, flag_count, occurrence_count, avg_risk_score
+                        FROM pattern_store
+                        WHERE organization_email = :org
+                          AND signal_type = 'SHIPPER_REP'
+                          AND occurrence_count > 0
+                          AND CAST(flag_count AS REAL) / occurrence_count > 0.3
+                        ORDER BY CAST(flag_count AS REAL) / occurrence_count DESC,
+                                 occurrence_count DESC
+                        LIMIT 10
+                    """),
+                    {"org": org_email},
+                ).fetchall()
+                defaults["high_risk_shippers"] = [
+                    {
+                        "signal_key":      r[0],
+                        "flag_count":      r[1],
+                        "occurrence_count": r[2],
+                        "avg_risk_score":  round(float(r[3] or 0.0), 4),
+                    }
+                    for r in hr_shippers
+                ]
+
+                # High-risk routes (flag_rate > 0.3, occ >= 3, top 10)
+                hr_routes = conn.execute(
+                    text("""
+                        SELECT signal_key, flag_count, occurrence_count, avg_risk_score
+                        FROM pattern_store
+                        WHERE organization_email = :org
+                          AND signal_type = 'ROUTE_RISK'
+                          AND occurrence_count >= 3
+                          AND CAST(flag_count AS REAL) / occurrence_count > 0.3
+                        ORDER BY CAST(flag_count AS REAL) / occurrence_count DESC,
+                                 occurrence_count DESC
+                        LIMIT 10
+                    """),
+                    {"org": org_email},
+                ).fetchall()
+                defaults["high_risk_routes"] = [
+                    {
+                        "signal_key":      r[0],
+                        "flag_count":      r[1],
+                        "occurrence_count": r[2],
+                        "avg_risk_score":  round(float(r[3] or 0.0), 4),
+                    }
+                    for r in hr_routes
+                ]
+
+                # Cleared shippers (cleared_count > 0, top 10 by cleared_count)
+                cleared = conn.execute(
+                    text("""
+                        SELECT signal_key, cleared_count, occurrence_count
+                        FROM pattern_store
+                        WHERE organization_email = :org
+                          AND signal_type = 'SHIPPER_REP'
+                          AND cleared_count > 0
+                        ORDER BY cleared_count DESC, occurrence_count DESC
+                        LIMIT 10
+                    """),
+                    {"org": org_email},
+                ).fetchall()
+                defaults["cleared_shippers"] = [
+                    {
+                        "signal_key":      r[0],
+                        "cleared_count":   r[1],
+                        "occurrence_count": r[2],
+                    }
+                    for r in cleared
+                ]
 
     except Exception as exc:
         logger.warning("get_pattern_stats failed (non-fatal): %s", exc)

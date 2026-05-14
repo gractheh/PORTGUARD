@@ -1001,6 +1001,42 @@
     .ph-score-lo { color: var(--amber); }
     .ph-empty { color: var(--faint); font-size: .82rem; font-style: italic; }
 
+    /* ---- Pattern Stats Panel ---- */
+    .pattern-stats-grid {
+      display: grid; grid-template-columns: repeat(4,1fr); gap:.7rem; margin-bottom:1rem;
+    }
+    @media(max-width:640px) { .pattern-stats-grid { grid-template-columns: repeat(2,1fr); } }
+    .pattern-stat {
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: .75rem 1rem; text-align: center;
+    }
+    .pattern-stat.danger .pattern-stat-value { color: var(--red); }
+    .pattern-stat-value { font-size: 1.6rem; font-weight: 800; color: var(--teal-400); }
+    .pattern-stat-label {
+      font-size: .67rem; color: var(--muted); text-transform: uppercase;
+      letter-spacing: .08em; margin-top: .2rem;
+    }
+    .pattern-section { margin-bottom: .75rem; }
+    .pattern-section-title {
+      font-size: .7rem; font-weight: 700; letter-spacing: .1em;
+      text-transform: uppercase; color: var(--faint); margin-bottom: .4rem;
+    }
+    .pattern-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: .35rem .6rem; background: var(--card); border: 1px solid var(--border);
+      border-radius: var(--radius-sm); margin-bottom: .25rem;
+    }
+    .pattern-key { font-size: .82rem; color: var(--text); }
+    .pattern-badge {
+      font-size: .72rem; font-weight: 600; padding: .15rem .5rem; border-radius: 4px;
+    }
+    .pattern-badge.danger { background: rgba(224,80,80,.15); color: var(--red); }
+    .pattern-badge.success { background: rgba(29,184,122,.15); color: var(--green); }
+    .pattern-empty-state { text-align: center; padding: 2rem 1rem; }
+    .pattern-empty-icon { font-size: 2rem; margin-bottom: .5rem; }
+    .pattern-empty-title { font-size: 1rem; font-weight: 600; margin-bottom: .4rem; color: var(--text); }
+    .pattern-empty-sub { font-size: .82rem; color: var(--muted); }
+
     /* ---- Document type badge (tab label) ---- */
     .doc-type-badge {
       display: inline-flex; align-items: center;
@@ -4314,15 +4350,13 @@
       <div class="section-label" style="margin-bottom:0">Pattern Learning History</div>
       <div style="display:flex;gap:.5rem;align-items:center">
         <button class="ph-reset-btn" id="ph-reset-btn" onclick="openResetModal()">&#9003; Reset History</button>
-        <button class="ph-load-btn" onclick="loadPatternHistory()">&#8635; Refresh</button>
+        <button class="ph-load-btn" onclick="fetchAndRenderPatternStats()">&#8635; Refresh</button>
       </div>
     </div>
     <div class="ph-success" id="ph-success">
       <span>&#10003;</span><span>History cleared &mdash; PortGuard is starting fresh.</span>
     </div>
-    <div id="ph-stats" class="ph-stats" style="display:none"></div>
-    <div id="ph-tables" class="ph-tables" style="display:none"></div>
-    <div id="ph-empty" class="ph-empty">No history loaded yet &mdash; click Refresh to load pattern statistics.</div>
+    <div id="pattern-panel-body"></div>
   </div>
 
   <!-- Reset confirmation modal -->
@@ -4873,6 +4907,7 @@ function hideAuthOverlay() {
   const gear = document.getElementById('settings-gear-btn');
   if (gear) gear.style.display = 'flex';
   loadModules();
+  fetchAndRenderPatternStats();
 
   // Restore pending deep-link if present; default to analyze tab
   if (_pendingResultId) {
@@ -7862,6 +7897,7 @@ function renderResults(data) {
   // Pattern Intelligence + Feedback
   renderPatternIntelligence(data);
   renderFeedbackUI(data);
+  fetchAndRenderPatternStats();
 
   // Show download + share buttons only when we have a shipment_id
   const dlBtn    = document.getElementById('download-report-btn');
@@ -8627,6 +8663,7 @@ async function submitFeedback(outcome) {
       ? 'Fraud confirmed \u2014 risk profiles updated for this shipper, consignee, and route.'
       : 'Shipment cleared \u2014 trust scores updated. Consistent clearances reduce future false positives.';
     thanks.classList.add('visible');
+    fetchAndRenderPatternStats();
   } catch (e) {
     fraudBtn.disabled = false;
     clearBtn.disabled = false;
@@ -8638,65 +8675,95 @@ async function submitFeedback(outcome) {
 // Pattern History panel
 // ---------------------------------------------------------------------------
 
-async function loadPatternHistory() {
-  const emptyEl  = document.getElementById('ph-empty');
-  const statsEl  = document.getElementById('ph-stats');
-  const tablesEl = document.getElementById('ph-tables');
+function renderPatternStats(stats) {
+  const patternPanel = document.getElementById('pattern-panel-body');
+  if (!patternPanel) return;
 
-  emptyEl.textContent   = 'Loading\u2026';
-  emptyEl.style.display = 'block';
-  statsEl.style.display  = 'none';
-  tablesEl.style.display = 'none';
-
-  try {
-    const res = await fetch(apiUrl() + '/api/v1/pattern-history', { headers: _authToken ? { 'Authorization': 'Bearer ' + _authToken } : {} });
-    if (res.status === 401) { handle401(); return; }
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      const msg = (err.detail && err.detail.message) || `HTTP ${res.status}`;
-      emptyEl.textContent = 'Could not load history: ' + msg;
-      return;
-    }
-    const data = await res.json();
-
-    // Stats row
-    statsEl.innerHTML = `
-      <div class="ph-stat">
-        <div class="ph-stat-val">${data.total_shipments}</div>
-        <div class="ph-stat-label">Shipments Analyzed</div>
+  if (!stats.has_history || stats.total_shipments_screened === 0) {
+    patternPanel.innerHTML = `
+      <div class="pattern-empty-state">
+        <div class="pattern-empty-icon">\ud83e\udde0</div>
+        <div class="pattern-empty-title">Pattern Intelligence Active</div>
+        <div class="pattern-empty-sub">Screen your first shipment to begin building your organization\u2019s risk fingerprint.</div>
       </div>
-      <div class="ph-stat">
-        <div class="ph-stat-val" style="color:var(--red)">${data.total_confirmed_fraud}</div>
-        <div class="ph-stat-label">Confirmed Fraud</div>
-      </div>`;
-    statsEl.style.display = 'flex';
-
-    // Tables
-    tablesEl.innerHTML = `
-      <div class="ph-table-card">
-        <div class="ph-table-title">Top 5 Riskiest Shippers</div>
-        ${buildPhTable(
-          data.top_riskiest_shippers,
-          ['Shipper', 'Analyses', 'Risk'],
-          r => [escHtml(r.name), r.total_analyses,
-                `<span class="ph-score ${phScoreClass(r.reputation_score)}">${r.reputation_score.toFixed(2)}</span>`]
-        )}
-      </div>
-      <div class="ph-table-card">
-        <div class="ph-table-title">Top 5 Riskiest Routes</div>
-        ${buildPhTable(
-          data.top_riskiest_routes,
-          ['Origin', 'Port', 'Fraud Rate'],
-          r => [escHtml(r.origin_iso2 || '?'), escHtml(r.port_of_entry || '?'),
-                `<span class="ph-score ${phScoreClass(r.fraud_rate)}">${r.fraud_rate.toFixed(2)}</span>`]
-        )}
-      </div>`;
-    tablesEl.style.display = 'grid';
-    emptyEl.style.display   = 'none';
-
-  } catch (e) {
-    emptyEl.textContent = 'Error loading history: ' + e.message;
+    `;
+    return;
   }
+
+  patternPanel.innerHTML = `
+    <div class="pattern-stats-grid">
+      <div class="pattern-stat">
+        <div class="pattern-stat-value">${stats.total_shipments_screened}</div>
+        <div class="pattern-stat-label">Shipments Screened</div>
+      </div>
+      <div class="pattern-stat">
+        <div class="pattern-stat-value">${stats.unique_shippers_tracked}</div>
+        <div class="pattern-stat-label">Shippers Tracked</div>
+      </div>
+      <div class="pattern-stat">
+        <div class="pattern-stat-value">${stats.unique_routes_tracked}</div>
+        <div class="pattern-stat-label">Routes Tracked</div>
+      </div>
+      <div class="pattern-stat danger">
+        <div class="pattern-stat-value">${stats.confirmed_fraud_count}</div>
+        <div class="pattern-stat-label">Confirmed Fraud</div>
+      </div>
+    </div>
+
+    ${stats.high_risk_shippers.length > 0 ? `
+    <div class="pattern-section">
+      <div class="pattern-section-title">\u26a0\ufe0f High-Risk Shippers</div>
+      ${stats.high_risk_shippers.map(s => `
+        <div class="pattern-row">
+          <span class="pattern-key">${escHtml(s.signal_key)}</span>
+          <span class="pattern-badge danger">${s.flag_count}/${s.occurrence_count} flagged</span>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    ${stats.high_risk_routes.length > 0 ? `
+    <div class="pattern-section">
+      <div class="pattern-section-title">\ud83d\uddfa\ufe0f High-Risk Routes</div>
+      ${stats.high_risk_routes.map(r => `
+        <div class="pattern-row">
+          <span class="pattern-key">${escHtml(r.signal_key)}</span>
+          <span class="pattern-badge danger">${r.flag_count}/${r.occurrence_count} flagged</span>
+        </div>
+      `).join('')}
+    </div>` : ''}
+
+    ${stats.cleared_shippers.length > 0 ? `
+    <div class="pattern-section">
+      <div class="pattern-section-title">\u2705 Known-Good Shippers</div>
+      ${stats.cleared_shippers.map(s => `
+        <div class="pattern-row">
+          <span class="pattern-key">${escHtml(s.signal_key)}</span>
+          <span class="pattern-badge success">${s.cleared_count}x cleared</span>
+        </div>
+      `).join('')}
+    </div>` : ''}
+  `;
+}
+
+async function fetchAndRenderPatternStats() {
+  if (!_authToken) return;
+  const patternPanel = document.getElementById('pattern-panel-body');
+  if (patternPanel && !patternPanel.innerHTML.trim()) {
+    patternPanel.innerHTML = '<div class="ph-empty">Loading\u2026</div>';
+  }
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/pattern-stats', {
+      headers: { 'Authorization': 'Bearer ' + _authToken },
+    });
+    if (res.status === 401) { handle401(); return; }
+    if (!res.ok) return;
+    const stats = await res.json();
+    renderPatternStats(stats);
+  } catch (_) {}
+}
+
+async function loadPatternHistory() {
+  await fetchAndRenderPatternStats();
 }
 
 function buildPhTable(rows, headers, rowFn) {
@@ -8719,18 +8786,18 @@ function phScoreClass(score) {
 let _resetShipmentCount = 0;
 
 async function openResetModal() {
-  // Fetch the current shipment count to show in the modal body.
-  // We reuse the pattern-history endpoint which always returns total_shipments.
-  const countEl   = document.getElementById('modal-count');
+  const countEl    = document.getElementById('modal-count');
   const confirmBtn = document.getElementById('modal-confirm-btn');
   countEl.textContent = '…';
   confirmBtn.disabled = false;
 
   try {
-    const res = await fetch(apiUrl() + '/api/v1/pattern-history', { headers: _authToken ? { 'Authorization': 'Bearer ' + _authToken } : {} });
+    const res = await fetch(apiUrl() + '/api/v1/pattern-stats', {
+      headers: _authToken ? { 'Authorization': 'Bearer ' + _authToken } : {},
+    });
     if (res.ok) {
       const data = await res.json();
-      _resetShipmentCount = data.total_shipments ?? 0;
+      _resetShipmentCount = data.total_shipments_screened ?? 0;
       countEl.textContent = _resetShipmentCount;
     } else {
       countEl.textContent = 'an unknown number of';
@@ -8774,21 +8841,14 @@ async function confirmReset() {
     // ── Success ──────────────────────────────────────────────────────────
     closeResetModal();
 
-    // Clear the history panel UI
-    document.getElementById('ph-stats').style.display  = 'none';
-    document.getElementById('ph-tables').style.display = 'none';
-    document.getElementById('ph-stats').innerHTML      = '';
-    document.getElementById('ph-tables').innerHTML     = '';
-    document.getElementById('ph-empty').style.display  = 'block';
-    document.getElementById('ph-empty').textContent    =
-      'History cleared. Analyze shipments to start building new patterns.';
+    // Refresh the pattern stats panel to show empty state
+    fetchAndRenderPatternStats();
 
     // Show green success banner
     const successEl = document.getElementById('ph-success');
     successEl.classList.add('visible');
     setTimeout(() => successEl.classList.remove('visible'), 6000);
 
-    // Re-enable reset button (it was not disabled, just reset the count)
     _resetShipmentCount = 0;
 
   } catch (e) {
