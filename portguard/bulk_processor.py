@@ -342,6 +342,7 @@ class BulkProcessor:
         shipments: list[dict],
         org_id: str,
         enabled_modules: Optional[list] = None,
+        org_email: str = "__system__",
     ) -> None:
         """Process all shipments in the batch concurrently.
 
@@ -371,6 +372,9 @@ class BulkProcessor:
             the analyse function uses this snapshot instead of hitting the DB
             once per shipment.  Pass ``None`` to fall back to per-shipment DB
             lookup (backward-compatible).
+        org_email:
+            Authenticated organisation email — passed to the pattern engine so
+            pattern_store queries are scoped to the correct tenant.
         """
         if self._analyze_fn is None:
             msg = "No analyze_fn configured; cannot process batch."
@@ -382,13 +386,14 @@ class BulkProcessor:
         loop = asyncio.get_running_loop()
         semaphore = asyncio.Semaphore(_SEMAPHORE_SIZE)
 
-        # Bind the enabled_modules snapshot to the analyse function so every
-        # shipment in this batch uses the identical module set without a DB
-        # round-trip per row.
+        # Bind the enabled_modules and org_email snapshots to the analyse function
+        # so every shipment in this batch uses the identical values without DB
+        # round-trips per row.
+        _partial_kwargs: dict = {"org_email": org_email}
         if enabled_modules is not None:
-            _fn: Callable = functools.partial(
-                self._analyze_fn, enabled_modules=enabled_modules
-            )
+            _partial_kwargs["enabled_modules"] = enabled_modules
+        if _partial_kwargs:
+            _fn: Callable = functools.partial(self._analyze_fn, **_partial_kwargs)
         else:
             _fn = self._analyze_fn
 

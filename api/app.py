@@ -70,15 +70,12 @@ logger = logging.getLogger(__name__)
 # in the process working directory).
 
 _pattern_db = None
-_pattern_engine = None
 
 if os.getenv("PORTGUARD_PATTERN_LEARNING_ENABLED", "true").lower() not in ("0", "false", "no"):
     try:
         from portguard.pattern_db import PatternDB
-        from portguard.pattern_engine import PatternEngine
         _db_path = os.getenv("PORTGUARD_PATTERN_DB_PATH", "portguard_patterns.db")
         _pattern_db = PatternDB(_db_path)
-        _pattern_engine = PatternEngine(_pattern_db)
         logger.info("Pattern learning initialized at %s", _db_path)
     except Exception as _exc:
         logger.warning(
@@ -1220,6 +1217,11 @@ class AnalyzeResponse(BaseModel):
         description="User-facing warning when the classifier accepted the document with "
                     "LOW confidence.  None for HIGH/MEDIUM confidence accepts.",
     )
+    pattern_intelligence: Optional[dict] = Field(
+        None,
+        description="Pattern intelligence context: hard_flag, adjustments_applied, "
+                    "pattern_warnings, pattern_boosts, shipper_history summary.",
+    )
 
 
 class FeedbackRequest(BaseModel):
@@ -1259,46 +1261,38 @@ class FeedbackResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-def _build_scoring_request(sd: dict, organization_id: str = "__system__"):
-    """Build a PatternEngine ScoringRequest from a shipment-data dict.
+def _get_shipper_depth_and_history(org_email: str, sd: dict) -> tuple[int, str]:
+    """Return (occurrence_count, history_str) for the shipper from pattern_store.
 
-    Parameters
-    ----------
-    sd:
-        The ``shipment_data`` dict returned by :func:`_analyze_documents`.
-    organization_id:
-        Tenant scope to embed in the request so PatternEngine queries are
-        correctly scoped to the authenticated organization.
-
-    Returns
-    -------
-    ScoringRequest or None if the import fails.
+    Queries the SHIPPER_REP row before the current analysis is recorded.
+    Returns (0, '') when pattern learning is disabled or no prior record exists.
     """
+    if _pattern_db is None:
+        return 0, ""
     try:
-        from portguard.pattern_engine import ScoringRequest
-        declared_value: Optional[float] = None
-        quantity: Optional[float] = None
-        try:
-            declared_value = float(sd["declared_value"]) if sd.get("declared_value") else None
-        except (ValueError, TypeError):
-            pass
-        try:
-            quantity = float(sd["quantity"]) if sd.get("quantity") else None
-        except (ValueError, TypeError):
-            pass
-        return ScoringRequest(
-            organization_id=organization_id,
-            shipper_name=sd.get("exporter"),
-            consignee_name=sd.get("importer") or sd.get("consignee"),
-            origin_iso2=sd.get("origin_country_iso2"),
-            port_of_entry=sd.get("port_of_entry") or sd.get("port_of_discharge"),
-            hs_codes=sd.get("hts_codes_declared") or [],
-            declared_value_usd=declared_value,
-            quantity=quantity,
-        )
-    except Exception as exc:
-        logger.warning("_build_scoring_request failed: %s", exc)
-        return None
+        from portguard.pattern_engine import _normalize_key
+        from sqlalchemy import text as _text
+        shipper = sd.get("exporter")
+        if not shipper:
+            return 0, ""
+        with _pattern_db._engine.connect() as _conn:
+            _row = _conn.execute(
+                _text("""
+                    SELECT occurrence_count, flag_count
+                    FROM pattern_store
+                    WHERE organization_email = :org
+                      AND signal_type = 'SHIPPER_REP'
+                      AND signal_key  = :sk
+                """),
+                {"org": org_email, "sk": _normalize_key(shipper)},
+            ).fetchone()
+        if _row:
+            occ, flags = _row[0], _row[1]
+            s = "s" if occ != 1 else ""
+            return occ, f"Seen {occ} time{s} — flagged {flags}/{occ}"
+        return 0, ""
+    except Exception:
+        return 0, ""
 
 
 def _record_shipment_bg(
@@ -1333,7 +1327,7 @@ def _record_shipment_bg(
     risk_factors:
         List of rule-firing dicts for the rules_fired column.
     pattern_result:
-        PatternEngine result object (or None when pattern learning is off).
+        Pattern result object — always None with the new engine; kept for compat.
     final_score, final_decision, final_confidence:
         Blended outputs after the pattern overlay.
     organization_id:
@@ -1723,70 +1717,69 @@ def analyze(
     elapsed = round(time.monotonic() - start, 3)
     sd = result.get("shipment_data", {})
 
-    # --- Pattern learning overlay ---
+    # --- Pattern learning overlay (pattern_store-based engine) ---
     rule_score: float = result["risk_score"]
     rule_decision: str = result["decision"]
     rule_confidence: str = result["confidence"]
 
-    pattern_result = None
+    pattern_result = None  # unused; kept for _record_shipment_bg compat
     pattern_score_val: Optional[float] = None
     history_available: bool = False
     pattern_signals: list[str] = []
     pattern_history_depth_val: Optional[int] = None
     final_score: float = rule_score
     final_decision: str = rule_decision
+    _patt_ctx: dict = {}
+    _patt_intel: Optional[dict] = None
 
-    if _pattern_engine is not None:
-        try:
-            scoring_req = _build_scoring_request(sd, organization_id=org_id)
-            if scoring_req is not None:
-                pattern_result = _pattern_engine.score(scoring_req)
-                pattern_score_val = pattern_result.pattern_score
-                history_available = not pattern_result.is_cold_start
-                pattern_signals = list(pattern_result.explanations)
-                pattern_history_depth_val = pattern_result.history_depth
-
-                # Blend from depth ≥ 1 using effective_pattern_score, which
-                # already applies ×0.5 cold-start damping at depth 1–2.
-                # This makes every prior analysis contribute to the decision
-                # rather than being discarded until the third shipment.
-                if pattern_result.history_depth >= 1:
-                    blended = _RULE_WEIGHT * rule_score + _PATTERN_WEIGHT * pattern_result.effective_pattern_score
-                    final_score = round(min(1.0, blended), 4)
-                    final_decision = _make_decision(
-                        result.get("_risk_factors", []),
-                        result.get("_missing_msgs", []),
-                        result.get("_inconsistency_codes", []),
-                        final_score,
-                        sd,
-                    )
-        except Exception as exc:
-            logger.warning("PatternEngine.score() failed (non-fatal): %s", exc)
-
-    # Confirmed-fraud hard flag: a shipper or consignee with any confirmed fraud
-    # in this org's history is escalated to minimum REVIEW_RECOMMENDED regardless
-    # of rule score, and a prominent signal is prepended to pattern_signals.
     if _pattern_db is not None:
         try:
-            _shipper_n = sd.get("exporter")
-            _consignee_n = sd.get("importer") or sd.get("consignee")
-            for _fn, _fg in ((_shipper_n, "get_shipper_profile"), (_consignee_n, "get_consignee_profile")):
-                if not _fn:
-                    continue
-                _fp = getattr(_pattern_db, _fg)(_fn, org_id)
-                if _fp.total_confirmed_fraud > 0:
-                    pattern_signals.insert(
-                        0,
-                        f"⚠ CONFIRMED FRAUD HISTORY: {_fn} has "
-                        f"{_fp.total_confirmed_fraud} confirmed fraud outcome(s) on record "
-                        "— manual review required",
-                    )
-                    if final_decision == "APPROVE":
-                        final_decision = "REVIEW_RECOMMENDED"
-        except Exception as _fexc:
-            logger.warning("Fraud flag check failed (non-fatal): %s", _fexc)
+            from portguard.pattern_engine import apply_pattern_adjustments
+            _org_email_patt = current_org["email"]
+            _pre_depth, _shipper_hist = _get_shipper_depth_and_history(_org_email_patt, sd)
+            _patt_ctx = apply_pattern_adjustments(_pattern_db, _org_email_patt, sd)
 
-    # Recompute risk level from the final (possibly blended) score
+            pattern_signals = list(_patt_ctx.get("pattern_warnings", []))
+
+            if _patt_ctx.get("hard_flag"):
+                final_score = 1.0
+                final_decision = "FLAG_FOR_INSPECTION"
+            elif _patt_ctx.get("total_adjustment", 0.0) > 0.0:
+                # Adjustments are on a 0–10 scale; internal score is 0–1
+                _adj = _patt_ctx["total_adjustment"] / 10.0
+                final_score = round(min(1.0, max(0.0, rule_score + _adj)), 4)
+                final_decision = _make_decision(
+                    result.get("_risk_factors", []),
+                    result.get("_missing_msgs", []),
+                    result.get("_inconsistency_codes", []),
+                    final_score,
+                    sd,
+                )
+
+            if _patt_ctx.get("pattern_boosts") and not _patt_ctx.get("hard_flag"):
+                # Boosts reduce score by 0.5 on 0–10 scale = 0.05 on 0–1
+                final_score = round(max(0.0, final_score - 0.05), 4)
+                final_decision = _make_decision(
+                    result.get("_risk_factors", []),
+                    result.get("_missing_msgs", []),
+                    result.get("_inconsistency_codes", []),
+                    final_score,
+                    sd,
+                )
+
+            pattern_history_depth_val = _pre_depth
+            history_available = (_pre_depth + 1) >= 3
+            _patt_intel = {
+                "hard_flag": bool(_patt_ctx.get("hard_flag")),
+                "adjustments_applied": _patt_ctx.get("total_adjustment", 0.0),
+                "pattern_warnings": _patt_ctx.get("pattern_warnings", []),
+                "pattern_boosts": _patt_ctx.get("pattern_boosts", []),
+                "shipper_history": _shipper_hist or None,
+            }
+        except Exception as _pexc:
+            logger.warning("Pattern adjustments failed (non-fatal): %s", _pexc)
+
+    # Recompute risk level from the final (possibly pattern-adjusted) score
     if final_score <= 0.25:
         final_risk_level = "LOW"
     elif final_score <= 0.50:
@@ -1851,6 +1844,7 @@ def analyze(
         document_type_code=_clf_primary.get("detected_doc_type_code"),
         classification_confidence=_clf_primary.get("confidence_label"),
         classification_warning=_clf_primary.get("warning"),
+        pattern_intelligence=_patt_intel,
     )
 
     # Record analysis to PatternDB inline (fast — < 10 ms); shipment_id is
@@ -1877,8 +1871,24 @@ def analyze(
         report_payload_json=_report_payload_json,
     )
 
-    # Correct depth to reflect post-recording state — pattern scoring ran before
-    # the write, so the depth in the response is off by 1.
+    # Record signals to pattern_store (upserts SHIPPER_REP / ROUTE_RISK / VALUE_ANOMALY).
+    if _pattern_db is not None and shipment_id is not None:
+        try:
+            from portguard.pattern_engine import record_signals
+            record_signals(_pattern_db, current_org["email"], {
+                "exporter": sd.get("exporter"),
+                "origin_iso2": sd.get("origin_country_iso2"),
+                "destination_iso2": sd.get("destination_iso2") or "US",
+                "declared_value_usd": (
+                    float(sd["declared_value"]) if sd.get("declared_value") else None
+                ),
+                "final_risk_score": final_score,
+                "final_decision": final_decision,
+            })
+        except Exception as _rsexc:
+            logger.warning("record_signals failed (non-fatal): %s", _rsexc)
+
+    # Correct depth to reflect post-recording state (pattern data queried before write).
     if shipment_id is not None and pattern_history_depth_val is not None:
         analyze_response.pattern_history_depth = pattern_history_depth_val + 1
     analyze_response.shipment_id = shipment_id
@@ -2056,62 +2066,67 @@ async def analyze_files(
     if extraction_warnings:
         result_data["explanations"] = extraction_warnings + result_data.get("explanations", [])
 
-    # --- Pattern learning overlay (identical logic to /api/v1/analyze) ---
+    # --- Pattern learning overlay (pattern_store-based engine) ---
     rule_score: float = result_data["risk_score"]
     rule_decision: str = result_data["decision"]
     rule_confidence: str = result_data["confidence"]
 
-    pattern_result = None
+    pattern_result = None  # unused; kept for _record_shipment_bg compat
     pattern_score_val: Optional[float] = None
     history_available: bool = False
     pattern_signals: list[str] = []
     pattern_history_depth_val: Optional[int] = None
     final_score: float = rule_score
     final_decision: str = rule_decision
+    _patt_ctx_f: dict = {}
+    _patt_intel_f: Optional[dict] = None
 
     org_id: str = current_org["organization_id"]
 
-    if _pattern_engine is not None:
-        try:
-            scoring_req = _build_scoring_request(sd, organization_id=org_id)
-            if scoring_req is not None:
-                pattern_result = _pattern_engine.score(scoring_req)
-                pattern_score_val = pattern_result.pattern_score
-                history_available = not pattern_result.is_cold_start
-                pattern_signals = list(pattern_result.explanations)
-                pattern_history_depth_val = pattern_result.history_depth
-                if pattern_result.history_depth >= 1:
-                    blended = _RULE_WEIGHT * rule_score + _PATTERN_WEIGHT * pattern_result.effective_pattern_score
-                    final_score = round(min(1.0, blended), 4)
-                    final_decision = _make_decision(
-                        result_data.get("_risk_factors", []),
-                        result_data.get("_missing_msgs", []),
-                        result_data.get("_inconsistency_codes", []),
-                        final_score,
-                        sd,
-                    )
-        except Exception as exc:
-            logger.warning("PatternEngine.score() failed (non-fatal): %s", exc)
-
     if _pattern_db is not None:
         try:
-            _shipper_nf = sd.get("exporter")
-            _consignee_nf = sd.get("importer") or sd.get("consignee")
-            for _fnf, _fgf in ((_shipper_nf, "get_shipper_profile"), (_consignee_nf, "get_consignee_profile")):
-                if not _fnf:
-                    continue
-                _fpf = getattr(_pattern_db, _fgf)(_fnf, org_id)
-                if _fpf.total_confirmed_fraud > 0:
-                    pattern_signals.insert(
-                        0,
-                        f"⚠ CONFIRMED FRAUD HISTORY: {_fnf} has "
-                        f"{_fpf.total_confirmed_fraud} confirmed fraud outcome(s) on record "
-                        "— manual review required",
-                    )
-                    if final_decision == "APPROVE":
-                        final_decision = "REVIEW_RECOMMENDED"
-        except Exception as _fexcf:
-            logger.warning("Fraud flag check failed (non-fatal): %s", _fexcf)
+            from portguard.pattern_engine import apply_pattern_adjustments
+            _org_email_f = current_org["email"]
+            _pre_depth_f, _shipper_hist_f = _get_shipper_depth_and_history(_org_email_f, sd)
+            _patt_ctx_f = apply_pattern_adjustments(_pattern_db, _org_email_f, sd)
+
+            pattern_signals = list(_patt_ctx_f.get("pattern_warnings", []))
+
+            if _patt_ctx_f.get("hard_flag"):
+                final_score = 1.0
+                final_decision = "FLAG_FOR_INSPECTION"
+            elif _patt_ctx_f.get("total_adjustment", 0.0) > 0.0:
+                _adj_f = _patt_ctx_f["total_adjustment"] / 10.0
+                final_score = round(min(1.0, max(0.0, rule_score + _adj_f)), 4)
+                final_decision = _make_decision(
+                    result_data.get("_risk_factors", []),
+                    result_data.get("_missing_msgs", []),
+                    result_data.get("_inconsistency_codes", []),
+                    final_score,
+                    sd,
+                )
+
+            if _patt_ctx_f.get("pattern_boosts") and not _patt_ctx_f.get("hard_flag"):
+                final_score = round(max(0.0, final_score - 0.05), 4)
+                final_decision = _make_decision(
+                    result_data.get("_risk_factors", []),
+                    result_data.get("_missing_msgs", []),
+                    result_data.get("_inconsistency_codes", []),
+                    final_score,
+                    sd,
+                )
+
+            pattern_history_depth_val = _pre_depth_f
+            history_available = (_pre_depth_f + 1) >= 3
+            _patt_intel_f = {
+                "hard_flag": bool(_patt_ctx_f.get("hard_flag")),
+                "adjustments_applied": _patt_ctx_f.get("total_adjustment", 0.0),
+                "pattern_warnings": _patt_ctx_f.get("pattern_warnings", []),
+                "pattern_boosts": _patt_ctx_f.get("pattern_boosts", []),
+                "shipper_history": _shipper_hist_f or None,
+            }
+        except Exception as _pexcf:
+            logger.warning("Pattern adjustments (files) failed (non-fatal): %s", _pexcf)
 
     if final_score <= 0.25:
         final_risk_level = "LOW"
@@ -2175,6 +2190,7 @@ async def analyze_files(
         document_type_code=_clf_primary_f.get("detected_doc_type_code"),
         classification_confidence=_clf_primary_f.get("confidence_label"),
         classification_warning=_clf_primary_f.get("warning"),
+        pattern_intelligence=_patt_intel_f,
     )
 
     try:
@@ -2195,6 +2211,22 @@ async def analyze_files(
         organization_id=org_id,
         report_payload_json=_report_payload_json_files,
     )
+
+    if _pattern_db is not None and shipment_id is not None:
+        try:
+            from portguard.pattern_engine import record_signals
+            record_signals(_pattern_db, current_org["email"], {
+                "exporter": sd.get("exporter"),
+                "origin_iso2": sd.get("origin_country_iso2"),
+                "destination_iso2": sd.get("destination_iso2") or "US",
+                "declared_value_usd": (
+                    float(sd["declared_value"]) if sd.get("declared_value") else None
+                ),
+                "final_risk_score": final_score,
+                "final_decision": final_decision,
+            })
+        except Exception as _rsexcf:
+            logger.warning("record_signals (files) failed (non-fatal): %s", _rsexcf)
 
     if shipment_id is not None and pattern_history_depth_val is not None:
         analyze_response_files.pattern_history_depth = pattern_history_depth_val + 1
@@ -2298,6 +2330,20 @@ def feedback(
             status_code=500,
             detail={"code": "FEEDBACK_ERROR", "message": str(exc)},
         )
+
+    # Also update pattern_store counters (non-fatal — best-effort)
+    if request.outcome in ("CONFIRMED_FRAUD", "CLEARED"):
+        try:
+            from portguard.pattern_engine import record_feedback as _record_patt_feedback
+            _record_patt_feedback(
+                _pattern_db,
+                current_org["email"],
+                request.shipment_id,
+                request.outcome,
+                request.notes,
+            )
+        except Exception as _rfexc:
+            logger.warning("record_feedback (pattern_store) failed (non-fatal): %s", _rfexc)
 
     outcome_messages = {
         "CONFIRMED_FRAUD": (
@@ -3162,6 +3208,7 @@ def _run_bulk_single_analysis(
     documents_data: list,
     org_id: str,
     enabled_modules: Optional[list] = None,
+    org_email: str = "__system__",
 ) -> dict:
     """Run the full analysis pipeline for one shipment in a bulk batch.
 
@@ -3248,57 +3295,60 @@ def _run_bulk_single_analysis(
     rule_decision: str = result["decision"]
     rule_confidence: str = result["confidence"]
 
-    # Pattern learning overlay (identical to analyze() endpoint)
-    pattern_result = None
+    # Pattern learning overlay (pattern_store-based engine)
+    pattern_result = None  # unused; kept for _record_shipment_bg compat
     pattern_score_val: Optional[float] = None
     history_available: bool = False
     pattern_signals: list[str] = []
     pattern_history_depth_val: Optional[int] = None
     final_score: float = rule_score
     final_decision: str = rule_decision
-
-    if _pattern_engine is not None:
-        try:
-            scoring_req = _build_scoring_request(sd, organization_id=org_id)
-            if scoring_req is not None:
-                pattern_result = _pattern_engine.score(scoring_req)
-                pattern_score_val = pattern_result.pattern_score
-                history_available = not pattern_result.is_cold_start
-                pattern_signals = list(pattern_result.explanations)
-                pattern_history_depth_val = pattern_result.history_depth
-
-                if pattern_result.history_depth >= 1:
-                    blended = _RULE_WEIGHT * rule_score + _PATTERN_WEIGHT * pattern_result.effective_pattern_score
-                    final_score = round(min(1.0, blended), 4)
-                    final_decision = _make_decision(
-                        result.get("_risk_factors", []),
-                        result.get("_missing_msgs", []),
-                        result.get("_inconsistency_codes", []),
-                        final_score,
-                        sd,
-                    )
-        except Exception as exc:
-            logger.warning("PatternEngine.score() failed in bulk (non-fatal): %s", exc)
+    _patt_ctx_b: dict = {}
+    _patt_intel_b: Optional[dict] = None
 
     if _pattern_db is not None:
         try:
-            _shipper_nb = sd.get("exporter")
-            _consignee_nb = sd.get("importer") or sd.get("consignee")
-            for _fnb, _fgb in ((_shipper_nb, "get_shipper_profile"), (_consignee_nb, "get_consignee_profile")):
-                if not _fnb:
-                    continue
-                _fpb = getattr(_pattern_db, _fgb)(_fnb, org_id)
-                if _fpb.total_confirmed_fraud > 0:
-                    pattern_signals.insert(
-                        0,
-                        f"⚠ CONFIRMED FRAUD HISTORY: {_fnb} has "
-                        f"{_fpb.total_confirmed_fraud} confirmed fraud outcome(s) on record "
-                        "— manual review required",
-                    )
-                    if final_decision == "APPROVE":
-                        final_decision = "REVIEW_RECOMMENDED"
-        except Exception as _fexcb:
-            logger.warning("Fraud flag check failed in bulk (non-fatal): %s", _fexcb)
+            from portguard.pattern_engine import apply_pattern_adjustments
+            _pre_depth_b, _shipper_hist_b = _get_shipper_depth_and_history(org_email, sd)
+            _patt_ctx_b = apply_pattern_adjustments(_pattern_db, org_email, sd)
+
+            pattern_signals = list(_patt_ctx_b.get("pattern_warnings", []))
+
+            if _patt_ctx_b.get("hard_flag"):
+                final_score = 1.0
+                final_decision = "FLAG_FOR_INSPECTION"
+            elif _patt_ctx_b.get("total_adjustment", 0.0) > 0.0:
+                _adj_b = _patt_ctx_b["total_adjustment"] / 10.0
+                final_score = round(min(1.0, max(0.0, rule_score + _adj_b)), 4)
+                final_decision = _make_decision(
+                    result.get("_risk_factors", []),
+                    result.get("_missing_msgs", []),
+                    result.get("_inconsistency_codes", []),
+                    final_score,
+                    sd,
+                )
+
+            if _patt_ctx_b.get("pattern_boosts") and not _patt_ctx_b.get("hard_flag"):
+                final_score = round(max(0.0, final_score - 0.05), 4)
+                final_decision = _make_decision(
+                    result.get("_risk_factors", []),
+                    result.get("_missing_msgs", []),
+                    result.get("_inconsistency_codes", []),
+                    final_score,
+                    sd,
+                )
+
+            pattern_history_depth_val = _pre_depth_b
+            history_available = (_pre_depth_b + 1) >= 3
+            _patt_intel_b = {
+                "hard_flag": bool(_patt_ctx_b.get("hard_flag")),
+                "adjustments_applied": _patt_ctx_b.get("total_adjustment", 0.0),
+                "pattern_warnings": _patt_ctx_b.get("pattern_warnings", []),
+                "pattern_boosts": _patt_ctx_b.get("pattern_boosts", []),
+                "shipper_history": _shipper_hist_b or None,
+            }
+        except Exception as _pexcb:
+            logger.warning("Pattern adjustments (bulk) failed (non-fatal): %s", _pexcb)
 
     # Risk level from final score
     if final_score <= 0.25:
@@ -3370,6 +3420,7 @@ def _run_bulk_single_analysis(
         document_type_code=_bulk_clf_primary.get("detected_doc_type_code"),
         classification_confidence=_bulk_clf_primary.get("confidence_label"),
         classification_warning=_bulk_clf_primary.get("warning"),
+        pattern_intelligence=_patt_intel_b,
     )
 
     # Record to PatternDB and store report payload
@@ -3391,6 +3442,23 @@ def _run_bulk_single_analysis(
         organization_id=org_id,
         report_payload_json=report_json,
     )
+
+    if _pattern_db is not None and shipment_id is not None:
+        try:
+            from portguard.pattern_engine import record_signals
+            record_signals(_pattern_db, org_email, {
+                "exporter": sd.get("exporter"),
+                "origin_iso2": sd.get("origin_country_iso2"),
+                "destination_iso2": sd.get("destination_iso2") or "US",
+                "declared_value_usd": (
+                    float(sd["declared_value"]) if sd.get("declared_value") else None
+                ),
+                "final_risk_score": final_score,
+                "final_decision": final_decision,
+            })
+        except Exception as _rsexcb:
+            logger.warning("record_signals (bulk) failed (non-fatal): %s", _rsexcb)
+
     if shipment_id is not None and pattern_history_depth_val is not None:
         analyze_response.pattern_history_depth = pattern_history_depth_val + 1
     analyze_response.shipment_id = shipment_id
@@ -3929,6 +3997,7 @@ async def bulk_create(
         shipments,
         org_id,
         enabled_modules=enabled_modules,
+        org_email=current_org["email"],
     )
 
     # Fetch completed results from DB
