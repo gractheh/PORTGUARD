@@ -684,7 +684,26 @@
       line-height: 1;
     }
     .act-dl-btn:hover { color: var(--teal-400); background: rgba(27,154,170,.1); }
+    .act-dl-btn:disabled { opacity: 0.45; cursor: not-allowed; pointer-events: none; }
     .act-dl-btn svg { display: block; }
+
+    /* Activity feed download button — named variant used by JS */
+    .activity-download-btn {
+      background: rgba(27,154,170,0.12);
+      border: 1px solid rgba(27,154,170,0.3);
+      color: #4DCFDF;
+      font-family: 'Inter', sans-serif;
+      font-size: 0.75rem;
+      font-weight: 600;
+      padding: 0.3rem 0.7rem;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .activity-download-btn:hover { background: rgba(27,154,170,0.22); transform: translateY(-1px); }
+    .activity-download-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; pointer-events: none; }
 
     /* Decision banner */
     .decision-banner {
@@ -8109,26 +8128,67 @@ function singleShareResult() {
   }).catch(() => { prompt('Copy this link:', url); });
 }
 
-async function downloadActivityReport(analysisId) {
+/**
+ * Download a PDF compliance report for a past screening by its analysis_id.
+ *
+ * Can be called two ways:
+ *   downloadActivityReport(this, analysisId)  — from onclick="downloadActivityReport(this, '...')"
+ *   downloadActivityReport(analysisId)         — backwards-compat (no button ref)
+ */
+async function downloadActivityReport(btnOrId, analysisId) {
+  // Support both calling conventions
+  let btn = null;
+  let id;
+  if (typeof btnOrId === 'string') {
+    id = btnOrId;
+  } else {
+    btn = (btnOrId instanceof Element) ? btnOrId : null;
+    id = analysisId;
+  }
+
+  if (!id) {
+    _showModuleToast('No report ID available for this screening', 'disable');
+    return;
+  }
+  if (!_authToken) { showAuthOverlay(); return; }
+
+  const originalHTML = btn ? btn.innerHTML : null;
   try {
-    const res = await fetch(apiUrl() + '/api/v1/report/generate', authedJson('POST', { shipment_id: analysisId }));
+    if (btn) {
+      btn.disabled = true;
+      btn.innerHTML = '<span style="opacity:0.6;font-size:0.7rem;letter-spacing:.02em">…</span>';
+    }
+
+    const res = await fetch(apiUrl() + '/api/v1/report/generate', authedJson('POST', { shipment_id: id }));
     if (res.status === 401) { handle401(); return; }
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
-      throw new Error((err.detail && (err.detail.message || err.detail)) || `HTTP ${res.status}`);
+      const msg = (err.detail && (typeof err.detail === 'object' ? err.detail.message : err.detail)) || `Server error ${res.status}`;
+      throw new Error(msg);
     }
+
     const blob = await res.blob();
+    if (blob.size === 0) throw new Error('Received empty PDF');
+
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     a.href = url;
-    a.download = `PortGuard_Report_${today}.pdf`;
+    a.download = `PortGuard_Report_${id}.pdf`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-  } catch (e) {
-    console.error('Report download failed:', e.message);
+
+    _showModuleToast('Report downloaded', 'enable');
+
+  } catch (err) {
+    console.error('Report download failed:', err);
+    _showModuleToast('Download failed: ' + err.message, 'disable');
+  } finally {
+    if (btn && originalHTML !== null) {
+      btn.disabled = false;
+      btn.innerHTML = originalHTML;
+    }
   }
 }
 
@@ -9828,7 +9888,7 @@ function _renderActivityFeed(data) {
 
     const dlIcon = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M5 7l3 3 3-3"/><rect x="2" y="11" width="12" height="3" rx="1"/></svg>`;
     const dlCell = r.analysis_id
-      ? `<td style="text-align:center"><button class="act-dl-btn" title="Download report" onclick="downloadActivityReport(${JSON.stringify(r.analysis_id)})">${dlIcon}</button></td>`
+      ? `<td style="text-align:center"><button class="act-dl-btn" title="Download report" data-result-id="${escHtml(r.analysis_id)}" onclick="downloadActivityReport(this, ${JSON.stringify(r.analysis_id)})">${dlIcon}</button></td>`
       : '<td></td>';
 
     return `<tr>
@@ -11044,7 +11104,7 @@ function bulkToggleExpand(btn, expandId) {
 }
 
 async function bulkDownloadRowPdf(analysisId) {
-  await downloadActivityReport(analysisId);
+  await downloadActivityReport(null, analysisId);
 }
 
 // ---------------------------------------------------------------------------
