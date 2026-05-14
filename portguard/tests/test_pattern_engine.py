@@ -1,52 +1,28 @@
 """
-Tests for portguard/pattern_engine.py
+Tests for portguard/pattern_engine.py (new pattern_store-based API).
 
 Run with:
     python -m pytest portguard/tests/test_pattern_engine.py -v
 
-All tests use in-memory PatternDB instances.  Each test builds its own
-database state using real PatternDB.record_shipment() / record_outcome()
-calls — there is no mocking of the DB layer.
+All tests use in-memory PatternDB instances (SQLite :memory:).
 """
 
 from __future__ import annotations
 
-import math
 import pytest
+from sqlalchemy import text
 
-from portguard.pattern_db import (
-    OUTCOME_CLEARED,
-    OUTCOME_CONFIRMED_FRAUD,
-    PatternDB,
-    ShipmentFingerprint,
-)
+from portguard.pattern_db import PatternDB
 from portguard.pattern_engine import (
-    COLD_START_HISTORY_THRESHOLD,
-    COLD_START_MULTIPLIER,
-    COLD_START_NEUTRAL_SCORE,
-    MIN_HS_SAMPLES_FOR_ANOMALY,
-    PAIR_FREQUENCY_THRESHOLD,
-    ROUTE_MIN_ANALYSES,
-    W_CONSIGNEE,
-    W_FLAG_FREQ,
-    W_ROUTE,
-    W_SHIPPER,
-    W_VALUE_ANOMALY,
-    Confidence,
-    ConsigneeRiskSignal,
-    FrequencyAnomalySignal,
-    PatternEngine,
-    PatternScoreResult,
-    RouteRiskSignal,
-    Severity,
-    ShipperRiskSignal,
-    ScoringRequest,
-    ValueAnomalySignal,
-    _flag_frequency_score,
-    _poisson_tail_probability,
-    _severity_from_score,
-    _sigmoid,
-    _value_anomaly_score,
+    apply_pattern_adjustments,
+    get_pattern_stats,
+    record_feedback,
+    record_signals,
+    reset_patterns,
+    _normalize_key,
+    _route_key,
+    _value_bucket,
+    _value_anomaly_key,
 )
 
 
@@ -54,654 +30,652 @@ from portguard.pattern_engine import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-
-def _make_engine() -> tuple[PatternDB, PatternEngine]:
-    """Return a fresh in-memory (db, engine) pair."""
-    db = PatternDB(":memory:")
-    engine = PatternEngine(db)
-    return db, engine
+ORG = "test@example.com"
 
 
-def _fp(**overrides) -> ShipmentFingerprint:
-    """Return a minimal valid ShipmentFingerprint."""
-    defaults = dict(
-        shipper_name="Test Shipper Co",
-        consignee_name="Test Consignee LLC",
-        origin_iso2="CN",
-        port_of_entry="Los Angeles",
-        hs_codes=["8471.30.0100"],
-        declared_value_usd=10000.0,
-        quantity=100.0,
-        rule_risk_score=0.3,
-        rule_decision="REVIEW_RECOMMENDED",
-        rule_confidence="MEDIUM",
-        final_risk_score=0.3,
-        final_decision="REVIEW_RECOMMENDED",
-        final_confidence="MEDIUM",
-    )
-    defaults.update(overrides)
-    fp = ShipmentFingerprint(**defaults)
-    return fp
+def _make_db() -> PatternDB:
+    return PatternDB(":memory:")
 
 
-def _req(**overrides) -> ScoringRequest:
-    """Return a minimal ScoringRequest."""
-    defaults = dict(
-        shipper_name="Test Shipper Co",
-        consignee_name="Test Consignee LLC",
-        origin_iso2="CN",
-        port_of_entry="Los Angeles",
-        hs_codes=["8471.30.0100"],
-        declared_value_usd=10000.0,
-        quantity=100.0,
-    )
-    defaults.update(overrides)
-    return ScoringRequest(**defaults)
+def _analysis(
+    shipper="Acme Corp",
+    origin="CN",
+    dest="US",
+    decision="APPROVE",
+    risk_score=0.3,
+    value_usd=10_000.0,
+) -> dict:
+    return {
+        "exporter": shipper,
+        "origin_iso2": origin,
+        "destination_iso2": dest,
+        "final_decision": decision,
+        "final_risk_score": risk_score,
+        "declared_value_usd": value_usd,
+    }
 
 
-# ---------------------------------------------------------------------------
-# Unit tests — pure math functions
-# ---------------------------------------------------------------------------
+def _row_count(db: PatternDB, signal_type: str | None = None) -> int:
+    """Return count of pattern_store rows, optionally filtered by signal_type."""
+    with db._engine.connect() as conn:
+        if signal_type:
+            return conn.execute(
+                text("SELECT COUNT(*) FROM pattern_store WHERE organization_email=:org AND signal_type=:st"),
+                {"org": ORG, "st": signal_type},
+            ).scalar()
+        return conn.execute(
+            text("SELECT COUNT(*) FROM pattern_store WHERE organization_email=:org"),
+            {"org": ORG},
+        ).scalar()
 
 
-class TestSigmoid:
-    def test_midpoint_is_half(self):
-        assert abs(_sigmoid(0.0) - 0.5) < 1e-9
-
-    def test_large_positive_approaches_one(self):
-        assert _sigmoid(100.0) == 1.0
-
-    def test_large_negative_approaches_zero(self):
-        assert _sigmoid(-100.0) == 0.0
-
-    def test_monotone(self):
-        xs = [-5, -2, -1, 0, 1, 2, 5]
-        ys = [_sigmoid(x) for x in xs]
-        assert ys == sorted(ys)
-
-
-class TestFlagFrequencyScore:
-    def test_zero_history(self):
-        rate, score = _flag_frequency_score(0.0, 0.0)
-        assert rate == 0.0
-        # At 0% flag rate, score should be very low (sigmoid(8*(0-0.4)) ≈ 0.04)
-        assert score < 0.10
-
-    def test_hundred_percent_flag_rate(self):
-        rate, score = _flag_frequency_score(10.0, 10.0)
-        assert abs(rate - 1.0) < 1e-9
-        # At 100% flag rate, score should be near 1.0
-        assert score > 0.95
-
-    def test_forty_percent_is_midpoint(self):
-        # 40% flag rate → sigmoid(0) = 0.5
-        rate, score = _flag_frequency_score(4.0, 10.0)
-        assert abs(rate - 0.4) < 1e-9
-        assert abs(score - 0.5) < 0.01
-
-    def test_w_total_larger_than_w_flagged(self):
-        # Half flagged
-        rate, score = _flag_frequency_score(5.0, 10.0)
-        assert abs(rate - 0.5) < 1e-9
-        # 50% > midpoint → score > 0.5
-        assert score > 0.5
-
-
-class TestValueAnomalyScore:
-    def test_at_threshold_is_zero(self):
-        assert _value_anomaly_score(-1.0) == 0.0
-
-    def test_above_threshold_is_zero(self):
-        assert _value_anomaly_score(0.0) == 0.0
-        assert _value_anomaly_score(2.0) == 0.0
-
-    def test_z_minus_2(self):
-        # (-(-2) - 1) / 3 = 1/3
-        assert abs(_value_anomaly_score(-2.0) - 1.0 / 3.0) < 1e-9
-
-    def test_z_minus_3(self):
-        # (3-1)/3 = 2/3
-        assert abs(_value_anomaly_score(-3.0) - 2.0 / 3.0) < 1e-9
-
-    def test_z_minus_4_is_one(self):
-        assert _value_anomaly_score(-4.0) == 1.0
-
-    def test_clamps_at_one(self):
-        assert _value_anomaly_score(-10.0) == 1.0
-
-
-class TestPoissonTailProbability:
-    def test_k_zero_always_one(self):
-        assert _poisson_tail_probability(5.0, 0) == 1.0
-
-    def test_expected_is_plausible(self):
-        # k = mu: P(X >= mu) ≈ 0.5 (roughly)
-        p = _poisson_tail_probability(5.0, 5)
-        assert 0.3 < p < 0.7
-
-    def test_very_high_k_is_low_probability(self):
-        # Seeing k=20 when mu=2 is extremely unlikely
-        p = _poisson_tail_probability(2.0, 20)
-        assert p < 0.001
-
-    def test_k_equals_one_near_one_for_small_mu(self):
-        # P(X >= 1) when mu=5 is almost 1
-        p = _poisson_tail_probability(5.0, 1)
-        assert p > 0.99
-
-    def test_zero_mu_returns_zero(self):
-        assert _poisson_tail_probability(0.0, 5) == 0.0
-
-
-class TestSeverityFromScore:
-    def test_below_low_threshold(self):
-        assert _severity_from_score(0.10) == Severity.LOW
-
-    def test_at_medium_boundary(self):
-        assert _severity_from_score(0.25) == Severity.MEDIUM
-
-    def test_at_high_boundary(self):
-        assert _severity_from_score(0.50) == Severity.HIGH
-
-    def test_critical(self):
-        assert _severity_from_score(0.75) == Severity.CRITICAL
-        assert _severity_from_score(1.0) == Severity.CRITICAL
-
-    def test_custom_thresholds(self):
-        assert _severity_from_score(0.35, (0.20, 0.40, 0.60)) == Severity.MEDIUM
+def _get_row(db: PatternDB, signal_type: str, signal_key: str) -> dict | None:
+    """Fetch a single pattern_store row as a dict."""
+    with db._engine.connect() as conn:
+        row = conn.execute(
+            text("""
+                SELECT occurrence_count, flag_count, fraud_confirmed_count,
+                       cleared_count, avg_risk_score, last_decision
+                FROM pattern_store
+                WHERE organization_email=:org AND signal_type=:st AND signal_key=:sk
+            """),
+            {"org": ORG, "st": signal_type, "sk": signal_key},
+        ).fetchone()
+    if row is None:
+        return None
+    return {
+        "occurrence_count":      row[0],
+        "flag_count":            row[1],
+        "fraud_confirmed_count": row[2],
+        "cleared_count":         row[3],
+        "avg_risk_score":        row[4],
+        "last_decision":         row[5],
+    }
 
 
 # ---------------------------------------------------------------------------
-# Integration tests — PatternEngine.score()
+# Helper function unit tests
 # ---------------------------------------------------------------------------
 
 
-class TestColdStart:
-    def test_empty_db_returns_cold_start(self):
-        db, engine = _make_engine()
-        result = engine.score(_req())
-        assert result.is_cold_start
-        assert result.history_depth == 0
+class TestNormalizeKey:
+    def test_lowercases(self):
+        assert _normalize_key("Acme CORP") == "acme corp"
+
+    def test_strips_unicode(self):
+        result = _normalize_key("Café Exports")
+        assert "caf" in result
+
+    def test_empty_string(self):
+        assert _normalize_key("") == ""
+
+    def test_collapses_whitespace(self):
+        assert _normalize_key("  Foo   Bar  ") == "foo bar"
+
+
+class TestRouteKey:
+    def test_basic(self):
+        assert _route_key("CN", "US") == "CN→US"
+
+    def test_lowercases_to_upper(self):
+        assert _route_key("cn", "us") == "CN→US"
+
+    def test_none_origin(self):
+        assert _route_key(None, "US") == "??→US"
+
+    def test_none_destination_defaults_us(self):
+        assert _route_key("CN", None) == "CN→US"
+
+
+class TestValueBucket:
+    def test_low(self):
+        assert _value_bucket(1_000.0) == "LOW"
+        assert _value_bucket(4_999.99) == "LOW"
+
+    def test_medium(self):
+        assert _value_bucket(5_000.0) == "MEDIUM"
+        assert _value_bucket(49_999.0) == "MEDIUM"
+
+    def test_high(self):
+        assert _value_bucket(50_000.0) == "HIGH"
+        assert _value_bucket(499_999.0) == "HIGH"
+
+    def test_very_high(self):
+        assert _value_bucket(500_000.0) == "VERY_HIGH"
+        assert _value_bucket(1_000_000.0) == "VERY_HIGH"
+
+    def test_none_is_low(self):
+        assert _value_bucket(None) == "LOW"
+
+    def test_negative_is_low(self):
+        assert _value_bucket(-500.0) == "LOW"
+
+
+class TestValueAnomalyKey:
+    def test_format(self):
+        assert _value_anomaly_key("HIGH", "CN") == "HIGH:CN"
+
+    def test_none_origin(self):
+        assert _value_anomaly_key("LOW", None) == "LOW:??"
+
+
+# ---------------------------------------------------------------------------
+# record_signals
+# ---------------------------------------------------------------------------
+
+
+class TestRecordSignals:
+    def test_creates_shipper_rep_row(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis())
+        assert _row_count(db, "SHIPPER_REP") == 1
         db.close()
 
-    def test_empty_db_explanation_mentions_insufficient_history(self):
-        db, engine = _make_engine()
-        result = engine.score(_req())
-        text = " ".join(result.explanations)
-        assert "Insufficient history" in text
+    def test_creates_route_risk_row(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis())
+        assert _row_count(db, "ROUTE_RISK") == 1
         db.close()
 
-    def test_cold_start_multiplier_applied(self):
-        db, engine = _make_engine()
-        result = engine.score(_req())
-        assert abs(result.effective_pattern_score - result.pattern_score * COLD_START_MULTIPLIER) < 1e-9
+    def test_creates_value_anomaly_row(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis())
+        assert _row_count(db, "VALUE_ANOMALY") == 1
         db.close()
 
-    def test_after_threshold_analyses_no_cold_start(self):
-        db, engine = _make_engine()
-        for _ in range(COLD_START_HISTORY_THRESHOLD):
-            aid = db.record_shipment(_fp(), "APPROVE", [], "LOW")
-        result = engine.score(_req())
-        assert not result.is_cold_start
-        assert result.history_depth >= COLD_START_HISTORY_THRESHOLD
+    def test_creates_three_rows_per_analysis(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis())
+        assert _row_count(db) == 3
         db.close()
 
-    def test_two_analyses_still_cold_start(self):
-        db, engine = _make_engine()
-        for _ in range(COLD_START_HISTORY_THRESHOLD - 1):
-            db.record_shipment(_fp(), "APPROVE", [], "LOW")
-        result = engine.score(_req())
-        assert result.is_cold_start
-        db.close()
-
-
-class TestShipperSignal:
-    def test_clean_shipper_low_score(self):
-        db, engine = _make_engine()
-        for _ in range(10):
-            aid = db.record_shipment(_fp(), "APPROVE", [], "LOW")
-            db.record_outcome(aid, OUTCOME_CLEARED)
-        result = engine.score(_req())
-        assert result.shipper_score < 0.20
-        db.close()
-
-    def test_fraudulent_shipper_high_score(self):
-        db, engine = _make_engine()
-        for _ in range(10):
-            aid = db.record_shipment(_fp(), "FLAG_FOR_INSPECTION", [], "HIGH")
-            db.record_outcome(aid, OUTCOME_CONFIRMED_FRAUD)
-        result = engine.score(_req())
-        assert result.shipper_score > 0.50
-        db.close()
-
-    def test_shipper_signal_triggered_by_frauds(self):
-        db, engine = _make_engine()
+    def test_increments_occurrence_count_on_repeat(self):
+        db = _make_db()
         for _ in range(5):
-            aid = db.record_shipment(_fp(), "FLAG_FOR_INSPECTION", [], "HIGH")
-            db.record_outcome(aid, OUTCOME_CONFIRMED_FRAUD)
-        result = engine.score(_req())
-        shipper_sig = result.signals[0]
-        assert isinstance(shipper_sig, ShipperRiskSignal)
-        assert shipper_sig.triggered
+            record_signals(db, ORG, _analysis())
+        row = _get_row(db, "SHIPPER_REP", _normalize_key("Acme Corp"))
+        assert row["occurrence_count"] == 5
         db.close()
 
-    def test_trusted_shipper_zero_score(self):
-        db, engine = _make_engine()
-        # Auto-trust: 20 cleared outcomes, 0 fraud
-        aids = [db.record_shipment(_fp(), "FLAG_FOR_INSPECTION", [], "HIGH") for _ in range(20)]
-        for aid in aids:
-            db.record_outcome(aid, OUTCOME_CLEARED)
-        result = engine.score(_req())
-        assert result.shipper_score == 0.0
-        sig = result.signals[0]
-        assert sig.is_trusted
+    def test_flag_count_zero_for_approve(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis(decision="APPROVE"))
+        row = _get_row(db, "SHIPPER_REP", _normalize_key("Acme Corp"))
+        assert row["flag_count"] == 0
         db.close()
 
-    def test_unknown_shipper_returns_prior_score(self):
-        db, engine = _make_engine()
-        result = engine.score(_req(shipper_name="Brand New Corp"))
-        sig = result.signals[0]
-        assert isinstance(sig, ShipperRiskSignal)
-        # Prior reputation = 1/6 ≈ 0.167; blended = 0.6*0.167 + 0.4*freq
-        assert sig.reputation_score == pytest.approx(1.0 / 6.0, abs=1e-3)
+    def test_flag_count_incremented_for_flag_for_inspection(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION"))
+        row = _get_row(db, "SHIPPER_REP", _normalize_key("Acme Corp"))
+        assert row["flag_count"] == 1
         db.close()
 
-    def test_none_shipper_name_is_safe(self):
-        db, engine = _make_engine()
-        result = engine.score(_req(shipper_name=None))
-        sig = result.signals[0]
-        assert not sig.triggered
-        assert sig.score == 0.0
+    def test_flag_count_incremented_for_request_more_info(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis(decision="REQUEST_MORE_INFO"))
+        row = _get_row(db, "SHIPPER_REP", _normalize_key("Acme Corp"))
+        assert row["flag_count"] == 1
         db.close()
 
-    def test_explanation_contains_shipper_name(self):
-        db, engine = _make_engine()
-        for _ in range(5):
-            aid = db.record_shipment(_fp(), "FLAG_FOR_INSPECTION", [], "HIGH")
-            db.record_outcome(aid, OUTCOME_CONFIRMED_FRAUD)
-        result = engine.score(_req())
-        sig = result.signals[0]
-        assert "Test Shipper Co" in sig.explanation
+    def test_flag_count_accumulates(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION"))
+        record_signals(db, ORG, _analysis(decision="APPROVE"))
+        record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION"))
+        row = _get_row(db, "SHIPPER_REP", _normalize_key("Acme Corp"))
+        assert row["occurrence_count"] == 3
+        assert row["flag_count"] == 2
+        db.close()
+
+    def test_avg_risk_score_is_rolling_average(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis(risk_score=0.2))
+        record_signals(db, ORG, _analysis(risk_score=0.4))
+        row = _get_row(db, "SHIPPER_REP", _normalize_key("Acme Corp"))
+        assert abs(row["avg_risk_score"] - 0.3) < 0.01
+        db.close()
+
+    def test_last_decision_updated(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis(decision="APPROVE"))
+        record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION"))
+        row = _get_row(db, "SHIPPER_REP", _normalize_key("Acme Corp"))
+        assert row["last_decision"] == "FLAG_FOR_INSPECTION"
+        db.close()
+
+    def test_no_shipper_skips_shipper_rep(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis(shipper=None))
+        assert _row_count(db, "SHIPPER_REP") == 0
+        db.close()
+
+    def test_no_origin_skips_route_and_value(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis(origin=None))
+        assert _row_count(db, "ROUTE_RISK") == 0
+        assert _row_count(db, "VALUE_ANOMALY") == 0
+        db.close()
+
+    def test_org_isolation(self):
+        db = _make_db()
+        record_signals(db, "org1@example.com", _analysis())
+        record_signals(db, "org2@example.com", _analysis())
+        with db._engine.connect() as conn:
+            c1 = conn.execute(
+                text("SELECT COUNT(*) FROM pattern_store WHERE organization_email='org1@example.com'")
+            ).scalar()
+            c2 = conn.execute(
+                text("SELECT COUNT(*) FROM pattern_store WHERE organization_email='org2@example.com'")
+            ).scalar()
+        assert c1 == 3
+        assert c2 == 3
+        db.close()
+
+    def test_does_not_raise_on_bad_input(self):
+        db = _make_db()
+        record_signals(db, ORG, None)  # should not raise
+        record_signals(db, ORG, {})
+        db.close()
+
+    def test_value_anomaly_key_uses_correct_bucket(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis(value_usd=100_000.0, origin="CN"))
+        assert _get_row(db, "VALUE_ANOMALY", "HIGH:CN") is not None
         db.close()
 
 
-class TestConsigneeSignal:
-    def test_clean_consignee_low_score(self):
-        db, engine = _make_engine()
-        for _ in range(10):
-            aid = db.record_shipment(_fp(), "APPROVE", [], "LOW")
-            db.record_outcome(aid, OUTCOME_CLEARED)
-        result = engine.score(_req())
-        assert result.consignee_score < 0.20
+# ---------------------------------------------------------------------------
+# apply_pattern_adjustments
+# ---------------------------------------------------------------------------
+
+
+class TestApplyPatternAdjustments:
+    def test_unknown_shipper_returns_zero_adjustment(self):
+        db = _make_db()
+        adj = apply_pattern_adjustments(db, ORG, _analysis())
+        assert adj["total_adjustment"] == 0.0
+        assert not adj["hard_flag"]
+        assert adj["pattern_warnings"] == []
         db.close()
 
-    def test_fraudulent_consignee_high_score(self):
-        db, engine = _make_engine()
-        for _ in range(8):
-            aid = db.record_shipment(_fp(), "FLAG_FOR_INSPECTION", [], "HIGH")
-            db.record_outcome(aid, OUTCOME_CONFIRMED_FRAUD)
-        result = engine.score(_req())
-        assert result.consignee_score > 0.40
+    def test_low_flag_rate_no_adjustment(self):
+        db = _make_db()
+        # 2/10 = 20% flag rate, below 30% threshold
+        for i in range(10):
+            record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION" if i < 2 else "APPROVE"))
+        adj = apply_pattern_adjustments(db, ORG, _analysis())
+        assert adj["shipper_adjustment"] == 0.0
         db.close()
 
-    def test_consignee_scored_independently_from_shipper(self):
-        """A clean shipper paired with a fraudulent consignee should still score high."""
-        db, engine = _make_engine()
-        # Same shipper, two different consignees — fraud on one only
-        for _ in range(5):
-            aid = db.record_shipment(
-                _fp(consignee_name="Bad Actor LLC"),
-                "FLAG_FOR_INSPECTION", [], "HIGH"
+    def test_moderate_flag_rate_gives_1_5_adjustment(self):
+        db = _make_db()
+        # 4/10 = 40% flag rate → +1.5
+        for i in range(10):
+            record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION" if i < 4 else "APPROVE"))
+        adj = apply_pattern_adjustments(db, ORG, _analysis())
+        assert adj["shipper_adjustment"] == 1.5
+        db.close()
+
+    def test_high_flag_rate_gives_2_5_adjustment(self):
+        db = _make_db()
+        # 7/10 = 70% flag rate → +2.5
+        for i in range(10):
+            record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION" if i < 7 else "APPROVE"))
+        adj = apply_pattern_adjustments(db, ORG, _analysis())
+        assert adj["shipper_adjustment"] == 2.5
+        db.close()
+
+    def test_cleared_history_reduces_adjustment(self):
+        db = _make_db()
+        # Build moderate risk
+        for i in range(10):
+            record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION" if i < 4 else "APPROVE"))
+        # Apply cleared feedback
+        adj_before = apply_pattern_adjustments(db, ORG, _analysis())
+        # manually set cleared_count > 2 in DB
+        with db._engine.begin() as conn:
+            conn.execute(
+                text("UPDATE pattern_store SET cleared_count=3 WHERE signal_type='SHIPPER_REP' AND organization_email=:org"),
+                {"org": ORG},
             )
-            db.record_outcome(aid, OUTCOME_CONFIRMED_FRAUD)
-        for _ in range(10):
-            aid = db.record_shipment(
-                _fp(consignee_name="Good Company Inc"),
-                "APPROVE", [], "LOW"
+        adj_after = apply_pattern_adjustments(db, ORG, _analysis())
+        assert adj_after["shipper_adjustment"] < adj_before["shipper_adjustment"]
+        db.close()
+
+    def test_hard_flag_when_fraud_confirmed(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION"))
+        with db._engine.begin() as conn:
+            conn.execute(
+                text("UPDATE pattern_store SET fraud_confirmed_count=1 WHERE signal_type='SHIPPER_REP' AND organization_email=:org"),
+                {"org": ORG},
             )
-            db.record_outcome(aid, OUTCOME_CLEARED)
-
-        bad_result = engine.score(_req(consignee_name="Bad Actor LLC"))
-        good_result = engine.score(_req(consignee_name="Good Company Inc"))
-        assert bad_result.consignee_score > good_result.consignee_score
+        adj = apply_pattern_adjustments(db, ORG, _analysis())
+        assert adj["hard_flag"] is True
+        assert adj["hard_flag_reason"] is not None
+        assert "Acme Corp" in adj["hard_flag_reason"]
+        assert any("⚠" in w for w in adj["pattern_warnings"])
         db.close()
 
-
-class TestRouteSignal:
-    def test_new_route_neutral_score(self):
-        db, engine = _make_engine()
-        result = engine.score(_req(origin_iso2="ZZ", port_of_entry="Nowhere"))
-        sig = result.signals[2]
-        assert isinstance(sig, RouteRiskSignal)
-        assert not sig.triggered
-        assert abs(sig.fraud_rate - 0.5) < 0.01
+    def test_route_adjustment_requires_min_3_occurrences(self):
+        db = _make_db()
+        # Only 2 analyses on this route
+        record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION"))
+        record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION"))
+        adj = apply_pattern_adjustments(db, ORG, _analysis())
+        assert adj["route_adjustment"] == 0.0
         db.close()
 
-    def test_clean_route_low_fraud_rate(self):
-        db, engine = _make_engine()
-        for _ in range(20):
-            aid = db.record_shipment(_fp(), "APPROVE", [], "LOW")
-        result = engine.score(_req())
-        sig = result.signals[2]
-        assert sig.fraud_rate < 0.10
+    def test_route_high_flag_rate_gives_2_0_adjustment(self):
+        db = _make_db()
+        # 4/5 = 80% flag rate on CN→US with 5 occurrences → +2.0
+        for i in range(5):
+            record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION" if i < 4 else "APPROVE"))
+        adj = apply_pattern_adjustments(db, ORG, _analysis())
+        assert adj["route_adjustment"] == 2.0
         db.close()
 
-    def test_risky_route_triggers(self):
-        db, engine = _make_engine()
-        # 10 analyses, 5 confirmed fraud → rate ≈ 0.45
-        for _ in range(5):
-            aid = db.record_shipment(_fp(), "FLAG_FOR_INSPECTION", [], "HIGH")
-            db.record_outcome(aid, OUTCOME_CONFIRMED_FRAUD)
-        for _ in range(5):
-            db.record_shipment(_fp(), "APPROVE", [], "LOW")
-        result = engine.score(_req())
-        sig = result.signals[2]
-        assert sig.triggered
-        assert sig.fraud_rate > 0.30
-        db.close()
-
-    def test_route_not_triggered_below_threshold(self):
-        db, engine = _make_engine()
-        # Only 2 analyses, 1 fraud → not enough data for trigger
-        for _ in range(2):
-            aid = db.record_shipment(_fp(), "FLAG_FOR_INSPECTION", [], "HIGH")
-        db.record_outcome(aid, OUTCOME_CONFIRMED_FRAUD)
-        result = engine.score(_req())
-        sig = result.signals[2]
-        # Below ROUTE_MIN_ANALYSES=5, so not triggered unless extreme
-        # fraud rate might be high but data_sufficient=False
-        assert not sig.data_sufficient
-        db.close()
-
-    def test_route_explanation_contains_corridor(self):
-        db, engine = _make_engine()
-        result = engine.score(_req())
-        sig = result.signals[2]
-        assert "CN" in sig.explanation
-        assert "Los Angeles" in sig.explanation
-        db.close()
-
-    def test_missing_origin_returns_null_signal(self):
-        db, engine = _make_engine()
-        result = engine.score(_req(origin_iso2=None))
-        sig = result.signals[2]
-        assert not sig.triggered
-        db.close()
-
-
-class TestValueAnomalySignal:
-    def test_insufficient_hs_samples_not_triggered(self):
-        db, engine = _make_engine()
-        # Only 3 shipments recorded — below MIN_HS_SAMPLES_FOR_ANOMALY (10)
+    def test_value_anomaly_requires_min_4_occurrences(self):
+        db = _make_db()
         for _ in range(3):
-            db.record_shipment(_fp(), "APPROVE", [], "LOW")
-        result = engine.score(_req())
-        sig = result.signals[3]
-        assert isinstance(sig, ValueAnomalySignal)
-        assert not sig.triggered
-        assert sig.z_score is None
+            record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION", value_usd=100_000.0))
+        adj = apply_pattern_adjustments(db, ORG, _analysis(value_usd=100_000.0))
+        assert adj["value_adjustment"] == 0.0
         db.close()
 
-    def test_normal_value_not_triggered(self):
-        db, engine = _make_engine()
-        # Build baseline: unit value = 100 for 15 shipments
-        for _ in range(15):
-            db.record_shipment(
-                _fp(declared_value_usd=10000.0, quantity=100.0), "APPROVE", [], "LOW"
+    def test_value_anomaly_gives_1_5_adjustment(self):
+        db = _make_db()
+        # 3/4 = 75% flag rate on HIGH:CN with 4 occurrences → +1.5
+        for i in range(4):
+            record_signals(db, ORG, _analysis(
+                decision="FLAG_FOR_INSPECTION" if i < 3 else "APPROVE",
+                value_usd=100_000.0,
+            ))
+        adj = apply_pattern_adjustments(db, ORG, _analysis(value_usd=100_000.0))
+        assert adj["value_adjustment"] == 1.5
+        db.close()
+
+    def test_total_adjustment_is_sum_clamped_at_zero(self):
+        db = _make_db()
+        adj = apply_pattern_adjustments(db, ORG, _analysis())
+        assert adj["total_adjustment"] >= 0.0
+        db.close()
+
+    def test_total_adjustment_sums_all_signals(self):
+        db = _make_db()
+        # Build high shipper risk (70%)
+        for i in range(10):
+            record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION" if i < 7 else "APPROVE", value_usd=100_000.0))
+        # value anomaly: force 4 occurrences with 75% flag rate already done above
+        adj = apply_pattern_adjustments(db, ORG, _analysis(value_usd=100_000.0))
+        assert adj["total_adjustment"] == adj["shipper_adjustment"] + adj["route_adjustment"] + adj["value_adjustment"]
+        db.close()
+
+    def test_org_isolation(self):
+        db = _make_db()
+        # Only other org has risk data
+        for i in range(10):
+            record_signals(db, "other@example.com", _analysis(decision="FLAG_FOR_INSPECTION" if i < 7 else "APPROVE"))
+        adj = apply_pattern_adjustments(db, ORG, _analysis())
+        assert adj["total_adjustment"] == 0.0
+        db.close()
+
+    def test_does_not_raise_on_bad_input(self):
+        db = _make_db()
+        adj = apply_pattern_adjustments(db, ORG, None)
+        assert isinstance(adj, dict)
+        assert "total_adjustment" in adj
+        db.close()
+
+    def test_pattern_warnings_are_strings(self):
+        db = _make_db()
+        for i in range(10):
+            record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION" if i < 7 else "APPROVE"))
+        adj = apply_pattern_adjustments(db, ORG, _analysis())
+        for w in adj["pattern_warnings"]:
+            assert isinstance(w, str)
+        db.close()
+
+
+# ---------------------------------------------------------------------------
+# record_feedback
+# ---------------------------------------------------------------------------
+
+
+class TestRecordFeedback:
+    def _write_shipment_row(self, db: PatternDB, analysis_id: str, shipper: str, origin: str) -> None:
+        """Insert a minimal shipment_history row for testing record_feedback."""
+        from portguard.pattern_db import ShipmentFingerprint
+        fp = ShipmentFingerprint(
+            shipper_name=shipper,
+            origin_iso2=origin,
+            destination_iso2="US",
+            rule_risk_score=0.3,
+            rule_decision="APPROVE",
+            rule_confidence="LOW",
+            final_risk_score=0.3,
+            final_decision="APPROVE",
+            final_confidence="LOW",
+        )
+        with db._engine.begin() as conn:
+            conn.execute(
+                text("""
+                    INSERT INTO shipment_history
+                        (analysis_id, analyzed_at, shipper_name, origin_iso2, destination_iso2,
+                         rule_risk_score, rule_decision, rule_confidence,
+                         final_risk_score, final_decision, final_confidence,
+                         pattern_cold_start)
+                    VALUES
+                        (:aid, '2026-01-01T00:00:00+00:00', :sn, :orig, 'US',
+                         0.3, 'APPROVE', 'LOW', 0.3, 'APPROVE', 'LOW', 1)
+                """),
+                {"aid": analysis_id, "sn": shipper, "orig": origin},
             )
-        # Score a shipment with unit value = 98 (within 1 stddev)
-        result = engine.score(_req(declared_value_usd=9800.0, quantity=100.0))
-        sig = result.signals[3]
-        assert not sig.triggered
+
+    def test_increments_fraud_confirmed_count(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis())
+        self._write_shipment_row(db, "test-001", "Acme Corp", "CN")
+        record_feedback(db, ORG, "test-001", "CONFIRMED_FRAUD")
+        row = _get_row(db, "SHIPPER_REP", _normalize_key("Acme Corp"))
+        assert row["fraud_confirmed_count"] == 1
         db.close()
 
-    def test_severely_undervalued_triggers(self):
-        db, engine = _make_engine()
-        # Build a narrow baseline: unit value ≈ 100, low variance
-        for i in range(15):
-            # Slight variation to get a real stddev
-            db.record_shipment(
-                _fp(declared_value_usd=10000.0 + i * 10, quantity=100.0),
-                "APPROVE", [], "LOW"
-            )
-        # Score a shipment with unit value = 50 (far below mean=100ish)
-        result = engine.score(_req(declared_value_usd=5000.0, quantity=100.0))
-        sig = result.signals[3]
-        # With a tight baseline, unit_value=50 vs mean≈100 should have large negative z
-        if sig.z_score is not None and sig.z_score < -1.0:
-            assert sig.triggered
+    def test_increments_cleared_count(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis())
+        self._write_shipment_row(db, "test-002", "Acme Corp", "CN")
+        record_feedback(db, ORG, "test-002", "CLEARED")
+        row = _get_row(db, "SHIPPER_REP", _normalize_key("Acme Corp"))
+        assert row["cleared_count"] == 1
         db.close()
 
-    def test_overvalued_not_triggered(self):
-        db, engine = _make_engine()
-        # Build baseline at 100
-        for i in range(15):
-            db.record_shipment(
-                _fp(declared_value_usd=9900.0 + i * 20, quantity=100.0), "APPROVE", [], "LOW"
-            )
-        # Score a shipment with very HIGH unit value — should NOT trigger
-        result = engine.score(_req(declared_value_usd=100000.0, quantity=100.0))
-        sig = result.signals[3]
-        if sig.z_score is not None:
-            assert sig.score == 0.0  # high values don't generate anomaly score
+    def test_also_updates_route_risk_row(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis())
+        self._write_shipment_row(db, "test-003", "Acme Corp", "CN")
+        record_feedback(db, ORG, "test-003", "CONFIRMED_FRAUD")
+        route_row = _get_row(db, "ROUTE_RISK", "CN→US")
+        assert route_row["fraud_confirmed_count"] == 1
         db.close()
 
-    def test_no_quantity_no_trigger(self):
-        db, engine = _make_engine()
-        result = engine.score(_req(quantity=None))
-        sig = result.signals[3]
-        assert not sig.triggered
+    def test_unknown_shipment_id_does_not_raise(self):
+        db = _make_db()
+        record_feedback(db, ORG, "no-such-id", "CONFIRMED_FRAUD")  # should not raise
         db.close()
 
-    def test_no_hs_codes_no_trigger(self):
-        db, engine = _make_engine()
-        result = engine.score(_req(hs_codes=[]))
-        sig = result.signals[3]
-        assert not sig.triggered
+    def test_invalid_feedback_type_does_not_raise(self):
+        db = _make_db()
+        record_feedback(db, ORG, "test-004", "BAD_TYPE")  # should not raise
         db.close()
 
-    def test_explanation_mentions_unit_value(self):
-        db, engine = _make_engine()
-        # Build baseline with enough samples
-        for i in range(15):
-            db.record_shipment(
-                _fp(declared_value_usd=10000.0 + i * 100, quantity=100.0), "APPROVE", [], "LOW"
-            )
-        result = engine.score(_req(declared_value_usd=10000.0, quantity=100.0))
-        sig = result.signals[3]
-        assert "$" in sig.explanation
+    def test_no_pattern_row_no_crash(self):
+        # Shipment exists in history but no pattern_store row — UPDATE is a no-op
+        db = _make_db()
+        self._write_shipment_row(db, "test-005", "New Corp", "DE")
+        record_feedback(db, ORG, "test-005", "CONFIRMED_FRAUD")  # no-op, not a crash
+        db.close()
+
+    def test_multiple_feedbacks_accumulate(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis())
+        self._write_shipment_row(db, "test-006", "Acme Corp", "CN")
+        self._write_shipment_row(db, "test-007", "Acme Corp", "CN")
+        record_feedback(db, ORG, "test-006", "CONFIRMED_FRAUD")
+        record_feedback(db, ORG, "test-007", "CONFIRMED_FRAUD")
+        row = _get_row(db, "SHIPPER_REP", _normalize_key("Acme Corp"))
+        assert row["fraud_confirmed_count"] == 2
         db.close()
 
 
-class TestFrequencyAnomalySignal:
-    def test_new_pair_not_triggered(self):
-        db, engine = _make_engine()
-        result = engine.score(_req())
-        sig = result.signals[4]
-        assert isinstance(sig, FrequencyAnomalySignal)
-        assert not sig.triggered
+# ---------------------------------------------------------------------------
+# get_pattern_stats
+# ---------------------------------------------------------------------------
+
+
+class TestGetPatternStats:
+    def test_empty_db_returns_defaults(self):
+        db = _make_db()
+        stats = get_pattern_stats(db, ORG)
+        assert stats["total_shipments_screened"] == 0
+        assert stats["unique_shippers_tracked"] == 0
+        assert stats["has_history"] is False
         db.close()
 
-    def test_below_threshold_count_not_triggered(self):
-        db, engine = _make_engine()
-        # 2 appearances in past 7 days — below threshold of 3
-        for _ in range(2):
-            db.record_shipment(_fp(), "APPROVE", [], "LOW")
-        result = engine.score(_req())
-        sig = result.signals[4]
-        assert not sig.triggered
+    def test_has_history_after_recording(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis())
+        stats = get_pattern_stats(db, ORG)
+        assert stats["has_history"] is True
         db.close()
 
-    def test_above_threshold_triggers(self):
-        db, engine = _make_engine()
-        # Record many appearances of this pair in rapid succession
-        for _ in range(10):
-            db.record_shipment(_fp(), "FLAG_FOR_INSPECTION", [], "HIGH")
-        result = engine.score(_req())
-        sig = result.signals[4]
-        # With no historical baseline (mu=1.0 floor) and 10 recent appearances,
-        # the Poisson tail should be very low → score should be high
-        assert sig.observed_count_7d >= PAIR_FREQUENCY_THRESHOLD
-        assert sig.score > 0.50
-        assert sig.triggered
+    def test_counts_unique_shippers(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis(shipper="Shipper A"))
+        record_signals(db, ORG, _analysis(shipper="Shipper B"))
+        record_signals(db, ORG, _analysis(shipper="Shipper A"))
+        stats = get_pattern_stats(db, ORG)
+        assert stats["unique_shippers_tracked"] == 2
         db.close()
 
-    def test_none_shipper_returns_null_signal(self):
-        db, engine = _make_engine()
-        result = engine.score(_req(shipper_name=None))
-        sig = result.signals[4]
-        assert not sig.triggered
-        assert sig.score == 0.0
-        db.close()
-
-    def test_poisson_floor_prevents_oversensitivity(self):
-        """A pair with 3 appearances in 7 days but no history uses mu=1.0 floor."""
-        db, engine = _make_engine()
+    def test_total_shipments_screened_sums_occurrences(self):
+        db = _make_db()
+        for _ in range(5):
+            record_signals(db, ORG, _analysis(shipper="Alpha Corp"))
         for _ in range(3):
-            db.record_shipment(_fp(), "APPROVE", [], "LOW")
-        result = engine.score(_req())
-        sig = result.signals[4]
-        # historical_rate_per_7d must be at least 1.0 (floor)
-        assert sig.historical_rate_per_7d >= 1.0
+            record_signals(db, ORG, _analysis(shipper="Beta Corp"))
+        stats = get_pattern_stats(db, ORG)
+        assert stats["total_shipments_screened"] == 8
         db.close()
 
-    def test_explanation_mentions_pair(self):
-        db, engine = _make_engine()
-        for _ in range(10):
-            db.record_shipment(_fp(), "FLAG_FOR_INSPECTION", [], "HIGH")
-        result = engine.score(_req())
-        sig = result.signals[4]
-        assert "Test Shipper Co" in sig.explanation
-        assert "Test Consignee LLC" in sig.explanation
+    def test_counts_unique_routes(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis(origin="CN"))
+        record_signals(db, ORG, _analysis(origin="VN"))
+        stats = get_pattern_stats(db, ORG)
+        assert stats["unique_routes_tracked"] == 2
         db.close()
 
-
-class TestCompositeScore:
-    def test_score_within_bounds(self):
-        db, engine = _make_engine()
-        result = engine.score(_req())
-        assert 0.0 <= result.pattern_score <= 1.0
-        assert 0.0 <= result.effective_pattern_score <= 1.0
+    def test_confirmed_fraud_count(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis())
+        with db._engine.begin() as conn:
+            conn.execute(
+                text("UPDATE pattern_store SET fraud_confirmed_count=3 WHERE signal_type='SHIPPER_REP' AND organization_email=:org"),
+                {"org": ORG},
+            )
+        stats = get_pattern_stats(db, ORG)
+        assert stats["confirmed_fraud_count"] == 3
         db.close()
 
-    def test_all_clear_history_produces_low_score(self):
-        db, engine = _make_engine()
-        for _ in range(15):
-            aid = db.record_shipment(_fp(), "APPROVE", [], "LOW")
-            db.record_outcome(aid, OUTCOME_CLEARED)
-        result = engine.score(_req())
-        assert result.pattern_score < 0.20
+    def test_high_risk_shippers_counted(self):
+        db = _make_db()
+        # 7/10 = 70% flag rate → high risk
+        for i in range(10):
+            record_signals(db, ORG, _analysis(decision="FLAG_FOR_INSPECTION" if i < 7 else "APPROVE"))
+        stats = get_pattern_stats(db, ORG)
+        assert stats["high_risk_shippers"] >= 1
         db.close()
 
-    def test_all_fraud_history_produces_high_score(self):
-        db, engine = _make_engine()
-        for _ in range(10):
-            aid = db.record_shipment(_fp(), "FLAG_FOR_INSPECTION", [], "HIGH")
-            db.record_outcome(aid, OUTCOME_CONFIRMED_FRAUD)
-        result = engine.score(_req())
-        assert result.pattern_score > 0.30
+    def test_cleared_shippers_counted(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis())
+        with db._engine.begin() as conn:
+            conn.execute(
+                text("UPDATE pattern_store SET cleared_count=1 WHERE signal_type='SHIPPER_REP' AND organization_email=:org"),
+                {"org": ORG},
+            )
+        stats = get_pattern_stats(db, ORG)
+        assert stats["cleared_shippers"] == 1
         db.close()
 
-    def test_fraud_raises_effective_score_above_clear(self):
-        db_clean, engine_clean = _make_engine()
-        db_bad, engine_bad = _make_engine()
-
-        for _ in range(10):
-            aid = db_clean.record_shipment(_fp(), "APPROVE", [], "LOW")
-            db_clean.record_outcome(aid, OUTCOME_CLEARED)
-        for _ in range(10):
-            aid = db_bad.record_shipment(_fp(), "FLAG_FOR_INSPECTION", [], "HIGH")
-            db_bad.record_outcome(aid, OUTCOME_CONFIRMED_FRAUD)
-
-        clean_result = engine_clean.score(_req())
-        bad_result = engine_bad.score(_req())
-        assert bad_result.effective_pattern_score > clean_result.effective_pattern_score
-        db_clean.close()
-        db_bad.close()
-
-    def test_five_signals_in_result(self):
-        db, engine = _make_engine()
-        result = engine.score(_req())
-        assert len(result.signals) == 5
-        assert isinstance(result.signals[0], ShipperRiskSignal)
-        assert isinstance(result.signals[1], ConsigneeRiskSignal)
-        assert isinstance(result.signals[2], RouteRiskSignal)
-        assert isinstance(result.signals[3], ValueAnomalySignal)
-        assert isinstance(result.signals[4], FrequencyAnomalySignal)
+    def test_org_isolation(self):
+        db = _make_db()
+        for _ in range(5):
+            record_signals(db, "other@example.com", _analysis())
+        stats = get_pattern_stats(db, ORG)
+        assert stats["has_history"] is False
+        assert stats["total_shipments_screened"] == 0
         db.close()
 
-    def test_triggered_signals_are_subset(self):
-        db, engine = _make_engine()
-        for _ in range(10):
-            aid = db.record_shipment(_fp(), "FLAG_FOR_INSPECTION", [], "HIGH")
-            db.record_outcome(aid, OUTCOME_CONFIRMED_FRAUD)
-        result = engine.score(_req())
-        for sig in result.triggered_signals:
-            assert sig in result.signals
-        db.close()
-
-    def test_overall_severity_is_highest(self):
-        db, engine = _make_engine()
-        for _ in range(10):
-            aid = db.record_shipment(_fp(), "FLAG_FOR_INSPECTION", [], "HIGH")
-            db.record_outcome(aid, OUTCOME_CONFIRMED_FRAUD)
-        result = engine.score(_req())
-        severity_order = {Severity.CRITICAL: 0, Severity.HIGH: 1, Severity.MEDIUM: 2, Severity.LOW: 3}
-        if result.triggered_signals:
-            max_sev = min(
-                result.triggered_signals,
-                key=lambda s: severity_order[s.severity]
-            ).severity
-            assert result.overall_severity == max_sev
-        db.close()
-
-    def test_explanations_list_for_clean_history(self):
-        db, engine = _make_engine()
-        for _ in range(10):
-            aid = db.record_shipment(_fp(), "APPROVE", [], "LOW")
-            db.record_outcome(aid, OUTCOME_CLEARED)
-        result = engine.score(_req())
-        # Clean history should produce no triggered explanations
-        assert result.explanations == [] or all(isinstance(e, str) for e in result.explanations)
+    def test_returns_dict_keys(self):
+        db = _make_db()
+        stats = get_pattern_stats(db, ORG)
+        expected_keys = {
+            "total_shipments_screened", "unique_shippers_tracked",
+            "unique_routes_tracked", "confirmed_fraud_count",
+            "high_risk_shippers", "high_risk_routes",
+            "cleared_shippers", "has_history",
+        }
+        assert expected_keys.issubset(stats.keys())
         db.close()
 
 
-class TestConvenienceAccessors:
-    def test_score_accessors_match_signal_scores(self):
-        db, engine = _make_engine()
-        result = engine.score(_req())
-        assert result.shipper_score == result.signals[0].score
-        assert result.consignee_score == result.signals[1].score
-        assert result.route_score == result.signals[2].score
-        assert result.value_anomaly_score == result.signals[3].score
-        assert result.frequency_score == result.signals[4].score
+# ---------------------------------------------------------------------------
+# reset_patterns
+# ---------------------------------------------------------------------------
+
+
+class TestResetPatterns:
+    def test_deletes_all_org_rows(self):
+        db = _make_db()
+        for _ in range(3):
+            record_signals(db, ORG, _analysis())
+        assert _row_count(db) > 0
+        reset_patterns(db, ORG)
+        assert _row_count(db) == 0
         db.close()
 
-
-class TestEdgeCases:
-    def test_all_none_request(self):
-        """Engine must not crash on a completely empty request."""
-        db, engine = _make_engine()
-        req = ScoringRequest()
-        result = engine.score(req)
-        assert 0.0 <= result.effective_pattern_score <= 1.0
+    def test_returns_deleted_count(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis())  # creates 3 rows
+        count = reset_patterns(db, ORG)
+        assert count == 3
         db.close()
 
-    def test_zero_quantity_no_crash(self):
-        db, engine = _make_engine()
-        result = engine.score(_req(quantity=0.0))
-        assert result is not None
+    def test_does_not_delete_other_org_rows(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis())
+        record_signals(db, "other@example.com", _analysis())
+        reset_patterns(db, ORG)
+        with db._engine.connect() as conn:
+            remaining = conn.execute(
+                text("SELECT COUNT(*) FROM pattern_store WHERE organization_email='other@example.com'")
+            ).scalar()
+        assert remaining == 3
         db.close()
 
-    def test_negative_declared_value_no_crash(self):
-        db, engine = _make_engine()
-        result = engine.score(_req(declared_value_usd=-100.0))
-        assert result is not None
+    def test_empty_db_returns_zero(self):
+        db = _make_db()
+        count = reset_patterns(db, ORG)
+        assert count == 0
         db.close()
 
-    def test_score_is_always_float(self):
-        db, engine = _make_engine()
-        result = engine.score(_req())
-        assert isinstance(result.pattern_score, float)
-        assert isinstance(result.effective_pattern_score, float)
+    def test_idempotent(self):
+        db = _make_db()
+        record_signals(db, ORG, _analysis())
+        reset_patterns(db, ORG)
+        count = reset_patterns(db, ORG)
+        assert count == 0
         db.close()
