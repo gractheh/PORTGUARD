@@ -1069,6 +1069,36 @@
       color: var(--faint); font-size: .82rem; font-style: italic;
     }
 
+    /* Pattern Intelligence Panel — refined overrides */
+    .pattern-empty-state { text-align: center; padding: 2rem 1rem; }
+    .pattern-empty-icon { font-size: 2.5rem; margin-bottom: 0.75rem; }
+    .pattern-empty-title { font-family: 'Space Grotesk', sans-serif; font-size: 1rem; font-weight: 600; color: rgba(255,255,255,0.8); margin-bottom: 0.4rem; }
+    .pattern-empty-sub { font-size: 0.82rem; color: rgba(255,255,255,0.4); line-height: 1.5; }
+
+    .pattern-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1rem; }
+    .pattern-stat { background: rgba(255,255,255,0.04); border-radius: 10px; padding: 0.75rem; text-align: center; }
+    .pattern-stat.danger { background: rgba(192,57,43,0.08); border: 1px solid rgba(192,57,43,0.2); }
+    .pattern-stat-value { font-family: 'Space Grotesk', sans-serif; font-size: 1.6rem; font-weight: 700; color: #4DCFDF; }
+    .pattern-stat.danger .pattern-stat-value { color: #ef4444; }
+    .pattern-stat-label { font-size: 0.72rem; color: rgba(255,255,255,0.45); margin-top: 0.2rem; }
+
+    .pattern-section { margin-bottom: 0.75rem; }
+    .pattern-section-title { font-size: 0.78rem; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 0.4rem; }
+    .pattern-row { display: flex; justify-content: space-between; align-items: center; padding: 0.35rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .pattern-key { font-size: 0.82rem; color: rgba(255,255,255,0.75); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 60%; }
+    .pattern-badge { font-size: 0.72rem; padding: 0.2rem 0.5rem; border-radius: 999px; white-space: nowrap; }
+    .pattern-badge.danger { background: rgba(239,68,68,0.15); color: #ef4444; border: 1px solid rgba(239,68,68,0.3); }
+    .pattern-badge.success { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+
+    /* Pattern Intel in Results */
+    .pi-result-card { background: rgba(27,154,170,0.06); border: 1px solid rgba(27,154,170,0.2); border-radius: 12px; padding: 1rem 1.25rem; margin-top: 1rem; }
+    .pi-result-title { font-family: 'Space Grotesk', sans-serif; font-size: 0.85rem; font-weight: 700; color: #4DCFDF; margin-bottom: 0.6rem; }
+    .pi-hard-flag { background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3); border-radius: 8px; padding: 0.5rem 0.75rem; color: #ef4444; font-size: 0.83rem; margin-bottom: 0.4rem; font-weight: 600; }
+    .pi-warning { color: #f59e0b; font-size: 0.82rem; padding: 0.25rem 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+    .pi-boost { color: #22c55e; font-size: 0.82rem; padding: 0.25rem 0; }
+    .pi-history { color: rgba(255,255,255,0.5); font-size: 0.78rem; margin-top: 0.4rem; }
+    .pi-neutral { color: rgba(255,255,255,0.4); font-size: 0.82rem; font-style: italic; }
+
     /* ---- Document type badge (tab label) ---- */
     .doc-type-badge {
       display: inline-flex; align-items: center;
