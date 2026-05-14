@@ -1089,6 +1089,31 @@
     .rej-try-again:hover {
       transform: translateY(-1px); box-shadow: 0 6px 20px rgba(27,154,170,.45);
     }
+    .rej-cat-pill {
+      display: inline-block; font-size: .68rem; font-weight: 700;
+      letter-spacing: .06em; text-transform: uppercase;
+      padding: .18rem .55rem; border-radius: 999px; margin-bottom: .35rem;
+      background: rgba(224,80,80,.18); border: 1px solid rgba(224,80,80,.4);
+      color: #fca5a5;
+    }
+    /* ---- Doc-type chip in results ---- */
+    .clf-doc-type-chip {
+      display: inline-flex; align-items: center; gap: .3rem;
+      font-size: .72rem; font-weight: 700; letter-spacing: .05em;
+      text-transform: uppercase; padding: .22rem .65rem;
+      border-radius: 999px;
+      background: rgba(27,154,170,.14); border: 1px solid rgba(77,207,223,.3);
+      color: var(--teal-300); margin-left: .6rem; vertical-align: middle;
+    }
+    /* ---- Classification confidence warning banner ---- */
+    #clf-warning-banner {
+      display: none; align-items: center; gap: .7rem;
+      background: rgba(232,168,56,.08); border: 1px solid rgba(232,168,56,.28);
+      border-radius: var(--radius); padding: .7rem 1rem;
+      font-size: .82rem; color: var(--amber); margin-bottom: .9rem;
+    }
+    #clf-warning-banner.visible { display: flex; }
+    #clf-warning-banner span:first-child { font-size: 1rem; flex-shrink: 0; }
 
     /* ---- Loading step messages ---- */
     .loading-step {
@@ -4123,6 +4148,12 @@
       <div id="validation-warning-msg"></div>
     </div>
 
+    <!-- Classifier LOW-confidence warning banner -->
+    <div id="clf-warning-banner">
+      <span>&#9888;</span>
+      <div id="clf-warning-msg"></div>
+    </div>
+
     <!-- Decision banner -->
     <div id="decision-banner" class="decision-banner">
       <div class="decision-left">
@@ -7106,6 +7137,10 @@ function loadScenario(key) {
   document.getElementById('report-status').className = '';
   const _wb = document.getElementById('validation-warning-banner');
   if (_wb) _wb.classList.remove('visible');
+  const _cwb = document.getElementById('clf-warning-banner');
+  if (_cwb) _cwb.classList.remove('visible');
+  const _dtc = document.getElementById('clf-doc-type-chip');
+  if (_dtc) _dtc.remove();
   hideRejectionScreen();
   hideError();
 }
@@ -7176,11 +7211,15 @@ async function analyze() {
     return;
   }
 
-  // Clear stale tab badges and validation banner from prior run
+  // Clear stale tab badges, warning banners, and type chip from prior run
   tabs.forEach(t => { delete t.detectedType; });
   renderTabs();
   const _warnBanner = document.getElementById('validation-warning-banner');
   if (_warnBanner) _warnBanner.classList.remove('visible');
+  const _clfBanner = document.getElementById('clf-warning-banner');
+  if (_clfBanner) _clfBanner.classList.remove('visible');
+  const _oldChip = document.getElementById('clf-doc-type-chip');
+  if (_oldChip) _oldChip.remove();
 
   // Always use the agent pipeline visualizer (PDF and plain-text tabs)
   analyzeWithPipeline(documents);
@@ -7536,6 +7575,21 @@ function hideError() {
 // ---------------------------------------------------------------------------
 // Rejection screen helpers
 // ---------------------------------------------------------------------------
+const _REJ_CAT_LABELS = {
+  RESUME:      'Resume / CV',
+  SHOPPING:    'Shopping List',
+  ACADEMIC:    'Academic Paper',
+  MEDICAL:     'Medical Record',
+  LEGAL:       'Legal Filing',
+  PERSONAL:    'Personal Correspondence',
+  FINANCIAL:   'Financial Document',
+  REAL_ESTATE: 'Real Estate Doc',
+  SOCIAL:      'Social Media',
+  MARKETING:   'Marketing Content',
+  RECIPE:      'Recipe',
+  GENERIC:     'Non-Trade Content',
+};
+
 function showRejectionScreen(rejectedDocs) {
   const screen = document.getElementById('rejection-screen');
   const list = document.getElementById('rej-docs-list');
@@ -7544,6 +7598,15 @@ function showRejectionScreen(rejectedDocs) {
   (rejectedDocs || []).forEach(doc => {
     const item = document.createElement('div');
     item.className = 'rej-doc-item';
+
+    // Category pill (if available)
+    const cat = doc.rejection_category || doc.category;
+    if (cat) {
+      const pill = document.createElement('div');
+      pill.className = 'rej-cat-pill';
+      pill.textContent = _REJ_CAT_LABELS[cat] || cat.replace(/_/g, ' ');
+      item.appendChild(pill);
+    }
 
     const name = document.createElement('div');
     name.className = 'rej-doc-filename';
@@ -7570,13 +7633,35 @@ function hideRejectionScreen() {
 // Tab badge helpers
 // ---------------------------------------------------------------------------
 const _DOC_TYPE_LABELS = {
-  BILL_OF_LADING:        'B/L',
-  COMMERCIAL_INVOICE:    'Invoice',
-  PACKING_LIST:          'Packing List',
-  CERTIFICATE_OF_ORIGIN: 'COO',
-  ARRIVAL_NOTICE:        'Arrival Notice',
-  ISF_FILING:            'ISF',
-  UNKNOWN:               null,
+  // Ocean / air transport
+  BILL_OF_LADING:               'B/L',
+  AIRWAY_BILL:                  'Air Waybill',
+  // Commercial / financial
+  COMMERCIAL_INVOICE:           'Invoice',
+  FREIGHT_INVOICE:              'Freight Invoice',
+  LETTER_OF_CREDIT:             'Letter of Credit',
+  // Cargo / packing
+  PACKING_LIST:                 'Packing List',
+  CARGO_MANIFEST:               'Cargo Manifest',
+  DOCK_RECEIPT:                 'Dock Receipt',
+  // Compliance / regulatory
+  CERTIFICATE_OF_ORIGIN:        'COO',
+  ISF_FILING:                   'ISF',
+  CUSTOMS_ENTRY:                'Customs Entry',
+  EXPORT_DECLARATION:           'Export Declaration',
+  // Specialized certs
+  PHYTOSANITARY_CERTIFICATE:    'Phytosanitary Cert',
+  FUMIGATION_CERTIFICATE:       'Fumigation Cert',
+  INSPECTION_CERTIFICATE:       'Inspection Cert',
+  WEIGHT_CERTIFICATE:           'Weight Cert',
+  DANGEROUS_GOODS_DECLARATION:  'DGD',
+  CARGO_INSURANCE:              'Cargo Insurance',
+  // Logistics
+  ARRIVAL_NOTICE:               'Arrival Notice',
+  DELIVERY_ORDER:               'Delivery Order',
+  // Fallbacks
+  UNRECOGNIZED_TRADE:           null,
+  UNKNOWN:                      null,
 };
 
 function _formatDocType(typeKey) {
@@ -7605,7 +7690,7 @@ function renderResults(data) {
   const decision = data.decision || 'REVIEW_RECOMMENDED';
   const cfg = DECISION_CONFIG[decision] || DECISION_CONFIG['REVIEW_RECOMMENDED'];
 
-  // Validation warning banner
+  // Validation warning banner (old validator LOW-confidence warnings)
   const warnBanner = document.getElementById('validation-warning-banner');
   const warnMsg = document.getElementById('validation-warning-msg');
   if (data.validation_warnings && data.validation_warnings.length > 0) {
@@ -7616,6 +7701,17 @@ function renderResults(data) {
   } else {
     warnBanner.classList.remove('visible');
     warnMsg.innerHTML = '';
+  }
+
+  // Classifier LOW-confidence warning banner
+  const clfWarnBanner = document.getElementById('clf-warning-banner');
+  const clfWarnMsg = document.getElementById('clf-warning-msg');
+  if (data.classification_warning) {
+    clfWarnMsg.textContent = data.classification_warning;
+    clfWarnBanner.classList.add('visible');
+  } else {
+    clfWarnBanner.classList.remove('visible');
+    clfWarnMsg.textContent = '';
   }
 
   // Update tab badges with detected document types
@@ -7629,6 +7725,20 @@ function renderResults(data) {
   document.getElementById('decision-icon').innerHTML = DECISION_ICONS[cfg.icon] || '';
   document.getElementById('decision-name').textContent = cfg.label;
   document.getElementById('decision-sub').textContent = cfg.sub;
+
+  // Doc-type chip next to decision name (from hardened classifier)
+  const _existingChip = document.getElementById('clf-doc-type-chip');
+  if (_existingChip) _existingChip.remove();
+  if (data.document_type) {
+    const chip = document.createElement('span');
+    chip.id = 'clf-doc-type-chip';
+    chip.className = 'clf-doc-type-chip';
+    chip.title = `Detected document type (${data.classification_confidence || ''} confidence)`;
+    chip.textContent = data.document_type_code
+      ? `${data.document_type} · ${data.document_type_code}`
+      : data.document_type;
+    document.getElementById('decision-name').appendChild(chip);
+  }
   document.getElementById('meta-docs').textContent = data.documents_analyzed ?? '--';
   document.getElementById('meta-issues').textContent = data.inconsistencies_found ?? '--';
   document.getElementById('meta-time').textContent = data.processing_time_seconds != null

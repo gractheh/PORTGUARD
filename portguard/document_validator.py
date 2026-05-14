@@ -33,14 +33,35 @@ class ConfidenceLevel(str, Enum):
 
 
 class DocumentType(str, Enum):
-    BILL_OF_LADING = "BILL_OF_LADING"
-    COMMERCIAL_INVOICE = "COMMERCIAL_INVOICE"
-    PACKING_LIST = "PACKING_LIST"
-    CERTIFICATE_OF_ORIGIN = "CERTIFICATE_OF_ORIGIN"
-    ARRIVAL_NOTICE = "ARRIVAL_NOTICE"
-    ISF_FILING = "ISF_FILING"
-    UNRECOGNIZED_TRADE = "UNRECOGNIZED_TRADE"
-    UNKNOWN = "UNKNOWN"
+    # Ocean / air freight transport docs
+    BILL_OF_LADING          = "BILL_OF_LADING"
+    AIRWAY_BILL             = "AIRWAY_BILL"
+    # Commercial / financial
+    COMMERCIAL_INVOICE      = "COMMERCIAL_INVOICE"
+    FREIGHT_INVOICE         = "FREIGHT_INVOICE"
+    LETTER_OF_CREDIT        = "LETTER_OF_CREDIT"
+    # Cargo / packing
+    PACKING_LIST            = "PACKING_LIST"
+    CARGO_MANIFEST          = "CARGO_MANIFEST"
+    DOCK_RECEIPT            = "DOCK_RECEIPT"
+    # Compliance / regulatory
+    CERTIFICATE_OF_ORIGIN   = "CERTIFICATE_OF_ORIGIN"
+    ISF_FILING              = "ISF_FILING"
+    CUSTOMS_ENTRY           = "CUSTOMS_ENTRY"
+    EXPORT_DECLARATION      = "EXPORT_DECLARATION"
+    # Specialized certificates
+    PHYTOSANITARY_CERTIFICATE   = "PHYTOSANITARY_CERTIFICATE"
+    FUMIGATION_CERTIFICATE      = "FUMIGATION_CERTIFICATE"
+    INSPECTION_CERTIFICATE      = "INSPECTION_CERTIFICATE"
+    WEIGHT_CERTIFICATE          = "WEIGHT_CERTIFICATE"
+    DANGEROUS_GOODS_DECLARATION = "DANGEROUS_GOODS_DECLARATION"
+    CARGO_INSURANCE             = "CARGO_INSURANCE"
+    # Logistics
+    ARRIVAL_NOTICE          = "ARRIVAL_NOTICE"
+    DELIVERY_ORDER          = "DELIVERY_ORDER"
+    # Fallbacks
+    UNRECOGNIZED_TRADE      = "UNRECOGNIZED_TRADE"
+    UNKNOWN                 = "UNKNOWN"
 
 
 # ---------------------------------------------------------------------------
@@ -103,6 +124,31 @@ _MSG_NEWS = (
     "This appears to be a news article or press release, not a trade document. "
     "Please upload a valid shipping document."
 )
+_MSG_RESUME = (
+    "This appears to be a resume or CV, not a shipping document. "
+    "PortGuard analyzes trade documents such as bills of lading, commercial invoices, "
+    "packing lists, and certificates of origin. Please upload a valid shipping document."
+)
+_MSG_COVER_LETTER = (
+    "This appears to be a cover letter or job application, not a shipping document. "
+    "Please upload a valid trade document such as a bill of lading or commercial invoice."
+)
+_MSG_ACADEMIC = (
+    "This appears to be an academic paper or research document, not a shipping document. "
+    "Please upload a valid trade document."
+)
+_MSG_MEDICAL = (
+    "This appears to be a medical record or clinical document, not a shipping document. "
+    "Please upload a valid trade document."
+)
+_MSG_LEGAL = (
+    "This appears to be a legal filing or court document, not a shipping document. "
+    "Please upload a valid trade document such as a bill of lading or commercial invoice."
+)
+_MSG_SHOPPING = (
+    "This appears to be a shopping or grocery list, not a shipping document. "
+    "Please upload a valid trade document."
+)
 _MSG_WARN_LOW = (
     "This document has limited trade signals. Results may be incomplete. "
     "Make sure you're uploading the full document, not a cover page or summary."
@@ -121,6 +167,10 @@ _MSG_UNRECOGNIZED_TRADE = (
 class DocumentValidator:
     """
     Pre-analysis gate that validates document authenticity and trade relevance.
+
+    Recognizes 20 distinct shipping document types and definitively rejects
+    non-shipping content including resumes, cover letters, academic papers,
+    medical records, legal filings, recipes, social media, code, and news.
 
     Usage
     -----
@@ -230,7 +280,7 @@ class DocumentValidator:
     ]
 
     # -------------------------------------------------------------------
-    # Non-trade rejection keyword lists
+    # Non-trade rejection keyword lists — existing categories
     # -------------------------------------------------------------------
 
     _RECIPE_PATTERNS = [
@@ -271,9 +321,130 @@ class DocumentValidator:
     ]
 
     # -------------------------------------------------------------------
+    # Non-trade rejection keyword lists — new categories
+    # -------------------------------------------------------------------
+
+    # Resume / CV — signals that only appear in employment documents
+    _RESUME_PATTERNS = [
+        "curriculum vitae",
+        "work experience",
+        "employment history",
+        "professional experience",
+        "career objective",
+        "bachelor of science",
+        "bachelor of arts",
+        "master of science",
+        "master of arts",
+        "professional summary",
+        "linkedin.com/in/",
+        "i am seeking",
+        "gpa:",
+        "references upon request",
+        "references available upon request",
+        "career highlights",
+        "core competencies",
+        "key achievements",
+        "internship at",
+    ]
+
+    # Cover letter — job application language
+    _COVER_LETTER_PATTERNS = [
+        "dear hiring manager",
+        "dear recruiter",
+        "i am writing to apply for",
+        "please find enclosed my resume",
+        "i am excited to apply",
+        "i would be an excellent fit",
+        "enclosed please find my resume",
+        "my application for the position",
+        "thank you for considering my application",
+        "i look forward to hearing from you",
+        "i would welcome the opportunity to discuss",
+        "sincerely yours,",
+    ]
+
+    # Academic paper / research document
+    _ACADEMIC_PATTERNS = [
+        "abstract:",
+        "literature review",
+        "doi:",
+        "peer-reviewed",
+        "peer reviewed",
+        "et al.",
+        "conference proceedings",
+        "this paper presents",
+        "this study examines",
+        "our study shows",
+        "the results suggest",
+        "statistical significance",
+        "sample size",
+        "control group",
+        "hypothesis",
+        "journal of",
+        "university press",
+    ]
+
+    # Medical record / clinical document
+    _MEDICAL_PATTERNS = [
+        "patient name:",
+        "patient id",
+        "date of birth:",
+        "diagnosis:",
+        "prescription:",
+        "physician:",
+        "blood pressure:",
+        "chief complaint:",
+        "vitals:",
+        "medical record number",
+        "allergies:",
+        "icd-10",
+        "cpt code",
+        "referring physician",
+        "medical history",
+        "treatment plan",
+        "laboratory results",
+        "clinical notes",
+    ]
+
+    # Legal filing / court document (NOT trade contracts)
+    _LEGAL_PATTERNS = [
+        "plaintiff",
+        "defendant",
+        "superior court",
+        "circuit court",
+        "district court",
+        "motion to dismiss",
+        "amended complaint",
+        "heretofore",
+        "hereinafter referred to as",
+        "in witness whereof",
+        "case no.",
+        "docket number",
+        "attorney at law",
+        "esquire",
+        "filed with the court",
+        "court of appeals",
+        "magistrate",
+    ]
+
+    # Shopping list / grocery list
+    _SHOPPING_LIST_PATTERNS = [
+        "shopping list",
+        "grocery list",
+        "items to buy",
+        "things to get",
+        "pick up from store",
+        "don't forget to buy",
+        "grocery run",
+        "need to pick up",
+    ]
+
+    # -------------------------------------------------------------------
     # Document type anchor patterns — strongly indicate a specific type.
     # Anchors are checked before general signal scoring for classification.
     # -------------------------------------------------------------------
+
+    # ---- Existing 6 types ----
 
     _BL_ANCHORS = [
         r"\bb/?l\s*(?:no|number|#|:)",
@@ -327,6 +498,146 @@ class DocumentValidator:
         r"\bcbp\s+bond\b",
     ]
 
+    # ---- New 14 types ----
+
+    _AWB_ANCHORS = [
+        r"\bair\s*waybill\b",
+        r"\bairway\s+bill\b",
+        r"\b(?:mawb|hawb)\s*(?:no|number|#|:)",
+        r"\bmaster\s+air\s+waybill\b",
+        r"\bhouse\s+air\s+waybill\b",
+        r"\bawb\s*(?:no|number|#|:)",
+        r"\bair\s+cargo\s+(?:receipt|manifest)\b",
+    ]
+
+    _CUSTOMS_ENTRY_ANCHORS = [
+        r"\bentry\s+summary\b",
+        r"\bcbp\s+form\s+7501\b",
+        r"\bcf\s*7501\b",
+        r"\bconsumption\s+entry\b",
+        r"\bentry\s+number\s*:",
+        r"\bformal\s+entry\b",
+        r"\bliquidation\b",
+        r"\bduty\s+paid\b",
+    ]
+
+    _LC_ANCHORS = [
+        r"\bletter\s+of\s+credit\b",
+        r"\bdocumentary\s+credit\b",
+        r"\bl/?c\s*(?:no|number|#|:)",
+        r"\birrevocable\s+(?:documentary|letter)",
+        r"\badvising\s+bank\b",
+        r"\bissuing\s+bank\b",
+        r"\bcredit\s+number\b",
+        r"\bbeneficiary\s+bank\b",
+    ]
+
+    _INSURANCE_ANCHORS = [
+        r"\bcertificate\s+of\s+insurance\b",
+        r"\bcargo\s+insurance\b",
+        r"\bmarine\s+insurance\b",
+        r"\bopen\s+(?:cover|policy)\b",
+        r"\binsurance\s+policy\b",
+        r"\binsured\s+value\b",
+        r"\bclaims\s+payable\b",
+        r"\bpremium\s+rate\b",
+    ]
+
+    _DGD_ANCHORS = [
+        r"\bdangerous\s+goods\b",
+        r"\bhazardous\s+materials?\b",
+        r"\bimdg\s+code\b",
+        r"\bun\s*(?:no|number|#)\.?\s*\d{4}",
+        r"\bpacking\s+group\b",
+        r"\bflashpoint\b",
+        r"\bproper\s+shipping\s+name\b",
+        r"\bhazmat\b",
+    ]
+
+    _PHYTO_ANCHORS = [
+        r"\bphytosanitary\b",
+        r"\bplant\s+quarantine\b",
+        r"\bnational\s+plant\s+protection\b",
+        r"\bippc\b",
+        r"\bfree\s+from\s+pest\b",
+        r"\bagricultural\s+inspection\b",
+        r"\bplant\s+health\b",
+    ]
+
+    _FUMIGATION_ANCHORS = [
+        r"\bfumigation\s+certificate\b",
+        r"\bfumigated\b",
+        r"\bmethyl\s+bromide\b",
+        r"\bphosphine\b",
+        r"\bpest\s+control\s+(?:treatment|certificate)\b",
+        r"\btreatment\s+certificate\b",
+        r"\bheat\s+treatment\s+certificate\b",
+    ]
+
+    _FREIGHT_INV_ANCHORS = [
+        r"\bfreight\s+invoice\b",
+        r"\bocean\s+freight\s+(?:charge|invoice)\b",
+        r"\bfreight\s+charge\b",
+        r"\bcarrier\s+invoice\b",
+        r"\bdemurrage\b",
+        r"\bdetention\s+charge\b",
+        r"\bwharfage\b",
+    ]
+
+    _DO_ANCHORS = [
+        r"\bdelivery\s+order\s*(?:no|number|#|:)",
+        r"\brelease\s+order\s*(?:no|number|#|:)",
+        r"\bcargo\s+release\s+(?:order|notice)\b",
+        r"\bpick.?up\s+authorization\b",
+        r"\bdo\s*(?:no|number|#)\s*:",
+    ]
+
+    _INSPECTION_ANCHORS = [
+        r"\binspection\s+certificate\b",
+        r"\bsurvey\s+report\b",
+        r"\bquality\s+inspection\s+(?:report|certificate)\b",
+        r"\bindependent\s+survey\b",
+        r"\banalytical\s+(?:report|certificate)\b",
+        r"\bquality\s+control\s+report\b",
+        r"\bpre.?shipment\s+inspection\b",
+    ]
+
+    _EXP_DECL_ANCHORS = [
+        r"\bexport\s+declaration\b",
+        r"\belectronic\s+export\s+information\b",
+        r"\b(?:eei|aes)\s*(?:no|number|filing)\b",
+        r"\bshipper'?s\s+export\s+declaration\b",
+        r"\bexport\s+license\s+(?:no|number)\b",
+        r"\beccn\b",
+        r"\bdestination\s+control\s+statement\b",
+    ]
+
+    _WEIGHT_CERT_ANCHORS = [
+        r"\bweight\s+certificate\b",
+        r"\bweighing\s+certificate\b",
+        r"\bverified\s+gross\s+mass\b",
+        r"\bvgm\s+certificate\b",
+        r"\bweighbridge\s+certificate\b",
+        r"\bscale\s+certificate\b",
+    ]
+
+    _MANIFEST_ANCHORS = [
+        r"\bcargo\s+manifest\b",
+        r"\bmaster\s+manifest\b",
+        r"\bvessel\s+manifest\b",
+        r"\bmanifest\s+(?:no|number|#|:)\b",
+        r"\bair\s+cargo\s+manifest\b",
+    ]
+
+    _DOCK_RECEIPT_ANCHORS = [
+        r"\bdock\s+receipt\b",
+        r"\bpier\s+receipt\b",
+        r"\breceiving\s+report\b",
+        r"\breceived\s+for\s+shipment\b",
+        r"\bwarehouse\s+receipt\b",
+        r"\bcargo\s+receipt\b",
+    ]
+
     # Maps document type → which of the 10 signal categories are relevant
     # for type scoring (used when anchors are absent)
     _TYPE_SIGNAL_MAP = {
@@ -347,6 +658,49 @@ class DocumentValidator:
         },
         DocumentType.ISF_FILING: {
             "hs", "shipper", "consignee", "vessel",
+        },
+        # New types
+        DocumentType.AIRWAY_BILL: {
+            "shipper", "consignee", "vessel", "port", "weight", "package",
+        },
+        DocumentType.CUSTOMS_ENTRY: {
+            "hs", "origin", "consignee", "value",
+        },
+        DocumentType.LETTER_OF_CREDIT: {
+            "value", "shipper", "consignee",
+        },
+        DocumentType.CARGO_INSURANCE: {
+            "value", "shipper", "consignee", "vessel",
+        },
+        DocumentType.DANGEROUS_GOODS_DECLARATION: {
+            "weight", "package", "hs", "vessel", "port",
+        },
+        DocumentType.PHYTOSANITARY_CERTIFICATE: {
+            "origin", "hs", "shipper", "consignee",
+        },
+        DocumentType.FUMIGATION_CERTIFICATE: {
+            "origin", "weight", "vessel", "port",
+        },
+        DocumentType.FREIGHT_INVOICE: {
+            "value", "vessel", "port", "shipper", "consignee",
+        },
+        DocumentType.DELIVERY_ORDER: {
+            "vessel", "port", "consignee",
+        },
+        DocumentType.INSPECTION_CERTIFICATE: {
+            "hs", "origin", "weight", "package",
+        },
+        DocumentType.EXPORT_DECLARATION: {
+            "hs", "origin", "shipper", "value",
+        },
+        DocumentType.WEIGHT_CERTIFICATE: {
+            "weight", "vessel", "shipper",
+        },
+        DocumentType.CARGO_MANIFEST: {
+            "vessel", "port", "hs", "package",
+        },
+        DocumentType.DOCK_RECEIPT: {
+            "vessel", "port", "weight", "package", "shipper",
         },
     }
 
@@ -394,11 +748,19 @@ class DocumentValidator:
             "general":   _make_pattern(self._GENERAL_TRADE_TERMS),
         }
 
-        # Compile non-trade patterns
+        # Compile non-trade patterns — existing
         self._recipe_pattern  = _make_pattern(self._RECIPE_PATTERNS)
         self._social_pattern  = _make_pattern(self._SOCIAL_PATTERNS)
         self._code_pattern    = _make_pattern(self._CODE_PATTERNS)
         self._news_pattern    = _make_pattern(self._NEWS_PATTERNS)
+
+        # Compile non-trade patterns — new rejection types
+        self._resume_pattern        = _make_pattern(self._RESUME_PATTERNS)
+        self._cover_letter_pattern  = _make_pattern(self._COVER_LETTER_PATTERNS)
+        self._academic_pattern      = _make_pattern(self._ACADEMIC_PATTERNS)
+        self._medical_pattern       = _make_pattern(self._MEDICAL_PATTERNS)
+        self._legal_pattern         = _make_pattern(self._LEGAL_PATTERNS)
+        self._shopping_pattern      = _make_pattern(self._SHOPPING_LIST_PATTERNS)
 
         # Compile document type anchor patterns.
         # Each anchor pattern is compiled individually so findall() can count
@@ -406,21 +768,53 @@ class DocumentValidator:
         def _compile_anchor_list(patterns: list) -> list:
             return [re.compile(p, re.IGNORECASE) for p in patterns]
 
+        # Existing types
         self._bl_anchors_compiled      = _compile_anchor_list(self._BL_ANCHORS)
         self._invoice_anchors_compiled = _compile_anchor_list(self._INVOICE_ANCHORS)
         self._packing_anchors_compiled = _compile_anchor_list(self._PACKING_ANCHORS)
         self._coo_anchors_compiled     = _compile_anchor_list(self._COO_ANCHORS)
         self._arrival_anchors_compiled = _compile_anchor_list(self._ARRIVAL_ANCHORS)
         self._isf_anchors_compiled     = _compile_anchor_list(self._ISF_ANCHORS)
+        # New types
+        self._awb_anchors_compiled           = _compile_anchor_list(self._AWB_ANCHORS)
+        self._customs_entry_anchors_compiled = _compile_anchor_list(self._CUSTOMS_ENTRY_ANCHORS)
+        self._lc_anchors_compiled            = _compile_anchor_list(self._LC_ANCHORS)
+        self._insurance_anchors_compiled     = _compile_anchor_list(self._INSURANCE_ANCHORS)
+        self._dgd_anchors_compiled           = _compile_anchor_list(self._DGD_ANCHORS)
+        self._phyto_anchors_compiled         = _compile_anchor_list(self._PHYTO_ANCHORS)
+        self._fumigation_anchors_compiled    = _compile_anchor_list(self._FUMIGATION_ANCHORS)
+        self._freight_inv_anchors_compiled   = _compile_anchor_list(self._FREIGHT_INV_ANCHORS)
+        self._do_anchors_compiled            = _compile_anchor_list(self._DO_ANCHORS)
+        self._inspection_anchors_compiled    = _compile_anchor_list(self._INSPECTION_ANCHORS)
+        self._exp_decl_anchors_compiled      = _compile_anchor_list(self._EXP_DECL_ANCHORS)
+        self._weight_cert_anchors_compiled   = _compile_anchor_list(self._WEIGHT_CERT_ANCHORS)
+        self._manifest_anchors_compiled      = _compile_anchor_list(self._MANIFEST_ANCHORS)
+        self._dock_receipt_anchors_compiled  = _compile_anchor_list(self._DOCK_RECEIPT_ANCHORS)
 
         # Ordered list for anchor scoring in detect_document_type.
         self._anchor_type_pairs = [
+            # Existing 6
             (self._bl_anchors_compiled,      DocumentType.BILL_OF_LADING),
             (self._invoice_anchors_compiled, DocumentType.COMMERCIAL_INVOICE),
             (self._packing_anchors_compiled, DocumentType.PACKING_LIST),
             (self._coo_anchors_compiled,     DocumentType.CERTIFICATE_OF_ORIGIN),
             (self._arrival_anchors_compiled, DocumentType.ARRIVAL_NOTICE),
             (self._isf_anchors_compiled,     DocumentType.ISF_FILING),
+            # New 14
+            (self._awb_anchors_compiled,           DocumentType.AIRWAY_BILL),
+            (self._customs_entry_anchors_compiled, DocumentType.CUSTOMS_ENTRY),
+            (self._lc_anchors_compiled,            DocumentType.LETTER_OF_CREDIT),
+            (self._insurance_anchors_compiled,     DocumentType.CARGO_INSURANCE),
+            (self._dgd_anchors_compiled,           DocumentType.DANGEROUS_GOODS_DECLARATION),
+            (self._phyto_anchors_compiled,         DocumentType.PHYTOSANITARY_CERTIFICATE),
+            (self._fumigation_anchors_compiled,    DocumentType.FUMIGATION_CERTIFICATE),
+            (self._freight_inv_anchors_compiled,   DocumentType.FREIGHT_INVOICE),
+            (self._do_anchors_compiled,            DocumentType.DELIVERY_ORDER),
+            (self._inspection_anchors_compiled,    DocumentType.INSPECTION_CERTIFICATE),
+            (self._exp_decl_anchors_compiled,      DocumentType.EXPORT_DECLARATION),
+            (self._weight_cert_anchors_compiled,   DocumentType.WEIGHT_CERTIFICATE),
+            (self._manifest_anchors_compiled,      DocumentType.CARGO_MANIFEST),
+            (self._dock_receipt_anchors_compiled,  DocumentType.DOCK_RECEIPT),
         ]
 
         # URL pattern for URL density check
@@ -468,11 +862,11 @@ class DocumentValidator:
         general_matched = signal_counts.get("general", False)
         total_trade = len(matched_categories) + (1 if general_matched else 0)
 
-        # 3. Non-trade content checks (only when trade signals are low).
-        # Threshold is 3: code and recipe documents that mention trade keywords
-        # inside string literals or commodity descriptions should still be
-        # caught when their overall signal count is low.
-        if total_trade < 3:
+        # 3. Non-trade content checks.
+        # Gate raised to 5 to catch non-trade docs that incidentally contain
+        # trade vocabulary (e.g. a legal contract referencing "shipment").
+        # Each individual check inside uses its own stricter per-type threshold.
+        if total_trade < 5:
             nontrade = self._check_non_trade_content(text, total_trade)
             if nontrade is not None:
                 return nontrade
@@ -557,11 +951,10 @@ class DocumentValidator:
 
     def detect_document_type(self, text: str, signal_counts: Optional[dict] = None) -> DocumentType:
         """
-        Classify the document into one of the known trade document types.
+        Classify the document into one of the 20 known trade document types.
 
         Uses anchor patterns first (strong indicators), then falls back to
-        signal scoring. The type with the most matched signals (above
-        threshold ≥ 3 total) wins.
+        signal scoring. The type with the most matched anchors wins.
 
         Parameters
         ----------
@@ -579,8 +972,9 @@ class DocumentValidator:
             signal_counts = self.count_trade_signals(text)
 
         # --- Anchor scoring: count matches for each type, pick the winner ---
-        # Documents like arrival notices often contain "B/L No." as a reference,
-        # so scoring all anchors prevents the B/L anchor from dominating.
+        # Documents may cross-reference other doc types (e.g. arrival notice
+        # quoting a B/L number), so scoring all anchors prevents a single
+        # incidental anchor from dominating.
         anchor_scores: dict = {}
         for compiled_list, doc_type in self._anchor_type_pairs:
             score = sum(
@@ -650,28 +1044,49 @@ class DocumentValidator:
         """
         Return True if the text matches known non-trade content patterns.
 
-        Checks recipe, social media, code, and news patterns.  Requires zero
-        trade signals to avoid false positives on trade documents that incidentally
-        contain non-trade vocabulary (e.g., food commodity invoices mentioning
-        cooking terms).
+        Checks recipe, social media, code, news, resume, cover letter,
+        academic, medical, legal, and shopping list patterns.
 
         This method is informational — use validate_document() for the full decision.
         """
         signal_counts = self.count_trade_signals(text)
-        total_trade = sum(1 for cat, matched in signal_counts.items()
-                          if matched and cat != "general")
+        matched_non_general = [cat for cat, matched in signal_counts.items()
+                                if matched and cat != "general"]
+        total_trade = len(matched_non_general) + (
+            1 if signal_counts.get("general", False) else 0
+        )
 
         social_hits = len(self._social_pattern.findall(text))
         if social_hits >= 2:
             return True
 
-        if total_trade < 3:
+        if total_trade < 5:
             recipe_hits = len(self._recipe_pattern.findall(text))
             code_hits   = len(self._code_pattern.findall(text))
             news_hits   = len(self._news_pattern.findall(text))
             if (recipe_hits >= 3 and total_trade == 0) or \
                (code_hits >= 3 and total_trade < 3) or \
                (news_hits >= 2 and total_trade < 2):
+                return True
+
+            resume_hits       = len(self._resume_pattern.findall(text))
+            cover_hits        = len(self._cover_letter_pattern.findall(text))
+            academic_hits     = len(self._academic_pattern.findall(text))
+            medical_hits      = len(self._medical_pattern.findall(text))
+            legal_hits        = len(self._legal_pattern.findall(text))
+            shopping_hits     = len(self._shopping_pattern.findall(text))
+
+            if resume_hits >= 4 and total_trade < 5:
+                return True
+            if cover_hits >= 3 and total_trade < 4:
+                return True
+            if academic_hits >= 3 and total_trade < 4:
+                return True
+            if medical_hits >= 3 and total_trade < 4:
+                return True
+            if legal_hits >= 4 and total_trade < 4:
+                return True
+            if shopping_hits >= 2 and total_trade == 0:
                 return True
 
         return False
@@ -715,31 +1130,79 @@ class DocumentValidator:
 
     def _check_non_trade_content(self, text: str, total_trade_signals: int) -> Optional[ValidationResult]:
         """
-        Check for recipe, code, and news content patterns.
-        Only called when total_trade_signals < 3 (outer gate in validate_document).
+        Check for recipe, code, news, resume, cover letter, academic,
+        medical, legal, and shopping list content patterns.
+
+        Called when total_trade_signals < 5.  Each individual check applies
+        its own threshold relative to total_trade_signals.
+
         Returns a REJECTED ValidationResult if detected, else None.
         """
-        # Recipe check: 3+ recipe signals AND 0 trade signals
+        # --- Existing checks ---
+
+        # Recipe: 3+ signals AND 0 trade signals
         recipe_hits = len(self._recipe_pattern.findall(text))
         if recipe_hits >= 3 and total_trade_signals == 0:
             return self._make_rejected(
                 "RECIPE_CONTENT", _MSG_RECIPE, DocumentType.UNKNOWN,
             )
 
-        # Code check: 3+ code signals AND < 3 trade signals.
-        # Threshold < 3 (not == 0) because code parsing trade documents may
-        # reference trade keywords inside string literals (e.g., r'CONSIGNEE:').
+        # Code: 3+ signals AND < 3 trade signals
         code_hits = len(self._code_pattern.findall(text))
         if code_hits >= 3 and total_trade_signals < 3:
             return self._make_rejected(
                 "CODE_CONTENT", _MSG_CODE, DocumentType.UNKNOWN,
             )
 
-        # News check: 3+ news signals AND < 2 trade signals
+        # News: 3+ signals AND < 2 trade signals
         news_hits = len(self._news_pattern.findall(text))
         if news_hits >= 3 and total_trade_signals < 2:
             return self._make_rejected(
                 "NEWS_CONTENT", _MSG_NEWS, DocumentType.UNKNOWN,
+            )
+
+        # --- New checks ---
+
+        # Resume: 4+ signals AND < 5 trade signals
+        resume_hits = len(self._resume_pattern.findall(text))
+        if resume_hits >= 4 and total_trade_signals < 5:
+            return self._make_rejected(
+                "RESUME_CONTENT", _MSG_RESUME, DocumentType.UNKNOWN,
+            )
+
+        # Cover letter: 3+ signals AND < 4 trade signals
+        cover_hits = len(self._cover_letter_pattern.findall(text))
+        if cover_hits >= 3 and total_trade_signals < 4:
+            return self._make_rejected(
+                "COVER_LETTER_CONTENT", _MSG_COVER_LETTER, DocumentType.UNKNOWN,
+            )
+
+        # Academic paper: 3+ signals AND < 4 trade signals
+        academic_hits = len(self._academic_pattern.findall(text))
+        if academic_hits >= 3 and total_trade_signals < 4:
+            return self._make_rejected(
+                "ACADEMIC_CONTENT", _MSG_ACADEMIC, DocumentType.UNKNOWN,
+            )
+
+        # Medical record: 3+ signals AND < 4 trade signals
+        medical_hits = len(self._medical_pattern.findall(text))
+        if medical_hits >= 3 and total_trade_signals < 4:
+            return self._make_rejected(
+                "MEDICAL_RECORD_CONTENT", _MSG_MEDICAL, DocumentType.UNKNOWN,
+            )
+
+        # Legal filing: 4+ signals AND < 4 trade signals
+        legal_hits = len(self._legal_pattern.findall(text))
+        if legal_hits >= 4 and total_trade_signals < 4:
+            return self._make_rejected(
+                "LEGAL_FILING_CONTENT", _MSG_LEGAL, DocumentType.UNKNOWN,
+            )
+
+        # Shopping list: 2+ signals AND 0 trade signals
+        shopping_hits = len(self._shopping_pattern.findall(text))
+        if shopping_hits >= 2 and total_trade_signals == 0:
+            return self._make_rejected(
+                "SHOPPING_LIST_CONTENT", _MSG_SHOPPING, DocumentType.UNKNOWN,
             )
 
         return None

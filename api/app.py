@@ -37,6 +37,7 @@ from portguard.document_validator import (
     validate_documents as _validate_documents,
     build_rejection_error,
 )
+from portguard.agents.document_classifier import classify_document as _classify_document
 
 from portguard.data.sanctions import get_sanctions_programs
 from portguard.data.section301 import get_section_301
@@ -1200,6 +1201,25 @@ class AnalyzeResponse(BaseModel):
         default_factory=list,
         description="Module IDs that produced at least one finding.",
     )
+    # Hardened classifier fields — populated by the new classify_document() gate.
+    document_type: Optional[str] = Field(
+        None,
+        description="Human-readable document type detected by the hardened classifier "
+                    "(e.g. 'Bill of Lading').  None when type could not be determined.",
+    )
+    document_type_code: Optional[str] = Field(
+        None,
+        description="Short code for the detected document type (e.g. 'BOL', 'CI', 'PL').",
+    )
+    classification_confidence: Optional[str] = Field(
+        None,
+        description="Confidence label from the hardened classifier: HIGH / MEDIUM / LOW.",
+    )
+    classification_warning: Optional[str] = Field(
+        None,
+        description="User-facing warning when the classifier accepted the document with "
+                    "LOW confidence.  None for HIGH/MEDIUM confidence accepts.",
+    )
 
 
 class FeedbackRequest(BaseModel):
@@ -1647,27 +1667,53 @@ def analyze(
     start = time.monotonic()
     org_id: str = current_org["organization_id"]
 
-    # --- Document validation gate ---
-    _val_results = _validate_documents(request.documents)
-    _rejected = [r for r in _val_results if not r.is_valid]
-    if _rejected:
-        _filenames = [
-            (doc.filename or f"Document {i+1}")
-            for i, doc in enumerate(request.documents)
-        ]
-        _rej_filenames = [
-            _filenames[i] for i, r in enumerate(_val_results) if not r.is_valid
+    # --- Hardened document classification gate ---
+    _clf_filenames = [doc.filename or f"Document {i+1}" for i, doc in enumerate(request.documents)]
+    _clf_results = [_classify_document(doc.raw_text or "") for doc in request.documents]
+    _clf_rejected = [
+        (i, r) for i, r in enumerate(_clf_results) if not r["accepted"]
+    ]
+    if _clf_rejected:
+        _rej_list = [
+            {
+                "filename": _clf_filenames[i],
+                "reason": r["rejection_reason"],
+                "rejection_category": r["rejection_category"],
+                "message": r["rejection_reason"],
+            }
+            for i, r in _clf_rejected
         ]
         raise HTTPException(
             status_code=422,
-            detail=build_rejection_error(_rejected, _rej_filenames, len(request.documents)),
+            detail={
+                "code": "DOCUMENT_VALIDATION_FAILED",
+                "message": (
+                    f"{len(_clf_rejected)} of {len(request.documents)} "
+                    f"document(s) could not be validated as trade document(s)."
+                ),
+                "rejected_documents": _rej_list,
+            },
         )
+
+    # Keep old validator for document_validations metadata (backward compat).
+    _val_results = _validate_documents(request.documents)
     _val_warnings = [
         f"{(doc.filename or f'Document {i+1}')}: {r.warning_message}"
         for i, (doc, r) in enumerate(zip(request.documents, _val_results))
         if r.warning_message
     ]
+    # Supplement with new classifier warning if old validator had none
+    if not _val_warnings:
+        _clf_warns = [
+            f"{_clf_filenames[i]}: {r['warning']}"
+            for i, r in enumerate(_clf_results)
+            if r.get("warning")
+        ]
+        _val_warnings = _clf_warns
     _val_metadata = [r.to_dict() for r in _val_results]
+
+    # Extract primary doc classification for response fields (first doc)
+    _clf_primary = _clf_results[0] if _clf_results else {}
 
     try:
         result = _analyze_documents(request.documents)
@@ -1777,6 +1823,10 @@ def analyze(
         module_findings=cert_result.findings if cert_result else [],
         active_modules_at_scan=cert_result.modules_run if cert_result else [],
         modules_triggered=cert_result.triggered_modules if cert_result else [],
+        document_type=_clf_primary.get("detected_doc_type"),
+        document_type_code=_clf_primary.get("detected_doc_type_code"),
+        classification_confidence=_clf_primary.get("confidence_label"),
+        classification_warning=_clf_primary.get("warning"),
     )
 
     # Record analysis to PatternDB inline (fast — < 10 ms); shipment_id is
@@ -1923,24 +1973,47 @@ async def analyze_files(
         for w in result.warnings:
             extraction_warnings.append(f"{filename}: {w}")
 
-    # --- Document validation gate ---
-    _val_results_f = _validate_documents(documents)
-    _rejected_f = [r for r in _val_results_f if not r.is_valid]
-    if _rejected_f:
-        _filenames_f = [doc.filename or f"Document {i+1}" for i, doc in enumerate(documents)]
-        _rej_filenames_f = [
-            _filenames_f[i] for i, r in enumerate(_val_results_f) if not r.is_valid
+    # --- Hardened document classification gate ---
+    _clf_filenames_f = [doc.filename or f"Document {i+1}" for i, doc in enumerate(documents)]
+    _clf_results_f = [_classify_document(doc.raw_text or "") for doc in documents]
+    _clf_rejected_f = [(i, r) for i, r in enumerate(_clf_results_f) if not r["accepted"]]
+    if _clf_rejected_f:
+        _rej_list_f = [
+            {
+                "filename": _clf_filenames_f[i],
+                "reason": r["rejection_reason"],
+                "rejection_category": r["rejection_category"],
+                "message": r["rejection_reason"],
+            }
+            for i, r in _clf_rejected_f
         ]
         raise HTTPException(
             status_code=422,
-            detail=build_rejection_error(_rejected_f, _rej_filenames_f, len(documents)),
+            detail={
+                "code": "DOCUMENT_VALIDATION_FAILED",
+                "message": (
+                    f"{len(_clf_rejected_f)} of {len(documents)} "
+                    f"document(s) could not be validated as trade document(s)."
+                ),
+                "rejected_documents": _rej_list_f,
+            },
         )
+
+    # Keep old validator for document_validations metadata (backward compat).
+    _val_results_f = _validate_documents(documents)
     _val_warnings_f = [
         f"{(doc.filename or f'Document {i+1}')}: {r.warning_message}"
         for i, (doc, r) in enumerate(zip(documents, _val_results_f))
         if r.warning_message
     ]
+    if not _val_warnings_f:
+        _val_warnings_f = [
+            f"{_clf_filenames_f[i]}: {r['warning']}"
+            for i, r in enumerate(_clf_results_f)
+            if r.get("warning")
+        ]
     _val_metadata_f = [r.to_dict() for r in _val_results_f]
+    _clf_primary_f = _clf_results_f[0] if _clf_results_f else {}
 
     start = time.monotonic()
     try:
@@ -2050,6 +2123,10 @@ async def analyze_files(
         module_findings=cert_result_f.findings if cert_result_f else [],
         active_modules_at_scan=cert_result_f.modules_run if cert_result_f else [],
         modules_triggered=cert_result_f.triggered_modules if cert_result_f else [],
+        document_type=_clf_primary_f.get("detected_doc_type"),
+        document_type_code=_clf_primary_f.get("detected_doc_type_code"),
+        classification_confidence=_clf_primary_f.get("confidence_label"),
+        classification_warning=_clf_primary_f.get("warning"),
     )
 
     try:
@@ -3086,21 +3163,31 @@ def _run_bulk_single_analysis(
     if not docs:
         raise ValueError("No non-empty document text provided.")
 
-    # Document validation gate
-    val_results = _validate_documents(docs)
-    rejected = [r for r in val_results if not r.is_valid]
-    if rejected:
-        filenames = [d.get("filename", f"Document {i+1}") for i, d in enumerate(documents_data)]
-        rej_filenames = [filenames[i] for i, r in enumerate(val_results) if not r.is_valid]
-        err = build_rejection_error(rejected, rej_filenames, len(docs))
-        raise ValueError(f"Document validation failed: {err['message']}")
+    # Hardened document classification gate
+    _bulk_clf = [_classify_document(doc.raw_text or "") for doc in docs]
+    _bulk_rejected = [(i, r) for i, r in enumerate(_bulk_clf) if not r["accepted"]]
+    if _bulk_rejected:
+        rej_reasons = "; ".join(
+            r["rejection_reason"] or "Not a trade document"
+            for _, r in _bulk_rejected
+        )
+        raise ValueError(f"Document validation failed: {rej_reasons}")
 
+    # Keep old validator for document_validations metadata
+    val_results = _validate_documents(docs)
     val_warnings = [
         f"{doc.filename or f'Document {i+1}'}: {r.warning_message}"
         for i, (doc, r) in enumerate(zip(docs, val_results))
         if r.warning_message
     ]
+    if not val_warnings:
+        val_warnings = [
+            f"{doc.filename or f'Document {i+1}'}: {r['warning']}"
+            for i, (doc, r) in enumerate(zip(docs, _bulk_clf))
+            if r.get("warning")
+        ]
     val_metadata = [r.to_dict() for r in val_results]
+    _bulk_clf_primary = _bulk_clf[0] if _bulk_clf else {}
 
     # Core rule-based analysis
     result = _analyze_documents(docs)
@@ -3209,6 +3296,10 @@ def _run_bulk_single_analysis(
         module_findings=cert_result_bulk.findings if cert_result_bulk else [],
         active_modules_at_scan=cert_result_bulk.modules_run if cert_result_bulk else [],
         modules_triggered=cert_result_bulk.triggered_modules if cert_result_bulk else [],
+        document_type=_bulk_clf_primary.get("detected_doc_type"),
+        document_type_code=_bulk_clf_primary.get("detected_doc_type_code"),
+        classification_confidence=_bulk_clf_primary.get("confidence_label"),
+        classification_warning=_bulk_clf_primary.get("warning"),
     )
 
     # Record to PatternDB and store report payload
