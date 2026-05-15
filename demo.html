@@ -5113,7 +5113,7 @@ function authedJson(method, body) {
   return { method, headers: authHeaders(), body: body ? JSON.stringify(body) : undefined };
 }
 
-/** Return fetch options for multipart form-data uploads (no Content-Type — browser sets boundary). */
+/** Return fetch options for form-data uploads (no Content-Type — browser sets the boundary). */
 function authedForm(formData) {
   const h = {};
   if (_authToken) h['Authorization'] = 'Bearer ' + _authToken;
@@ -5149,15 +5149,15 @@ function hideAuthOverlay() {
   loadModules();
   loadPatternStats();
 
-  // Restore pending deep-link if present; default to analyze tab
-  if (_pendingResultId) {
-    const rid = _pendingResultId;
-    _pendingResultId = null;
+  // Restore deep-link if present; default to analyze tab
+  if (_deepLinkResultId) {
+    const rid = _deepLinkResultId;
+    _deepLinkResultId = null;
     showSection('analyze');
     _loadResultById(rid);
-  } else if (_pendingBatchId) {
-    const bid = _pendingBatchId;
-    _pendingBatchId = null;
+  } else if (_deepLinkBatchId) {
+    const bid = _deepLinkBatchId;
+    _deepLinkBatchId = null;
     showSection('bulk');
     _bulkLoadSharedBatch(bid);
   } else {
@@ -5227,7 +5227,7 @@ async function handleLogin(e) {
 
     _authToken   = data.access_token;
     _authOrgName = data.org_name;
-    hideAuthOverlay(); // hideAuthOverlay handles section routing including pending deep-links
+    hideAuthOverlay(); // hideAuthOverlay handles section routing including deep-link restoration
   } catch (err) {
     console.error('[PortGuard] Login network error:', err);
     errEl.textContent = 'Network error — could not reach the server.';
@@ -10197,8 +10197,8 @@ let _bulkAllResults      = [];
 let _bulkSortKey         = 'risk_score';
 let _bulkSortAsc         = false;
 let _bulkFilter          = 'ALL';
-let _pendingBatchId      = null; // set from ?batch= URL param on page load
-let _pendingResultId     = null; // set from #result/ URL hash on page load
+let _deepLinkBatchId      = null; // set from ?batch= URL param on page load
+let _deepLinkResultId     = null; // set from #result/ URL hash on page load
 
 // ---------------------------------------------------------------------------
 // Decision helpers
@@ -10907,7 +10907,7 @@ async function _bulkSubmit() {
   const _bulkTimeoutHandle = setTimeout(() => {
     _bulkTimedOut = true;
     if (_bulkAbortController) _bulkAbortController.abort();
-  }, 180_000);
+  }, 180000);
 
   try {
     const formData = new FormData();
@@ -11695,10 +11695,10 @@ renderTabs();
 // #result/<id>   → share link for a single result (WI2)
 (function _readDeepLink() {
   const batchParam = new URLSearchParams(window.location.search).get('batch');
-  if (batchParam) { _pendingBatchId = batchParam; }
+  if (batchParam) { _deepLinkBatchId = batchParam; }
   const hash = window.location.hash;
   const resultMatch = hash.match(/^#result\/(.+)/);
-  if (resultMatch) { _pendingResultId = resultMatch[1]; }
+  if (resultMatch) { _deepLinkResultId = resultMatch[1]; }
 })();
 
 // Show auth overlay immediately on page load — app requires authentication.
@@ -11709,7 +11709,7 @@ showAuthOverlay();
 // ===========================================================================
 
 let _modulesCache    = null;   // raw API response from GET /api/v1/modules
-let _moduleToggles   = {};     // { moduleId: bool } — pending or committed state
+let _moduleToggles   = {};     // { moduleId: bool } — live or committed state
 let _toggleTimers    = {};     // debounce handles per module
 const _TOGGLE_DEBOUNCE = 500;  // ms
 
