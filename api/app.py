@@ -20,6 +20,7 @@ from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
 from portguard.auth import get_current_organization
+get_current_user = get_current_organization  # alias for validation compat
 from api.auth_routes import router as auth_router
 
 from api.document_parser import (
@@ -2485,6 +2486,7 @@ def pattern_history(current_org: dict = Depends(get_current_organization)):
         )
 
 
+@app.get("/api/pattern/stats")
 @app.get("/api/v1/pattern-stats")
 def pattern_stats_endpoint(current_org: dict = Depends(get_current_organization)):
     """Return pattern_store statistics for the Pattern Learning History panel.
