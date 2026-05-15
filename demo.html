@@ -151,8 +151,6 @@
       --cloud-color:      rgba(255,255,255,.8);
       --cloud-opacity:    0.06;
       --horizon-haze:     rgba(27,154,170,.08);
-      --dock-silhouette:  #020A14;
-      --dock-brightness:  0.4;
       --water-highlight:  rgba(232,239,248,.04);
       --celestial-top:    18%;
       --celestial-left:   55%;
@@ -3349,36 +3347,26 @@
         radial-gradient(ellipse 28% 48% at 36% 58%, rgba(255,255,255,.68) 0%, transparent 58%);
     }
 
-    #horizon-layer {
-      position: absolute;
-      bottom: 0; left: 0; right: 0;
-      height: 30vh;
-      pointer-events: none;
-      z-index: 3;
-    }
-    #dock-svg {
-      width: 100%; height: 100%;
-      filter: brightness(var(--dock-brightness, 0.4));
-    }
-
     #ocean-water {
       position: absolute;
-      bottom: 0; left: 0; right: 0;
-      height: 26vh;
-      pointer-events: none;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 25%;
       z-index: 4;
-      overflow: hidden;
+      pointer-events: none;
     }
-    #ocean-water svg { width: 200%; height: 100%; }
+    #ocean-water svg { width: 100%; height: 100%; }
 
     #ships-layer {
       position: absolute;
-      bottom: 22%;
-      left: 0; right: 0;
-      height: 80px;
+      bottom: 25%;
+      left: 0;
+      right: 0;
+      height: 100px;
+      z-index: 6;
       overflow: visible;
       pointer-events: none;
-      z-index: 5;
     }
 
     .bg-ship {
@@ -3410,9 +3398,8 @@
     .bg-mode-btn:hover { background: rgba(27,154,170,.12); border-color: rgba(27,154,170,.3); color: rgba(255,255,255,.8); }
     .bg-mode-btn.active { background: rgba(27,154,170,.18); border-color: rgba(77,207,223,.5); color: var(--teal-300); }
 
-    /* body.bg-minimal: keep sky/water, stop ships, dim dock */
+    /* body.bg-minimal: keep sky/water, stop ships */
     body.bg-minimal #ships-layer { display: none; }
-    body.bg-minimal #horizon-layer { opacity: 0.5; }
 
     /* body.bg-plain: hide entire ocean scene */
     body.bg-plain #ocean-bg { display: none; }
@@ -3572,8 +3559,8 @@
 
     /* Ship bob on water */
     @keyframes shipBob {
-      0%, 100% { transform: translateY(0); }
-      50%       { transform: translateY(-4px); }
+      0%, 100% { transform: translateY(0px); }
+      50%       { transform: translateY(-6px); }
     }
 
     /* Wake pulse */
@@ -3815,194 +3802,10 @@
     <div class="cloud"><div class="cloud-puff" id="cloud-5" data-speed="80"  data-dir="left"  data-y="10" data-opacity="0.50"></div></div>
   </div>
 
-  <!-- Layer 4: Horizon — dock port SVG with colored structures -->
-  <div id="horizon-layer">
-    <svg id="dock-svg" xmlns="http://www.w3.org/2000/svg"
-         viewBox="0 0 1440 320" preserveAspectRatio="xMidYMax meet"
-         width="100%" height="100%">
-
-      <!-- Far background buildings — city skyline silhouette -->
-      <rect x="40"  y="120" width="160" height="200" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-      <!-- Warm lit windows — apartment block -->
-      <rect x="55"  y="135" width="10" height="10" rx="1" fill="#FFDE80" opacity="0.55"/>
-      <rect x="72"  y="135" width="10" height="10" rx="1" fill="#FFDE80" opacity="0.40"/>
-      <rect x="89"  y="135" width="10" height="10" rx="1" fill="#FFDE80" opacity="0.60"/>
-      <rect x="106" y="135" width="10" height="10" rx="1" fill="#FFDE80" opacity="0.35"/>
-      <rect x="55"  y="153" width="10" height="10" rx="1" fill="#FFDE80" opacity="0.45"/>
-      <rect x="89"  y="153" width="10" height="10" rx="1" fill="#FFDE80" opacity="0.50"/>
-      <rect x="123" y="153" width="10" height="10" rx="1" fill="#FFDE80" opacity="0.30"/>
-      <rect x="55"  y="171" width="10" height="10" rx="1" fill="#FFDE80" opacity="0.55"/>
-      <rect x="72"  y="171" width="10" height="10" rx="1" fill="#FFDE80" opacity="0.25"/>
-      <rect x="106" y="171" width="10" height="10" rx="1" fill="#FFDE80" opacity="0.45"/>
-
-      <rect x="220" y="160" width="30"  height="160" fill="var(--dock-silhouette,#0A0A14)"/>
-      <ellipse cx="235" cy="160" rx="25" ry="15" fill="var(--dock-silhouette,#0A0A14)"/>
-
-      <!-- Port warehouse -->
-      <rect x="280" y="140" width="220" height="180" fill="var(--dock-silhouette,#0A0A14)"/>
-      <!-- Warehouse high windows -->
-      <rect x="295" y="155" width="18" height="12" rx="1" fill="#A0C8FF" opacity="0.40"/>
-      <rect x="320" y="155" width="18" height="12" rx="1" fill="#A0C8FF" opacity="0.35"/>
-      <rect x="345" y="155" width="18" height="12" rx="1" fill="#A0C8FF" opacity="0.45"/>
-      <rect x="370" y="155" width="18" height="12" rx="1" fill="#A0C8FF" opacity="0.30"/>
-      <rect x="395" y="155" width="18" height="12" rx="1" fill="#A0C8FF" opacity="0.40"/>
-      <!-- Warehouse door -->
-      <rect x="330" y="255" width="40" height="65" rx="1" fill="var(--dock-silhouette,#0A0A14)" opacity="0.8"/>
-      <rect x="335" y="260" width="14" height="60" fill="#1A2A3A" opacity="0.6"/>
-      <rect x="351" y="260" width="14" height="60" fill="#1A2A3A" opacity="0.6"/>
-
-      <!-- Control tower (office) -->
-      <rect x="540" y="60"  width="80"  height="260" rx="1" fill="var(--dock-silhouette,#0A0A14)"/>
-      <!-- Cool blue office windows — 4 cols × 5 rows -->
-      <rect x="548" y="72"  width="12" height="10" rx="1" fill="#A0C8FF" opacity="0.55"/>
-      <rect x="564" y="72"  width="12" height="10" rx="1" fill="#A0C8FF" opacity="0.45"/>
-      <rect x="580" y="72"  width="12" height="10" rx="1" fill="#FFDE80" opacity="0.60"/>
-      <rect x="596" y="72"  width="12" height="10" rx="1" fill="#A0C8FF" opacity="0.50"/>
-      <rect x="548" y="88"  width="12" height="10" rx="1" fill="#A0C8FF" opacity="0.35"/>
-      <rect x="564" y="88"  width="12" height="10" rx="1" fill="#FFDE80" opacity="0.55"/>
-      <rect x="580" y="88"  width="12" height="10" rx="1" fill="#A0C8FF" opacity="0.40"/>
-      <rect x="596" y="88"  width="12" height="10" rx="1" fill="#A0C8FF" opacity="0.45"/>
-      <rect x="548" y="104" width="12" height="10" rx="1" fill="#FFDE80" opacity="0.50"/>
-      <rect x="564" y="104" width="12" height="10" rx="1" fill="#A0C8FF" opacity="0.30"/>
-      <rect x="580" y="104" width="12" height="10" rx="1" fill="#A0C8FF" opacity="0.45"/>
-      <rect x="596" y="104" width="12" height="10" rx="1" fill="#FFDE80" opacity="0.35"/>
-      <!-- Control room at top — lit amber -->
-      <rect x="544" y="62"  width="88"  height="18" rx="1" fill="#1A2030"/>
-      <rect x="548" y="64"  width="80"  height="14" rx="1" fill="#FFDE80" opacity="0.30"/>
-
-      <!-- Large port building -->
-      <rect x="660" y="130" width="200" height="190" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="672" y="144" width="14" height="12" rx="1" fill="#FFDE80" opacity="0.40"/>
-      <rect x="692" y="144" width="14" height="12" rx="1" fill="#A0C8FF" opacity="0.45"/>
-      <rect x="712" y="144" width="14" height="12" rx="1" fill="#FFDE80" opacity="0.35"/>
-      <rect x="732" y="144" width="14" height="12" rx="1" fill="#A0C8FF" opacity="0.50"/>
-      <rect x="752" y="144" width="14" height="12" rx="1" fill="#FFDE80" opacity="0.30"/>
-      <rect x="672" y="162" width="14" height="12" rx="1" fill="#A0C8FF" opacity="0.35"/>
-      <rect x="712" y="162" width="14" height="12" rx="1" fill="#FFDE80" opacity="0.45"/>
-      <rect x="752" y="162" width="14" height="12" rx="1" fill="#A0C8FF" opacity="0.40"/>
-
-      <!-- Customs/port authority building -->
-      <rect x="900" y="160" width="300" height="160" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="912" y="174" width="12" height="10" rx="1" fill="#FFDE80" opacity="0.45"/>
-      <rect x="930" y="174" width="12" height="10" rx="1" fill="#A0C8FF" opacity="0.40"/>
-      <rect x="948" y="174" width="12" height="10" rx="1" fill="#FFDE80" opacity="0.50"/>
-      <rect x="966" y="174" width="12" height="10" rx="1" fill="#A0C8FF" opacity="0.35"/>
-      <rect x="984" y="174" width="12" height="10" rx="1" fill="#FFDE80" opacity="0.40"/>
-
-      <!-- Right skyline spire -->
-      <rect x="1250" y="50" width="16"  height="270" fill="var(--dock-silhouette,#0A0A14)"/>
-
-      <!-- ── Gantry Crane 1 (center ~350) — steel blue structural ── -->
-      <rect x="316" y="200" width="12" height="120" fill="#4A8AB0" opacity="0.85"/>
-      <rect x="372" y="200" width="12" height="120" fill="#4A8AB0" opacity="0.85"/>
-      <rect x="310" y="198" width="80" height="10"  fill="#4A8AB0" opacity="0.90"/>
-      <rect x="344" y="80"  width="12" height="125" fill="#4A8AB0" opacity="0.88"/>
-      <rect x="180" y="77"  width="170" height="8"  fill="#4A8AB0" opacity="0.80"/>
-      <rect x="355" y="77"  width="120" height="8"  fill="#4A8AB0" opacity="0.80"/>
-      <!-- Crane cab (operator) — amber -->
-      <rect x="466" y="65"  width="20"  height="22" rx="2" fill="#E8A838" opacity="0.70"/>
-      <!-- Trolley/spreader -->
-      <rect x="338" y="162" width="28"  height="6"  fill="#3A6A8A" opacity="0.90"/>
-      <!-- Hoist cable -->
-      <line x1="352" y1="77" x2="352" y2="162" stroke="#6AACCC" stroke-width="1" opacity="0.50"/>
-      <!-- Danger light -->
-      <circle cx="350" cy="75" r="4" fill="#FF4040" opacity="0.80"/>
-
-      <!-- ── Gantry Crane 2 (foreground ~780) — steel blue ── -->
-      <rect x="742" y="190" width="14" height="130" fill="#4A8AB0" opacity="0.88"/>
-      <rect x="810" y="190" width="14" height="130" fill="#4A8AB0" opacity="0.88"/>
-      <rect x="734" y="187" width="92" height="12"  fill="#4A8AB0" opacity="0.92"/>
-      <rect x="776" y="60"  width="14" height="135" fill="#4A8AB0" opacity="0.90"/>
-      <rect x="580" y="56"  width="200" height="9"  fill="#4A8AB0" opacity="0.82"/>
-      <rect x="789" y="56"  width="160" height="9"  fill="#4A8AB0" opacity="0.82"/>
-      <!-- Crane cab 2 — amber -->
-      <rect x="936" y="42"  width="24"  height="26" rx="2" fill="#E8A838" opacity="0.72"/>
-      <!-- Spreader bar -->
-      <rect x="768" y="157" width="32"  height="7"  fill="#3A6A8A" opacity="0.90"/>
-      <!-- Operator cab on boom -->
-      <rect x="769" y="100" width="22"  height="18" rx="1" fill="#2A4A6A" opacity="0.85"/>
-      <rect x="771" y="102" width="8"   height="6"  rx="0.5" fill="#A0C8FF" opacity="0.55"/>
-      <!-- Hoist cable -->
-      <line x1="783" y1="56" x2="783" y2="157" stroke="#6AACCC" stroke-width="1.2" opacity="0.50"/>
-      <!-- Danger light -->
-      <circle cx="783" cy="52" r="5" fill="#FF4040" opacity="0.85"/>
-
-      <!-- ── Gantry Crane 3 (right background ~1180) — steel blue ── -->
-      <rect x="1154" y="210" width="10" height="110" fill="#4A8AB0" opacity="0.80"/>
-      <rect x="1202" y="210" width="10" height="110" fill="#4A8AB0" opacity="0.80"/>
-      <rect x="1148" y="208" width="70" height="9"   fill="#4A8AB0" opacity="0.85"/>
-      <rect x="1172" y="100" width="10" height="115" fill="#4A8AB0" opacity="0.82"/>
-      <rect x="1020" y="97"  width="155" height="7"  fill="#4A8AB0" opacity="0.75"/>
-      <rect x="1181" y="97"  width="100" height="7"  fill="#4A8AB0" opacity="0.75"/>
-      <!-- Cab 3 -->
-      <rect x="1272" y="85"  width="18"  height="20" rx="2" fill="#E8A838" opacity="0.65"/>
-      <!-- Hoist cable -->
-      <line x1="1177" y1="97" x2="1177" y2="172" stroke="#6AACCC" stroke-width="1" opacity="0.45"/>
-      <!-- Spreader -->
-      <rect x="1167" y="172" width="22"  height="5"  fill="#3A6A8A" opacity="0.85"/>
-      <!-- Danger light -->
-      <circle cx="1177" cy="93" r="3.5" fill="#FF4040" opacity="0.70"/>
-
-      <!-- ── Container Stacks ── -->
-      <!-- Row 1 — bottom (y=262) -->
-      <rect x="460" y="262" width="32" height="18" rx="1" fill="rgba(192,57,43,.50)"/>
-      <rect x="494" y="262" width="32" height="18" rx="1" fill="rgba(232,168,56,.50)"/>
-      <rect x="528" y="262" width="32" height="18" rx="1" fill="rgba(27,154,170,.50)"/>
-      <rect x="562" y="262" width="32" height="18" rx="1" fill="rgba(192,57,43,.50)"/>
-      <rect x="596" y="262" width="32" height="18" rx="1" fill="rgba(232,168,56,.50)"/>
-      <rect x="630" y="262" width="32" height="18" rx="1" fill="rgba(80,100,130,.50)"/>
-      <rect x="664" y="262" width="32" height="18" rx="1" fill="rgba(192,57,43,.50)"/>
-      <rect x="698" y="262" width="32" height="18" rx="1" fill="rgba(27,154,170,.50)"/>
-      <!-- Row 2 — middle (y=242) -->
-      <rect x="468" y="242" width="32" height="18" rx="1" fill="rgba(232,168,56,.45)"/>
-      <rect x="502" y="242" width="32" height="18" rx="1" fill="rgba(192,57,43,.45)"/>
-      <rect x="536" y="242" width="32" height="18" rx="1" fill="rgba(27,154,170,.45)"/>
-      <rect x="570" y="242" width="32" height="18" rx="1" fill="rgba(80,100,130,.45)"/>
-      <rect x="604" y="242" width="32" height="18" rx="1" fill="rgba(192,57,43,.45)"/>
-      <rect x="638" y="242" width="32" height="18" rx="1" fill="rgba(232,168,56,.45)"/>
-      <!-- Row 3 — top (y=222) -->
-      <rect x="476" y="222" width="32" height="18" rx="1" fill="rgba(192,57,43,.38)"/>
-      <rect x="510" y="222" width="32" height="18" rx="1" fill="rgba(27,154,170,.38)"/>
-      <rect x="544" y="222" width="32" height="18" rx="1" fill="rgba(232,168,56,.38)"/>
-      <rect x="578" y="222" width="32" height="18" rx="1" fill="rgba(80,100,130,.38)"/>
-
-      <!-- ── Wharf edge + bollards ── -->
-      <rect x="0" y="295" width="1440" height="25" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="40"  y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="120" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="200" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="280" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="360" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="440" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="760" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="840" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="1000" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="1080" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="1160" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="1240" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="1320" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="1400" y="284" width="20" height="12" rx="2" fill="var(--dock-silhouette,#0A0A14)"/>
-
-      <!-- Navigation beacon left pier -->
-      <line x1="80" y1="295" x2="80" y2="240" stroke="#3A5A7A" stroke-width="3"/>
-      <circle cx="80" cy="236" r="6" fill="#FF8000" opacity="0.85"/>
-
-      <!-- Right skyline extension -->
-      <rect x="1300" y="140" width="80"  height="180" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="1310" y="155" width="10" height="10" rx="1" fill="#FFDE80" opacity="0.40"/>
-      <rect x="1326" y="155" width="10" height="10" rx="1" fill="#A0C8FF" opacity="0.35"/>
-      <rect x="1342" y="155" width="10" height="10" rx="1" fill="#FFDE80" opacity="0.30"/>
-      <rect x="1390" y="100" width="50"  height="220" fill="var(--dock-silhouette,#0A0A14)"/>
-      <rect x="1398" y="112" width="10" height="10" rx="1" fill="#A0C8FF" opacity="0.45"/>
-      <rect x="1414" y="112" width="10" height="10" rx="1" fill="#FFDE80" opacity="0.40"/>
-      <rect x="1398" y="128" width="10" height="10" rx="1" fill="#FFDE80" opacity="0.30"/>
-    </svg>
-  </div>
-
-  <!-- Layer 5: Ocean water — SMIL-animated waves + foam -->
+  <!-- Layer 4: Ocean water — SMIL-animated waves + foam -->
   <div id="ocean-water">
     <svg id="ocean-water-svg" xmlns="http://www.w3.org/2000/svg"
-         viewBox="0 0 1440 200" preserveAspectRatio="xMidYMax meet"
+         viewBox="0 0 1440 200" preserveAspectRatio="none"
          width="100%" height="100%">
       <defs>
         <linearGradient id="ocean-depth-grad" x1="0" y1="0" x2="0" y2="1">
@@ -4018,66 +3821,66 @@
       <!-- Deep ocean base fill -->
       <rect x="0" y="0" width="1440" height="200" fill="url(#ocean-depth-grad)"/>
 
-      <!-- Primary wave — SMIL translate left, 2-period loop (-1080 = 2×540) -->
+      <!-- Primary wave — crests reach y=0, SMIL translate left -->
       <path id="wave-primary"
-        d="M0,80 C180,60 360,100 540,80 C720,60 900,100 1080,80 C1260,60 1440,100 1620,80
-           C1800,60 1980,100 2160,80 C2340,60 2520,100 2700,80 L2700,200 L0,200 Z"
+        d="M0,20 C180,0 360,40 540,20 C720,0 900,40 1080,20 C1260,0 1440,40 1620,20
+           C1800,0 1980,40 2160,20 C2340,0 2520,40 2700,20 L2700,200 L0,200 Z"
         fill="var(--ocean-surface)" opacity="0.7">
         <animateTransform attributeName="transform" type="translate"
           from="0,0" to="-1080,0" dur="22s" repeatCount="indefinite" calcMode="linear"/>
       </path>
 
-      <!-- Secondary wave — SMIL translate right, 2-period loop (-1440 = 2×720) -->
+      <!-- Secondary wave — SMIL translate right -->
       <path id="wave-secondary"
-        d="M0,95 C240,75 480,115 720,95 C960,75 1200,115 1440,95
-           C1680,75 1920,115 2160,95 C2400,75 2640,115 2880,95 L2880,200 L0,200 Z"
+        d="M0,35 C240,15 480,55 720,35 C960,15 1200,55 1440,35
+           C1680,15 1920,55 2160,35 C2400,15 2640,55 2880,35 L2880,200 L0,200 Z"
         fill="var(--ocean-surface)" opacity="0.45">
         <animateTransform attributeName="transform" type="translate"
           from="-1440,0" to="0,0" dur="28s" repeatCount="indefinite" calcMode="linear"/>
       </path>
 
       <!-- Horizon shimmer line -->
-      <line x1="0" y1="4" x2="2880" y2="4"
+      <line x1="0" y1="2" x2="2880" y2="2"
         stroke="var(--water-highlight)" stroke-width="1.5" opacity="0.6">
         <animateTransform attributeName="transform" type="translate"
           from="0,0" to="-1440,0" dur="18s" repeatCount="indefinite" calcMode="linear"/>
       </line>
 
       <!-- Foam sparkles — 12 ellipses, SMIL opacity pulse -->
-      <ellipse cx="120"  cy="78" rx="18" ry="5" fill="url(#foam-grad)">
+      <ellipse cx="120"  cy="18" rx="18" ry="5" fill="url(#foam-grad)">
         <animate attributeName="opacity" values="0;0.6;0" keyTimes="0;0.5;1" dur="3.2s" begin="0.0s"  repeatCount="indefinite" calcMode="spline" keySplines="0.42,0,0.58,1;0.42,0,0.58,1"/>
       </ellipse>
-      <ellipse cx="310"  cy="92" rx="12" ry="4" fill="url(#foam-grad)">
+      <ellipse cx="310"  cy="32" rx="12" ry="4" fill="url(#foam-grad)">
         <animate attributeName="opacity" values="0;0.6;0" keyTimes="0;0.5;1" dur="2.8s" begin="0.5s"  repeatCount="indefinite" calcMode="spline" keySplines="0.42,0,0.58,1;0.42,0,0.58,1"/>
       </ellipse>
-      <ellipse cx="520"  cy="75" rx="22" ry="6" fill="url(#foam-grad)">
+      <ellipse cx="520"  cy="15" rx="22" ry="6" fill="url(#foam-grad)">
         <animate attributeName="opacity" values="0;0.6;0" keyTimes="0;0.5;1" dur="3.5s" begin="1.1s"  repeatCount="indefinite" calcMode="spline" keySplines="0.42,0,0.58,1;0.42,0,0.58,1"/>
       </ellipse>
-      <ellipse cx="700"  cy="88" rx="14" ry="4" fill="url(#foam-grad)">
+      <ellipse cx="700"  cy="28" rx="14" ry="4" fill="url(#foam-grad)">
         <animate attributeName="opacity" values="0;0.6;0" keyTimes="0;0.5;1" dur="2.6s" begin="0.3s"  repeatCount="indefinite" calcMode="spline" keySplines="0.42,0,0.58,1;0.42,0,0.58,1"/>
       </ellipse>
-      <ellipse cx="860"  cy="80" rx="20" ry="5" fill="url(#foam-grad)">
+      <ellipse cx="860"  cy="20" rx="20" ry="5" fill="url(#foam-grad)">
         <animate attributeName="opacity" values="0;0.6;0" keyTimes="0;0.5;1" dur="3.0s" begin="1.8s"  repeatCount="indefinite" calcMode="spline" keySplines="0.42,0,0.58,1;0.42,0,0.58,1"/>
       </ellipse>
-      <ellipse cx="1050" cy="93" rx="16" ry="5" fill="url(#foam-grad)">
+      <ellipse cx="1050" cy="33" rx="16" ry="5" fill="url(#foam-grad)">
         <animate attributeName="opacity" values="0;0.6;0" keyTimes="0;0.5;1" dur="3.3s" begin="0.8s"  repeatCount="indefinite" calcMode="spline" keySplines="0.42,0,0.58,1;0.42,0,0.58,1"/>
       </ellipse>
-      <ellipse cx="1200" cy="78" rx="10" ry="3" fill="url(#foam-grad)">
+      <ellipse cx="1200" cy="18" rx="10" ry="3" fill="url(#foam-grad)">
         <animate attributeName="opacity" values="0;0.6;0" keyTimes="0;0.5;1" dur="2.9s" begin="2.1s"  repeatCount="indefinite" calcMode="spline" keySplines="0.42,0,0.58,1;0.42,0,0.58,1"/>
       </ellipse>
-      <ellipse cx="1360" cy="88" rx="18" ry="5" fill="url(#foam-grad)">
+      <ellipse cx="1360" cy="28" rx="18" ry="5" fill="url(#foam-grad)">
         <animate attributeName="opacity" values="0;0.6;0" keyTimes="0;0.5;1" dur="3.1s" begin="0.6s"  repeatCount="indefinite" calcMode="spline" keySplines="0.42,0,0.58,1;0.42,0,0.58,1"/>
       </ellipse>
-      <ellipse cx="220"  cy="85" rx="8"  ry="3" fill="url(#foam-grad)">
+      <ellipse cx="220"  cy="25" rx="8"  ry="3" fill="url(#foam-grad)">
         <animate attributeName="opacity" values="0;0.6;0" keyTimes="0;0.5;1" dur="2.7s" begin="1.4s"  repeatCount="indefinite" calcMode="spline" keySplines="0.42,0,0.58,1;0.42,0,0.58,1"/>
       </ellipse>
-      <ellipse cx="640"  cy="82" rx="14" ry="4" fill="url(#foam-grad)">
+      <ellipse cx="640"  cy="22" rx="14" ry="4" fill="url(#foam-grad)">
         <animate attributeName="opacity" values="0;0.6;0" keyTimes="0;0.5;1" dur="3.4s" begin="2.5s"  repeatCount="indefinite" calcMode="spline" keySplines="0.42,0,0.58,1;0.42,0,0.58,1"/>
       </ellipse>
-      <ellipse cx="980"  cy="76" rx="11" ry="3" fill="url(#foam-grad)">
+      <ellipse cx="980"  cy="16" rx="11" ry="3" fill="url(#foam-grad)">
         <animate attributeName="opacity" values="0;0.6;0" keyTimes="0;0.5;1" dur="2.5s" begin="0.9s"  repeatCount="indefinite" calcMode="spline" keySplines="0.42,0,0.58,1;0.42,0,0.58,1"/>
       </ellipse>
-      <ellipse cx="1290" cy="91" rx="16" ry="5" fill="url(#foam-grad)">
+      <ellipse cx="1290" cy="31" rx="16" ry="5" fill="url(#foam-grad)">
         <animate attributeName="opacity" values="0;0.6;0" keyTimes="0;0.5;1" dur="3.6s" begin="1.7s"  repeatCount="indefinite" calcMode="spline" keySplines="0.42,0,0.58,1;0.42,0,0.58,1"/>
       </ellipse>
     </svg>
@@ -12227,7 +12030,7 @@ function escH(str) {
   // ── 1. PALETTES ────────────────────────────────────────────────────────────
   // Each palette: h[start,end], skyTop, skyBot, horizCol, horizWater,
   // oceanDeep, oceanMid, oceanSurf, sunColor, sunGlow, sunOuter,
-  // cloudColor, cloudOp, starsOp, dockBright, celTop, celLeft, celScale
+  // cloudColor, cloudOp, starsOp, celTop, celLeft, celScale
   const PALETTES = {
     night: {
       h:[0, 5],
@@ -12244,7 +12047,6 @@ function escH(str) {
       cloudColor: 'rgba(255,255,255,.8)',
       cloudOp:    0.04,
       starsOp:    0.92,
-      dockBright: 0.25,
       celTop:     '20%',
       celLeft:    '55%',
       celScale:   0.60,
@@ -12264,7 +12066,6 @@ function escH(str) {
       cloudColor: 'rgba(255,200,160,.8)',
       cloudOp:    0.10,
       starsOp:    0.25,
-      dockBright: 0.30,
       celTop:     '60%',
       celLeft:    '12%',
       celScale:   0.87,
@@ -12284,7 +12085,6 @@ function escH(str) {
       cloudColor: 'rgba(255,220,180,.85)',
       cloudOp:    0.22,
       starsOp:    0.03,
-      dockBright: 0.42,
       celTop:     '38%',
       celLeft:    '26%',
       celScale:   0.80,
@@ -12304,7 +12104,6 @@ function escH(str) {
       cloudColor: 'rgba(255,255,255,.9)',
       cloudOp:    0.65,
       starsOp:    0.00,
-      dockBright: 0.60,
       celTop:     '10%',
       celLeft:    '50%',
       celScale:   0.67,
@@ -12324,7 +12123,6 @@ function escH(str) {
       cloudColor: 'rgba(255,240,210,.85)',
       cloudOp:    0.50,
       starsOp:    0.00,
-      dockBright: 0.48,
       celTop:     '30%',
       celLeft:    '74%',
       celScale:   0.77,
@@ -12344,7 +12142,6 @@ function escH(str) {
       cloudColor: 'rgba(255,160,100,.8)',
       cloudOp:    0.35,
       starsOp:    0.18,
-      dockBright: 0.30,
       celTop:     '58%',
       celLeft:    '87%',
       celScale:   0.90,
@@ -12364,7 +12161,6 @@ function escH(str) {
       cloudColor: 'rgba(255,255,255,.7)',
       cloudOp:    0.06,
       starsOp:    0.72,
-      dockBright: 0.20,
       celTop:     '24%',
       celLeft:    '62%',
       celScale:   0.60,
@@ -12404,7 +12200,6 @@ function escH(str) {
     root.setProperty('--cloud-opacity',   String(p.cloudOp));
     root.setProperty('--star-opacity',    String(p.starsOp));
     root.setProperty('--stars-opacity',   String(p.starsOp));
-    root.setProperty('--dock-brightness', String(p.dockBright));
     root.setProperty('--celestial-top',   p.celTop);
     root.setProperty('--celestial-left',  p.celLeft);
 
@@ -12523,26 +12318,26 @@ function escH(str) {
           <stop offset="100%" stop-color="#072B30"/>
         </linearGradient>
       </defs>
-      <path d="M8,32 L0,44 L4,56 L216,56 L220,44 L212,32Z" fill="url(#${id})"/>
-      <path d="M2,52 L218,52 L216,56 L4,56Z" fill="#041520" opacity="0.55"/>
-      <line x1="0" y1="44" x2="220" y2="44" stroke="#4DCFDF" stroke-width="1" opacity="0.55"/>
-      <rect x="16"  y="20" width="26" height="12" rx="1" fill="#C0392B"/>
-      <rect x="44"  y="20" width="26" height="12" rx="1" fill="#E8A838"/>
-      <rect x="72"  y="20" width="26" height="12" rx="1" fill="#1B9AAA"/>
-      <rect x="100" y="20" width="26" height="12" rx="1" fill="#1DB87A"/>
-      <rect x="128" y="20" width="26" height="12" rx="1" fill="#C0392B"/>
-      <rect x="16"  y="8"  width="26" height="12" rx="1" fill="#E8A838"/>
-      <rect x="44"  y="8"  width="26" height="12" rx="1" fill="#1B9AAA"/>
-      <rect x="72"  y="8"  width="26" height="12" rx="1" fill="#C0392B"/>
-      <rect x="100" y="8"  width="26" height="12" rx="1" fill="#E8A838"/>
-      <rect x="128" y="8"  width="26" height="12" rx="1" fill="#1DB87A"/>
-      <rect x="158" y="16" width="44" height="18" rx="2" fill="#162845"/>
-      <rect x="158" y="16" width="44" height="3"  rx="1" fill="#22B5C8" opacity="0.4"/>
-      <rect x="162" y="21" width="6"  height="6"  rx="0.5" fill="#4DCFDF" opacity="0.55"/>
-      <rect x="172" y="21" width="6"  height="6"  rx="0.5" fill="#4DCFDF" opacity="0.55"/>
-      <rect x="178" y="7"  width="9"  height="11" rx="1.5" fill="#C0392B"/>
-      <rect x="178" y="13" width="9"  height="3"  fill="#E8A838" opacity="0.9"/>
-      <ellipse cx="110" cy="58" rx="80" ry="4" fill="#4DCFDF" opacity="0.10"/>
+      <path d="M8,46 L0,58 L4,70 L216,70 L220,58 L212,46Z" fill="url(#${id})"/>
+      <path d="M2,66 L218,66 L216,70 L4,70Z" fill="#041520" opacity="0.55"/>
+      <line x1="0" y1="58" x2="220" y2="58" stroke="#4DCFDF" stroke-width="1" opacity="0.55"/>
+      <rect x="16"  y="34" width="26" height="12" rx="1" fill="#C0392B"/>
+      <rect x="44"  y="34" width="26" height="12" rx="1" fill="#E8A838"/>
+      <rect x="72"  y="34" width="26" height="12" rx="1" fill="#1B9AAA"/>
+      <rect x="100" y="34" width="26" height="12" rx="1" fill="#1DB87A"/>
+      <rect x="128" y="34" width="26" height="12" rx="1" fill="#C0392B"/>
+      <rect x="16"  y="22" width="26" height="12" rx="1" fill="#E8A838"/>
+      <rect x="44"  y="22" width="26" height="12" rx="1" fill="#1B9AAA"/>
+      <rect x="72"  y="22" width="26" height="12" rx="1" fill="#C0392B"/>
+      <rect x="100" y="22" width="26" height="12" rx="1" fill="#E8A838"/>
+      <rect x="128" y="22" width="26" height="12" rx="1" fill="#1DB87A"/>
+      <rect x="158" y="30" width="44" height="18" rx="2" fill="#162845"/>
+      <rect x="158" y="30" width="44" height="3"  rx="1" fill="#22B5C8" opacity="0.4"/>
+      <rect x="162" y="35" width="6"  height="6"  rx="0.5" fill="#4DCFDF" opacity="0.55"/>
+      <rect x="172" y="35" width="6"  height="6"  rx="0.5" fill="#4DCFDF" opacity="0.55"/>
+      <rect x="178" y="21" width="9"  height="11" rx="1.5" fill="#C0392B"/>
+      <rect x="178" y="27" width="9"  height="3"  fill="#E8A838" opacity="0.9"/>
+      <ellipse cx="110" cy="68" rx="80" ry="4" fill="#4DCFDF" opacity="0.10"/>
     </svg>`;
   }
 
@@ -12551,20 +12346,20 @@ function escH(str) {
     const w = Math.round(100 * scale);
     const h = Math.round(56  * scale);
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 100 56" fill="none">
-      <path d="M6,26 L0,38 L3,46 L97,46 L100,38 L94,26Z" fill="#C0392B"/>
-      <path d="M1,44 L99,44 L97,46 L3,46Z" fill="#7A1A1A" opacity="0.55"/>
-      <path d="M3,38 L97,38 L97,41 L3,41Z" fill="#E8A838" opacity="0.45"/>
-      <line x1="0" y1="38" x2="100" y2="38" stroke="#E8A838" stroke-width="1.5" opacity="0.7"/>
-      <rect x="28" y="12" width="36" height="16" rx="2" fill="#162845"/>
-      <rect x="28" y="12" width="36" height="3"  rx="1" fill="#22B5C8" opacity="0.45"/>
-      <rect x="33" y="17" width="5"  height="6"  rx="0.5" fill="#4DCFDF" opacity="0.65"/>
-      <rect x="43" y="17" width="5"  height="6"  rx="0.5" fill="#4DCFDF" opacity="0.65"/>
-      <rect x="50" y="4"  width="10" height="12" rx="2" fill="#8B1A1A"/>
-      <rect x="50" y="10" width="10" height="3"  fill="#E8A838" opacity="0.85"/>
-      <rect x="78" y="22" width="6"  height="14" rx="1" fill="#0A4A54"/>
-      <circle cx="14" cy="39" r="4" fill="#0A1628" stroke="#1B9AAA" stroke-width="1" opacity="0.5"/>
-      <circle cx="84" cy="39" r="4" fill="#0A1628" stroke="#1B9AAA" stroke-width="1" opacity="0.5"/>
-      <ellipse cx="50" cy="48" rx="38" ry="3" fill="#4DCFDF" opacity="0.12"/>
+      <path d="M6,36 L0,48 L3,56 L97,56 L100,48 L94,36Z" fill="#C0392B"/>
+      <path d="M1,54 L99,54 L97,56 L3,56Z" fill="#7A1A1A" opacity="0.55"/>
+      <path d="M3,48 L97,48 L97,51 L3,51Z" fill="#E8A838" opacity="0.45"/>
+      <line x1="0" y1="48" x2="100" y2="48" stroke="#E8A838" stroke-width="1.5" opacity="0.7"/>
+      <rect x="28" y="22" width="36" height="16" rx="2" fill="#162845"/>
+      <rect x="28" y="22" width="36" height="3"  rx="1" fill="#22B5C8" opacity="0.45"/>
+      <rect x="33" y="27" width="5"  height="6"  rx="0.5" fill="#4DCFDF" opacity="0.65"/>
+      <rect x="43" y="27" width="5"  height="6"  rx="0.5" fill="#4DCFDF" opacity="0.65"/>
+      <rect x="50" y="14" width="10" height="12" rx="2" fill="#8B1A1A"/>
+      <rect x="50" y="20" width="10" height="3"  fill="#E8A838" opacity="0.85"/>
+      <rect x="78" y="32" width="6"  height="14" rx="1" fill="#0A4A54"/>
+      <circle cx="14" cy="49" r="4" fill="#0A1628" stroke="#1B9AAA" stroke-width="1" opacity="0.5"/>
+      <circle cx="84" cy="49" r="4" fill="#0A1628" stroke="#1B9AAA" stroke-width="1" opacity="0.5"/>
+      <ellipse cx="50" cy="54" rx="38" ry="3" fill="#4DCFDF" opacity="0.12"/>
     </svg>`;
   }
 
@@ -12573,14 +12368,14 @@ function escH(str) {
     const w = Math.round(66 * scale);
     const h = Math.round(95 * scale);
     return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 66 95" fill="none">
-      <path d="M5,64 L0,74 L3,80 L63,80 L66,74 L61,64Z" fill="#1B9AAA"/>
-      <path d="M1,78 L65,78 L63,80 L3,80Z" fill="#072B30" opacity="0.55"/>
-      <line x1="0" y1="74" x2="66" y2="74" stroke="#4DCFDF" stroke-width="1" opacity="0.6"/>
-      <line x1="33" y1="8" x2="33" y2="64" stroke="#1A3259" stroke-width="2.5"/>
-      <path d="M33,10 L33,60 L8,60Z" fill="white" opacity="0.85"/>
-      <path d="M33,16 L33,58 L58,60Z" fill="#E8A838" opacity="0.55"/>
-      <line x1="8" y1="60" x2="58" y2="60" stroke="#1A3259" stroke-width="1.5"/>
-      <ellipse cx="33" cy="82" rx="24" ry="3" fill="#4DCFDF" opacity="0.12"/>
+      <path d="M5,79 L0,89 L3,95 L63,95 L66,89 L61,79Z" fill="#1B9AAA"/>
+      <path d="M1,93 L65,93 L63,95 L3,95Z" fill="#072B30" opacity="0.55"/>
+      <line x1="0" y1="89" x2="66" y2="89" stroke="#4DCFDF" stroke-width="1" opacity="0.6"/>
+      <line x1="33" y1="23" x2="33" y2="79" stroke="#1A3259" stroke-width="2.5"/>
+      <path d="M33,25 L33,75 L8,75Z" fill="white" opacity="0.85"/>
+      <path d="M33,31 L33,73 L58,75Z" fill="#E8A838" opacity="0.55"/>
+      <line x1="8" y1="75" x2="58" y2="75" stroke="#1A3259" stroke-width="1.5"/>
+      <ellipse cx="33" cy="93" rx="24" ry="3" fill="#4DCFDF" opacity="0.12"/>
     </svg>`;
   }
 
