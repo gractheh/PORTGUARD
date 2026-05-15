@@ -3248,6 +3248,81 @@ def get_result(
     )
 
 
+@app.get("/api/results/{result_id}/report")
+def get_result_report(
+    result_id: str,
+    current_org: dict = Depends(get_current_organization),
+):
+    """Return a PDF compliance report for a stored screening result.
+
+    Path: GET /api/results/{result_id}/report
+    Auth: Bearer token (same as all other authenticated endpoints)
+    Returns: application/pdf
+    """
+    if _pattern_db is None:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "SERVICE_UNAVAILABLE",
+                "message": "Database not initialised.",
+            },
+        )
+
+    org_id: str = current_org["organization_id"]
+
+    try:
+        payload_json = _pattern_db.get_report_payload(
+            analysis_id=result_id,
+            organization_id=org_id,
+        )
+    except Exception as exc:
+        logger.error(
+            "get_report_payload(%s) raised unexpectedly: %s",
+            result_id, exc, exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "DB_ERROR", "message": "Failed to retrieve report data."},
+        )
+
+    if payload_json is None:
+        owner_org = _pattern_db.get_result_owner(result_id)
+        if owner_org is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "REPORT_NOT_AVAILABLE",
+                    "message": (
+                        f"No report found for result '{result_id}'. "
+                        "The result may not exist or predate report storage."
+                    ),
+                },
+            )
+        raise HTTPException(
+            status_code=403,
+            detail={"code": "FORBIDDEN", "message": "This result belongs to a different organization."},
+        )
+
+    import json as _json
+    payload_dict = _json.loads(payload_json)
+    if not payload_dict.get("shipment_id"):
+        payload_dict["shipment_id"] = result_id
+
+    try:
+        pdf_bytes = generate_report_from_dict(payload_dict)
+    except (ValueError, ReportGenerationError) as exc:
+        logger.error(
+            "PDF generation failed for result %s: %s",
+            result_id, exc, exc_info=True,
+        )
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "PDF_GENERATION_FAILED", "message": f"Failed to generate PDF: {exc}"},
+        )
+
+    return _pdf_response(pdf_bytes, result_id)
+
+
 # ---------------------------------------------------------------------------
 # Bulk screening — analysis helper
 # ---------------------------------------------------------------------------
