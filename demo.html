@@ -946,6 +946,25 @@
       padding: .38rem .9rem; border-radius: var(--radius); cursor: pointer; transition: all .2s;
     }
     .ph-load-btn:hover { border-color: var(--teal-500); color: var(--teal-300); }
+    .pattern-refresh-btn {
+      background: rgba(27, 154, 170, 0.1);
+      border: 1px solid rgba(27, 154, 170, 0.25);
+      border-radius: 6px;
+      padding: 0.3rem 0.5rem;
+      color: #4DCFDF;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.2s, transform 0.1s;
+      line-height: 1;
+    }
+    .pattern-refresh-btn:hover {
+      background: rgba(27, 154, 170, 0.22);
+      transform: scale(1.08);
+    }
+    .pattern-refresh-btn:active { transform: scale(0.95); }
+    .pattern-refresh-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
     .ph-stats { display: flex; gap: .8rem; flex-wrap: wrap; margin-bottom: 1.2rem; }
     .ph-stat {
       background: var(--card); border: 1px solid var(--border);
@@ -4515,7 +4534,7 @@
       <div class="section-label" style="margin-bottom:0">Pattern Learning History</div>
       <div style="display:flex;gap:.5rem;align-items:center">
         <button class="ph-reset-btn" id="ph-reset-btn" onclick="openResetModal()">&#9003; Reset History</button>
-        <button class="ph-load-btn" onclick="fetchAndRenderPatternStats()">&#8635; Refresh</button>
+        <button class="ph-load-btn pattern-refresh-btn" onclick="refreshPatternStats(this)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg></button>
       </div>
     </div>
     <div class="ph-success" id="ph-success">
@@ -8957,6 +8976,43 @@ async function fetchAndRenderPatternStats() {
     const stats = await res.json();
     renderPatternStats(stats);
   } catch (_) {}
+}
+
+async function refreshPatternStats(btn) {
+  if (!btn) btn = document.querySelector('[onclick*="refreshPatternStats"]');
+  const icon = btn ? btn.querySelector('svg, .refresh-icon') : null;
+
+  if (icon) {
+    icon.style.transition = 'transform 0.6s ease';
+    icon.style.transform = 'rotate(360deg)';
+    setTimeout(() => {
+      icon.style.transition = 'none';
+      icon.style.transform = 'rotate(0deg)';
+    }, 650);
+  }
+
+  if (btn) btn.disabled = true;
+
+  try {
+    const res = await fetch(apiUrl() + '/api/v1/pattern-stats', {
+      headers: { 'Authorization': 'Bearer ' + _authToken }
+    });
+    if (res.status === 401) { handle401(); return; }
+    if (!res.ok) throw new Error('Failed to fetch');
+    const stats = await res.json();
+    renderPatternStats(stats);
+
+    const panel = document.getElementById('ph-panel');
+    if (panel) {
+      panel.style.transition = 'opacity 0.15s ease';
+      panel.style.opacity = '0.4';
+      setTimeout(() => { panel.style.opacity = '1'; }, 150);
+    }
+  } catch (err) {
+    console.error('Pattern stats refresh failed:', err);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 async function loadPatternHistory() {
