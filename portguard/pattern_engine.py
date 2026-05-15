@@ -490,7 +490,7 @@ def get_pattern_stats(db, org_email: str) -> dict:
         "confirmed_fraud_count":    0,
         "avg_org_risk_score":       0.0,
         "total_flags_issued":       0,
-        "approval_rate":            100.0,
+        "approval_rate":            100,
         "high_risk_shippers":       [],
         "high_risk_routes":         [],
         "value_anomalies":          [],
@@ -513,7 +513,9 @@ def get_pattern_stats(db, org_email: str) -> dict:
                         SUM(CASE WHEN signal_type = 'SHIPPER_REP'
                                  THEN flag_count ELSE 0 END),
                         AVG(CASE WHEN signal_type = 'SHIPPER_REP'
-                                 THEN avg_risk_score END)
+                                 THEN avg_risk_score END),
+                        COUNT(CASE WHEN signal_type = 'SHIPPER_REP'
+                                        AND last_decision = 'APPROVE' THEN 1 END)
                     FROM pattern_store
                     WHERE organization_email = :org
                 """),
@@ -523,31 +525,31 @@ def get_pattern_stats(db, org_email: str) -> dict:
             if row and row[1] is not None and int(row[1] or 0) > 0:
                 total_screened = int(row[0] or 0)
                 total_flags    = int(row[4] or 0)
-                approval_rate  = round((1 - total_flags / max(total_screened, 1)) * 100, 1)
+                approve_count  = int(row[6] or 0)
+                shipper_count  = int(row[1] or 1)
+                approval_rate  = round(approve_count / max(shipper_count, 1) * 100)
                 defaults.update({
                     "total_shipments_screened": total_screened,
-                    "unique_shippers_tracked":  int(row[1] or 0),
+                    "unique_shippers_tracked":  shipper_count,
                     "unique_routes_tracked":    int(row[2] or 0),
                     "confirmed_fraud_count":    int(row[3] or 0),
                     "total_flags_issued":       total_flags,
-                    "approval_rate":            max(0.0, approval_rate),
+                    "approval_rate":            max(0, approval_rate),
                     "avg_org_risk_score":       round(float(row[5] or 0.0), 1),
                     "has_history":              True,
                 })
 
-                # High-risk shippers (flag_rate > 0.3, top 10 by flag_rate then occurrence)
+                # High-risk shippers (flag_count > 0, top 5 by fraud_confirmed_count then flag_count)
                 hr_shippers = conn.execute(
                     text("""
                         SELECT signal_key, flag_count, occurrence_count, avg_risk_score,
-                               fraud_confirmed_count, last_seen, last_decision
+                               fraud_confirmed_count
                         FROM pattern_store
                         WHERE organization_email = :org
                           AND signal_type = 'SHIPPER_REP'
-                          AND occurrence_count > 0
-                          AND CAST(flag_count AS REAL) / occurrence_count > 0.3
-                        ORDER BY CAST(flag_count AS REAL) / occurrence_count DESC,
-                                 occurrence_count DESC
-                        LIMIT 10
+                          AND flag_count > 0
+                        ORDER BY fraud_confirmed_count DESC, flag_count DESC
+                        LIMIT 5
                     """),
                     {"org": org_email},
                 ).fetchall()
@@ -558,26 +560,23 @@ def get_pattern_stats(db, org_email: str) -> dict:
                         "occurrence_count":      r[2],
                         "avg_risk_score":        round(float(r[3] or 0.0), 1),
                         "fraud_confirmed_count": int(r[4] or 0),
-                        "last_seen":             r[5],
-                        "last_decision":         r[6],
                         "flag_rate":             round(r[1] / max(r[2], 1) * 100),
                     }
                     for r in hr_shippers
                 ]
 
-                # High-risk routes (flag_rate > 0.3, occ >= 3, top 10)
+                # High-risk routes (flag_count > 0, occ >= 2, top 5 by flag_rate)
                 hr_routes = conn.execute(
                     text("""
-                        SELECT signal_key, flag_count, occurrence_count, avg_risk_score,
-                               last_seen, last_decision
+                        SELECT signal_key, flag_count, occurrence_count, avg_risk_score
                         FROM pattern_store
                         WHERE organization_email = :org
                           AND signal_type = 'ROUTE_RISK'
-                          AND occurrence_count >= 3
-                          AND CAST(flag_count AS REAL) / occurrence_count > 0.3
+                          AND occurrence_count >= 2
+                          AND flag_count > 0
                         ORDER BY CAST(flag_count AS REAL) / occurrence_count DESC,
                                  occurrence_count DESC
-                        LIMIT 10
+                        LIMIT 5
                     """),
                     {"org": org_email},
                 ).fetchall()
@@ -587,21 +586,23 @@ def get_pattern_stats(db, org_email: str) -> dict:
                         "flag_count":       r[1],
                         "occurrence_count": r[2],
                         "avg_risk_score":   round(float(r[3] or 0.0), 1),
-                        "last_seen":        r[4],
-                        "last_decision":    r[5],
                         "flag_rate":        round(r[1] / max(r[2], 1) * 100),
                     }
                     for r in hr_routes
                 ]
 
-                # Value anomalies (top 3 by flag_count)
+                # Value anomalies (flag_count > 0, top 3 by flag_rate)
                 val_anomalies = conn.execute(
                     text("""
                         SELECT signal_key, flag_count, occurrence_count
                         FROM pattern_store
                         WHERE organization_email = :org
                           AND signal_type = 'VALUE_ANOMALY'
-                        ORDER BY flag_count DESC, occurrence_count DESC
+                          AND flag_count > 0
+                        ORDER BY CAST(flag_count AS REAL) /
+                                 CASE WHEN occurrence_count > 0
+                                      THEN occurrence_count ELSE 1 END DESC,
+                                 occurrence_count DESC
                         LIMIT 3
                     """),
                     {"org": org_email},
@@ -616,24 +617,23 @@ def get_pattern_stats(db, org_email: str) -> dict:
                     for r in val_anomalies
                 ]
 
-                # Cleared shippers (cleared_count > 0, top 10 by cleared_count)
+                # Cleared shippers (cleared_count > 0, top 5 by cleared_count)
                 cleared = conn.execute(
                     text("""
-                        SELECT signal_key, cleared_count, occurrence_count
+                        SELECT signal_key, cleared_count
                         FROM pattern_store
                         WHERE organization_email = :org
                           AND signal_type = 'SHIPPER_REP'
                           AND cleared_count > 0
-                        ORDER BY cleared_count DESC, occurrence_count DESC
-                        LIMIT 10
+                        ORDER BY cleared_count DESC
+                        LIMIT 5
                     """),
                     {"org": org_email},
                 ).fetchall()
                 defaults["cleared_shippers"] = [
                     {
-                        "signal_key":       r[0],
-                        "cleared_count":    r[1],
-                        "occurrence_count": r[2],
+                        "signal_key":    r[0],
+                        "cleared_count": r[1],
                     }
                     for r in cleared
                 ]

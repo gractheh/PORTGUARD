@@ -2507,11 +2507,21 @@ def pattern_stats_endpoint(current_org: dict = Depends(get_current_organization)
         from portguard.pattern_engine import get_pattern_stats as _get_patt_stats
         return _get_patt_stats(_pattern_db, current_org["email"])
     except Exception as exc:
-        logger.warning("get_pattern_stats() failed: %s", exc)
-        raise HTTPException(
-            status_code=500,
-            detail={"code": "STATS_ERROR", "message": str(exc)},
-        )
+        logger.warning("get_pattern_stats() failed (returning safe defaults): %s", exc)
+        return {
+            "has_history": False,
+            "total_shipments_screened": 0,
+            "unique_shippers_tracked": 0,
+            "unique_routes_tracked": 0,
+            "confirmed_fraud_count": 0,
+            "high_risk_shippers": [],
+            "high_risk_routes": [],
+            "value_anomalies": [],
+            "cleared_shippers": [],
+            "avg_org_risk_score": 0.0,
+            "total_flags_issued": 0,
+            "approval_rate": 0,
+        }
 
 
 # ---------------------------------------------------------------------------
