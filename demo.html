@@ -4540,7 +4540,7 @@
     <div class="ph-success" id="ph-success">
       <span>&#10003;</span><span>History cleared &mdash; PortGuard is starting fresh.</span>
     </div>
-    <div id="pattern-panel-body"></div>
+    <div id="pattern-stats-panel"></div>
   </div>
 
   <!-- Reset confirmation modal -->
@@ -5098,7 +5098,7 @@ function hideAuthOverlay() {
   const gear = document.getElementById('settings-gear-btn');
   if (gear) gear.style.display = 'flex';
   loadModules();
-  fetchAndRenderPatternStats();
+  loadPatternStats();
 
   // Restore pending deep-link if present; default to analyze tab
   if (_pendingResultId) {
@@ -8090,7 +8090,7 @@ function renderResults(data) {
   // Pattern Intelligence + Feedback
   renderPatternIntelResult(data.pattern_intelligence);
   renderFeedbackUI(data);
-  fetchAndRenderPatternStats();
+  loadPatternStats();
 
   // Show download + share buttons only when we have a shipment_id
   const dlBtn    = document.getElementById('download-report-btn');
@@ -8853,7 +8853,7 @@ async function submitFeedback(outcome) {
       ? 'Fraud confirmed \u2014 risk profiles updated for this shipper, consignee, and route.'
       : 'Shipment cleared \u2014 trust scores updated. Consistent clearances reduce future false positives.';
     thanks.classList.add('visible');
-    fetchAndRenderPatternStats();
+    loadPatternStats();
   } catch (e) {
     fraudBtn.disabled = false;
     clearBtn.disabled = false;
@@ -8866,157 +8866,165 @@ async function submitFeedback(outcome) {
 // ---------------------------------------------------------------------------
 
 function renderPatternStats(stats) {
-  const patternPanel = document.getElementById('pattern-panel-body');
-  if (!patternPanel) return;
+    var panel = document.getElementById('pattern-stats-panel');
+    if (!panel) {
+        console.error('pattern-stats-panel element not found in DOM');
+        return;
+    }
 
-  if (!stats.has_history || stats.total_shipments_screened === 0) {
-    patternPanel.innerHTML = `
-      <div class="pattern-empty-state">
-        <div class="pattern-empty-icon">\ud83e\udde0</div>
-        <div class="pattern-empty-title">Pattern Intelligence Active</div>
-        <div class="pattern-empty-sub">Screen your first shipment to begin building your organization\u2019s risk fingerprint.</div>
-      </div>
-    `;
-    return;
-  }
+    if (!stats || !stats.has_history || stats.total_shipments_screened === 0) {
+        panel.innerHTML = '<div class="pattern-empty-state">' +
+            '<div class="pattern-empty-icon" style="font-size:2rem;margin-bottom:0.75rem;opacity:0.5;">\u2014</div>' +
+            '<div class="pattern-empty-title">No history yet</div>' +
+            '<div class="pattern-empty-sub">Screen your first shipment to begin building your organization\'s risk fingerprint. Patterns strengthen with every screening.</div>' +
+            '</div>';
+        return;
+    }
 
-  const approvalPct = typeof stats.approval_rate === 'number' ? Math.round(stats.approval_rate) : 100;
-  const riskPct = Math.min(100, Math.round(((stats.avg_org_risk_score || 0) / 10) * 100));
+    var approvalRate = typeof stats.approval_rate === 'number' ? stats.approval_rate : 0;
+    var avgRisk = typeof stats.avg_org_risk_score === 'number' ? stats.avg_org_risk_score : 0;
 
-  patternPanel.innerHTML = `
-    <div class="pattern-stats-grid">
-      <div class="pattern-stat">
-        <div class="pattern-stat-value">${stats.total_shipments_screened}</div>
-        <div class="pattern-stat-label">Shipments Screened</div>
-      </div>
-      <div class="pattern-stat">
-        <div class="pattern-stat-value">${stats.unique_shippers_tracked}</div>
-        <div class="pattern-stat-label">Shippers Tracked</div>
-      </div>
-      <div class="pattern-stat">
-        <div class="pattern-stat-value">${stats.unique_routes_tracked}</div>
-        <div class="pattern-stat-label">Routes Tracked</div>
-      </div>
-      <div class="pattern-stat ${stats.confirmed_fraud_count > 0 ? 'danger' : ''}">
-        <div class="pattern-stat-value">${stats.confirmed_fraud_count}</div>
-        <div class="pattern-stat-label">Confirmed Fraud</div>
-      </div>
-    </div>
+    var html = '';
 
-    <div class="pattern-health-row">
-      <span class="pattern-health-label">Approval Rate</span>
-      <div class="pattern-health-bar-wrap"><div class="pattern-health-bar" style="width:${approvalPct}%"></div></div>
-      <span class="pattern-health-pct">${approvalPct}%</span>
-    </div>
-    <div class="pattern-health-row" style="margin-bottom:1rem">
-      <span class="pattern-health-label">Avg Risk Score</span>
-      <div class="pattern-health-bar-wrap"><div class="pattern-health-bar risk" style="width:${riskPct}%"></div></div>
-      <span class="pattern-health-pct">${stats.avg_org_risk_score || 0}/10</span>
-    </div>
+    html += '<div class="pattern-stats-grid">';
+    html += '<div class="pattern-stat"><div class="pattern-stat-value">' + stats.total_shipments_screened + '</div><div class="pattern-stat-label">Screened</div></div>';
+    html += '<div class="pattern-stat"><div class="pattern-stat-value">' + stats.unique_shippers_tracked + '</div><div class="pattern-stat-label">Shippers</div></div>';
+    html += '<div class="pattern-stat"><div class="pattern-stat-value">' + stats.unique_routes_tracked + '</div><div class="pattern-stat-label">Routes</div></div>';
+    html += '<div class="pattern-stat ' + (stats.confirmed_fraud_count > 0 ? 'danger' : '') + '"><div class="pattern-stat-value">' + stats.confirmed_fraud_count + '</div><div class="pattern-stat-label">Fraud Confirmed</div></div>';
+    html += '</div>';
 
-    ${stats.high_risk_shippers.length > 0 ? `
-    <div class="pattern-section">
-      <div class="pattern-section-title">\u26a0\ufe0f High-Risk Shippers</div>
-      ${stats.high_risk_shippers.map(s => {
-        const isFraud = (s.fraud_confirmed_count || 0) > 0;
-        return `<div class="pattern-row">
-          <span class="pattern-key">${escHtml(s.signal_key)}</span>
-          <span class="pattern-badge-stack">${isFraud ? '<span class="pattern-badge fraud">FRAUD</span>' : ''}<span class="pattern-badge danger">${s.flag_rate}% flag rate</span></span>
-        </div>`;
-      }).join('')}
-    </div>` : ''}
+    html += '<div class="pattern-health-row">';
+    html += '<span class="pattern-health-label">Approval rate</span>';
+    html += '<div class="pattern-health-bar-wrap"><div class="pattern-health-bar" style="width:' + approvalRate + '%"></div></div>';
+    html += '<span class="pattern-health-pct">' + approvalRate + '%</span>';
+    html += '</div>';
 
-    ${stats.high_risk_routes.length > 0 ? `
-    <div class="pattern-section">
-      <div class="pattern-section-title">\ud83d\uddfa\ufe0f High-Risk Routes</div>
-      ${stats.high_risk_routes.map(r => `
-        <div class="pattern-row">
-          <span class="pattern-key">${escHtml(r.signal_key)}</span>
-          <span class="pattern-badge danger">${r.flag_rate}% flag rate</span>
-        </div>
-      `).join('')}
-    </div>` : ''}
+    html += '<div class="pattern-health-row">';
+    html += '<span class="pattern-health-label">Avg risk</span>';
+    html += '<div class="pattern-health-bar-wrap"><div class="pattern-health-bar risk" style="width:' + (avgRisk * 10) + '%"></div></div>';
+    html += '<span class="pattern-health-pct">' + avgRisk + '/10</span>';
+    html += '</div>';
 
-    ${(stats.value_anomalies || []).length > 0 ? `
-    <div class="pattern-section">
-      <div class="pattern-section-title">\ud83d\udcb0 Value Anomalies</div>
-      ${(stats.value_anomalies || []).map(v => `
-        <div class="pattern-row">
-          <span class="pattern-key">${escHtml(v.signal_key)}</span>
-          <span class="pattern-badge danger">${v.flag_rate}% flag rate</span>
-        </div>
-      `).join('')}
-    </div>` : ''}
+    if (stats.high_risk_shippers && stats.high_risk_shippers.length > 0) {
+        html += '<div class="pattern-section">';
+        html += '<div class="pattern-section-title">High-Risk Shippers</div>';
+        stats.high_risk_shippers.forEach(function(s) {
+            var isFraud = s.fraud_confirmed_count > 0;
+            html += '<div class="pattern-row">';
+            html += '<span class="pattern-key" title="' + escHtml(s.signal_key) + '">' + escHtml(s.signal_key) + '</span>';
+            html += '<div class="pattern-badge-stack">';
+            html += '<span class="pattern-badge ' + (isFraud ? 'fraud' : 'danger') + '">' + (isFraud ? 'FRAUD' : s.flag_count + '/' + s.occurrence_count) + '</span>';
+            if (s.avg_risk_score) {
+                html += '<span class="pattern-badge warning">' + s.avg_risk_score + ' avg</span>';
+            }
+            html += '</div></div>';
+        });
+        html += '</div>';
+    }
 
-    ${stats.cleared_shippers.length > 0 ? `
-    <div class="pattern-section">
-      <div class="pattern-section-title">\u2705 Known-Good Shippers</div>
-      ${stats.cleared_shippers.map(s => `
-        <div class="pattern-row">
-          <span class="pattern-key">${escHtml(s.signal_key)}</span>
-          <span class="pattern-badge success">${s.cleared_count}x cleared</span>
-        </div>
-      `).join('')}
-    </div>` : ''}
-  `;
+    if (stats.high_risk_routes && stats.high_risk_routes.length > 0) {
+        html += '<div class="pattern-section">';
+        html += '<div class="pattern-section-title">High-Risk Routes</div>';
+        stats.high_risk_routes.forEach(function(r) {
+            html += '<div class="pattern-row">';
+            html += '<span class="pattern-key" title="' + escHtml(r.signal_key) + '">' + escHtml(r.signal_key) + '</span>';
+            html += '<div class="pattern-badge-stack">';
+            html += '<span class="pattern-badge danger">' + r.flag_rate + '% flagged</span>';
+            if (r.avg_risk_score) {
+                html += '<span class="pattern-badge warning">' + r.avg_risk_score + ' avg</span>';
+            }
+            html += '</div></div>';
+        });
+        html += '</div>';
+    }
+
+    if (stats.value_anomalies && stats.value_anomalies.length > 0) {
+        html += '<div class="pattern-section">';
+        html += '<div class="pattern-section-title">Value Anomalies</div>';
+        stats.value_anomalies.forEach(function(v) {
+            html += '<div class="pattern-row">';
+            html += '<span class="pattern-key" title="' + escHtml(v.signal_key) + '">' + escHtml(v.signal_key) + '</span>';
+            html += '<span class="pattern-badge danger">' + v.flag_rate + '% flagged</span>';
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    if (stats.cleared_shippers && stats.cleared_shippers.length > 0) {
+        html += '<div class="pattern-section">';
+        html += '<div class="pattern-section-title">Known-Good Shippers</div>';
+        stats.cleared_shippers.forEach(function(s) {
+            html += '<div class="pattern-row">';
+            html += '<span class="pattern-key" title="' + escHtml(s.signal_key) + '">' + escHtml(s.signal_key) + '</span>';
+            html += '<span class="pattern-badge success">' + s.cleared_count + 'x cleared</span>';
+            html += '</div>';
+        });
+        html += '</div>';
+    }
+
+    panel.innerHTML = html;
 }
 
-async function fetchAndRenderPatternStats() {
-  if (!_authToken) return;
-  const patternPanel = document.getElementById('pattern-panel-body');
-  if (patternPanel && !patternPanel.innerHTML.trim()) {
-    patternPanel.innerHTML = '<div class="ph-empty">Loading\u2026</div>';
-  }
-  try {
-    const res = await fetch(apiUrl() + '/api/v1/pattern-stats', {
-      headers: { 'Authorization': 'Bearer ' + _authToken },
-    });
-    if (res.status === 401) { handle401(); return; }
-    if (!res.ok) return;
-    const stats = await res.json();
-    renderPatternStats(stats);
-  } catch (_) {}
+async function loadPatternStats() {
+    if (!_authToken) return;
+    try {
+        var response = await fetch(apiUrl() + '/api/v1/pattern-stats', {
+            headers: { 'Authorization': 'Bearer ' + _authToken }
+        });
+        if (response.status === 401) { handle401(); return; }
+        if (!response.ok) {
+            console.error('Pattern stats API returned ' + response.status);
+            return;
+        }
+        var stats = await response.json();
+        renderPatternStats(stats);
+    } catch (err) {
+        console.error('Failed to load pattern stats:', err);
+        var panel = document.getElementById('pattern-stats-panel');
+        if (panel) {
+            panel.innerHTML = '<div class="pattern-empty-state"><div class="pattern-empty-sub">Could not load pattern data. Try refreshing.</div></div>';
+        }
+    }
 }
+
+// Alias kept for any legacy call sites
+function fetchAndRenderPatternStats() { return loadPatternStats(); }
 
 async function refreshPatternStats(btn) {
-  if (!btn) btn = document.querySelector('[onclick*="refreshPatternStats"]');
-  const icon = btn ? btn.querySelector('svg, .refresh-icon') : null;
-
-  if (icon) {
-    icon.style.transition = 'transform 0.6s ease';
-    icon.style.transform = 'rotate(360deg)';
-    setTimeout(() => {
-      icon.style.transition = 'none';
-      icon.style.transform = 'rotate(0deg)';
-    }, 650);
-  }
-
-  if (btn) btn.disabled = true;
-
-  try {
-    const res = await fetch(apiUrl() + '/api/v1/pattern-stats', {
-      headers: { 'Authorization': 'Bearer ' + _authToken }
-    });
-    if (res.status === 401) { handle401(); return; }
-    if (!res.ok) throw new Error('Failed to fetch');
-    const stats = await res.json();
-    renderPatternStats(stats);
-
-    const panel = document.getElementById('ph-panel');
-    if (panel) {
-      panel.style.transition = 'opacity 0.15s ease';
-      panel.style.opacity = '0.4';
-      setTimeout(() => { panel.style.opacity = '1'; }, 150);
+    var icon = btn ? btn.querySelector('svg') : null;
+    if (icon) {
+        icon.style.transition = 'transform 0.6s ease';
+        icon.style.transform = 'rotate(360deg)';
+        setTimeout(function() {
+            icon.style.transition = 'none';
+            icon.style.transform = 'rotate(0deg)';
+        }, 650);
     }
-  } catch (err) {
-    console.error('Pattern stats refresh failed:', err);
-  } finally {
-    if (btn) btn.disabled = false;
-  }
+    if (btn) btn.disabled = true;
+    try {
+        var response = await fetch(apiUrl() + '/api/v1/pattern-stats', {
+            headers: { 'Authorization': 'Bearer ' + _authToken }
+        });
+        if (response.status === 401) { handle401(); return; }
+        if (!response.ok) throw new Error('Server returned ' + response.status);
+        var stats = await response.json();
+        renderPatternStats(stats);
+        var panel = document.getElementById('pattern-stats-panel');
+        if (panel) {
+            panel.style.transition = 'opacity 0.15s';
+            panel.style.opacity = '0.3';
+            setTimeout(function() { panel.style.opacity = '1'; }, 150);
+        }
+    } catch (err) {
+        console.error('Refresh failed:', err);
+        if (typeof showToast === 'function') showToast('Could not refresh pattern data', 'error');
+    } finally {
+        if (btn) btn.disabled = false;
+    }
 }
 
 async function loadPatternHistory() {
-  await fetchAndRenderPatternStats();
+  await loadPatternStats();
 }
 
 function buildPhTable(rows, headers, rowFn) {
@@ -9095,7 +9103,7 @@ async function confirmReset() {
     closeResetModal();
 
     // Refresh the pattern stats panel to show empty state
-    fetchAndRenderPatternStats();
+    loadPatternStats();
 
     // Show green success banner
     const successEl = document.getElementById('ph-success');
