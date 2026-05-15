@@ -3824,10 +3824,10 @@
       <!-- Deep ocean base fill -->
       <rect x="0" y="0" width="1440" height="200" fill="url(#ocean-depth-grad)"/>
 
-      <!-- Primary wave — crests reach y=0, SMIL translate left -->
+      <!-- Primary wave — crests at y=0 (waterline top edge), SMIL translate left -->
       <path id="wave-primary"
-        d="M0,20 C180,0 360,40 540,20 C720,0 900,40 1080,20 C1260,0 1440,40 1620,20
-           C1800,0 1980,40 2160,20 C2340,0 2520,40 2700,20 L2700,200 L0,200 Z"
+        d="M0,0 C180,0 360,40 540,0 C720,0 900,40 1080,0 C1260,0 1440,40 1620,0
+           C1800,0 1980,40 2160,0 C2340,0 2520,40 2700,0 L2700,200 L0,200 Z"
         fill="var(--ocean-surface)" opacity="0.7">
         <animateTransform attributeName="transform" type="translate"
           from="0,0" to="-1080,0" dur="22s" repeatCount="indefinite" calcMode="linear"/>
