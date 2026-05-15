@@ -10602,17 +10602,20 @@ function bulkSubmitClick() {
   // Save all open slot text areas first
   _bulkSlots.forEach(s => _bulkSaveSlotActiveTab(s));
 
-  let count = 0;
-  if (_bulkMethod === 'zip') count = '?'; // unknown
-  else if (_bulkMethod === 'csv') count = '?';
-  else count = _bulkSlots.filter(s => s.tabs.some(t => (t.pdfExtractedText || t.text || '').trim())).length;
+  // ZIP / CSV: count is unknown until the server parses the file — skip modal
+  if (_bulkMethod === 'zip' || _bulkMethod === 'csv') {
+    bulkModalConfirm();
+    return;
+  }
 
-  if (typeof count === 'number' && count <= 10) {
+  let count = _bulkSlots.filter(s => s.tabs.some(t => (t.pdfExtractedText || t.text || '').trim())).length;
+
+  if (count <= 10) {
     bulkModalConfirm(); // skip confirm for small batches
     return;
   }
 
-  const estMins = typeof count === 'number' ? Math.ceil(count * 6 / 60) : '?';
+  const estMins = Math.ceil(count * 6 / 60);
   document.getElementById('bulk-modal-body').textContent =
     `You are about to screen ${count} shipment${count !== 1 ? 's' : ''}. This may take up to ${estMins} minute${estMins !== 1 ? 's' : ''}.`;
   document.getElementById('bulk-confirm-modal').classList.add('visible');
@@ -10647,6 +10650,13 @@ async function _bulkSubmit() {
 
   _bulkAbortController = new AbortController();
   const signal = _bulkAbortController.signal;
+
+  // 120-second hard timeout — distinguishes user-cancel from network stall.
+  let _bulkTimedOut = false;
+  const _bulkTimeoutHandle = setTimeout(() => {
+    _bulkTimedOut = true;
+    if (_bulkAbortController) _bulkAbortController.abort();
+  }, 120_000);
 
   try {
     let res;
@@ -10700,9 +10710,16 @@ async function _bulkSubmit() {
     _bulkRenderFromResponse(data);
 
   } catch (e) {
-    if (e.name === 'AbortError') return;  // user hit Cancel
+    if (e.name === 'AbortError') {
+      if (_bulkTimedOut) {
+        _bulkShowProgressError('Bulk screening timed out after 2 minutes. Try a smaller batch or check your connection.');
+      }
+      // else: user clicked Cancel — stay on progress screen, Cancel btn re-enables
+      return;
+    }
     _bulkShowProgressError(e.message || 'Network error — is the API server running?');
   } finally {
+    clearTimeout(_bulkTimeoutHandle);
     _bulkAbortController = null;
     document.getElementById('bulk-progress-fill').classList.remove('indeterminate');
   }
