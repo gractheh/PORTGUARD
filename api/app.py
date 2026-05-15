@@ -12,9 +12,9 @@ import os
 import re
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Any, Generator, Optional
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Request, UploadFile, File
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
@@ -3257,6 +3257,7 @@ def _run_bulk_single_analysis(
     org_id: str,
     enabled_modules: Optional[list] = None,
     org_email: str = "__system__",
+    skip_classifier_gate: bool = False,
 ) -> dict:
     """Run the full analysis pipeline for one shipment in a bulk batch.
 
@@ -3308,10 +3309,12 @@ def _run_bulk_single_analysis(
     if not docs:
         raise ValueError("No non-empty document text provided.")
 
-    # Hardened document classification gate
+    # Hardened document classification gate.
+    # Skipped when skip_classifier_gate=True because bulk_classify() already
+    # vetted the text at the /api/bulk/upload intake stage.
     _bulk_clf = [_classify_document(doc.raw_text or "") for doc in docs]
     _bulk_rejected = [(i, r) for i, r in enumerate(_bulk_clf) if not r["accepted"]]
-    if _bulk_rejected:
+    if _bulk_rejected and not skip_classifier_gate:
         rej_reasons = "; ".join(
             r["rejection_reason"] or "Not a trade document"
             for _, r in _bulk_rejected
@@ -3513,6 +3516,22 @@ def _run_bulk_single_analysis(
     analyze_response.shipment_id = shipment_id
 
     return analyze_response.model_dump()
+
+
+# Register permissive variant (no hardened classifier gate) with bulk_processor.
+# Used by /api/bulk/upload → process_bulk_shipments → run_full_pipeline.
+# bulk_classify() at intake already vetted documents, so the gate is redundant.
+try:
+    import functools as _functools_reg
+    from portguard.bulk_processor import register_pipeline as _register_bulk_pipeline
+    _register_bulk_pipeline(
+        _functools_reg.partial(_run_bulk_single_analysis, skip_classifier_gate=True)
+    )
+    logger.info("Permissive bulk pipeline registered with bulk_processor")
+except Exception as _rbp_exc:
+    logger.warning(
+        "bulk_processor pipeline registration failed (non-fatal): %s", _rbp_exc
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -4455,3 +4474,345 @@ def bulk_csv_template():
     )
 
 
+# ---------------------------------------------------------------------------
+# /api/bulk/upload — simplified upload endpoint
+# ---------------------------------------------------------------------------
+# Accepts a single file (ZIP / CSV / TXT / PDF) or free-form manual_texts.
+# Uses bulk_classify() as the only document gate — permissive for short text.
+# File type detected by filename extension only, never by Content-Type header.
+# ---------------------------------------------------------------------------
+
+
+def get_db() -> Generator:
+    """FastAPI dependency — yields None.
+
+    This deployment uses module-level SQLAlchemy engine singletons instead of
+    a per-request session pattern.  The db parameter is accepted for API
+    compatibility and passed through to process_bulk_shipments unchanged.
+    """
+    yield None
+
+
+def extract_shipments_from_csv(content: bytes) -> list:
+    """Parse CSV bytes into a list of ``{"text": str, "name": str}`` dicts.
+
+    Column detection is case-insensitive.  Two layouts are supported:
+    1. A text column named ``text``, ``document``, ``content``,
+       ``shipment_text``, or ``description`` — used verbatim.
+    2. Structured metadata columns (``shipper``, ``consignee``, ``origin``,
+       ``destination``, ``value``, ``hts``) — reconstructed into a labelled
+       document string.
+
+    Raises
+    ------
+    HTTPException(400)
+        If the file has no readable shipment data after parsing.
+    """
+    import csv
+    import io as _io_csv
+
+    text_decoded = content.decode("utf-8", errors="ignore").lstrip("﻿")
+    reader_io = _io_csv.StringIO(text_decoded)
+
+    try:
+        dialect = csv.Sniffer().sniff(text_decoded[:4096], delimiters=",;\t|")
+    except csv.Error:
+        dialect = None
+
+    reader = csv.DictReader(reader_io, dialect=dialect)
+
+    # Normalise header names
+    raw_fieldnames = reader.fieldnames or []
+    norm_map: dict[str, str] = {
+        f.strip().lower().replace(" ", "_").replace("-", "_"): f
+        for f in raw_fieldnames
+    }
+
+    TEXT_COLS = {"text", "document", "content", "shipment_text", "description"}
+    STRUCT_COLS = {"shipper", "consignee", "origin", "destination", "value", "hts"}
+
+    text_col_raw: Optional[str] = None
+    for nc in TEXT_COLS:
+        if nc in norm_map:
+            text_col_raw = norm_map[nc]
+            break
+
+    struct_map: dict[str, str] = {}
+    for nc in STRUCT_COLS:
+        if nc in norm_map:
+            struct_map[nc] = norm_map[nc]
+
+    shipments: list = []
+    for i, row in enumerate(reader):
+        if text_col_raw is not None:
+            text = (row.get(text_col_raw) or "").strip()
+        elif struct_map:
+            parts = []
+            for label, raw_col in [
+                ("Shipper", struct_map.get("shipper")),
+                ("Consignee", struct_map.get("consignee")),
+                ("Origin", struct_map.get("origin")),
+                ("Destination", struct_map.get("destination")),
+                ("Value", struct_map.get("value")),
+                ("HTS", struct_map.get("hts")),
+            ]:
+                if raw_col:
+                    val = (row.get(raw_col) or "").strip()
+                    if val:
+                        parts.append(f"{label}: {val}")
+            text = "\n".join(parts)
+        else:
+            # No recognised columns — concatenate all non-empty cell values
+            text = " | ".join(v.strip() for v in row.values() if v and v.strip())
+
+        if len(text) < 10:
+            continue
+        shipments.append({"text": text, "name": f"Row {i + 1}"})
+
+    if not shipments:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "CSV had no readable shipment data. "
+                "Add a 'text' or 'document' column, or columns named "
+                "shipper, consignee, origin, destination."
+            ),
+        )
+    return shipments
+
+
+def extract_shipments_from_zip(content: bytes) -> list:
+    """Extract shipment dicts from a ZIP file.
+
+    Supports ``.txt``, ``.csv``, and ``.pdf`` entries.  Other file types and
+    macOS metadata artefacts (``__MACOSX``, ``.DS_Store``, dot-files) are skipped.
+
+    Raises
+    ------
+    HTTPException(400)
+        If the ZIP contains no readable entries.
+    """
+    import io as _io_zip
+    import zipfile
+
+    try:
+        zf = zipfile.ZipFile(_io_zip.BytesIO(content))
+    except zipfile.BadZipFile as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid ZIP file: {exc}",
+        )
+
+    shipments: list = []
+    for entry_name in zf.namelist():
+        parts = entry_name.replace("\\", "/").split("/")
+        base = parts[-1]
+
+        # Skip macOS metadata and hidden files
+        if not base:
+            continue
+        if any(p.startswith("__MACOSX") for p in parts):
+            continue
+        if base == ".DS_Store" or base.startswith("."):
+            continue
+
+        ext = base.rsplit(".", 1)[-1].lower() if "." in base else ""
+
+        if ext == "txt":
+            raw = zf.read(entry_name)
+            text = raw.decode("utf-8", errors="ignore").strip()
+            if text:
+                shipments.append({"text": text, "name": base})
+
+        elif ext == "csv":
+            raw = zf.read(entry_name)
+            try:
+                csv_ships = extract_shipments_from_csv(raw)
+                for s in csv_ships:
+                    shipments.append({"text": s["text"], "name": f"{base} / {s['name']}"})
+            except HTTPException:
+                logger.warning("ZIP entry %s: CSV parse produced no rows — skipping", entry_name)
+
+        elif ext == "pdf":
+            raw = zf.read(entry_name)
+            text = ""
+            try:
+                result = extract_text(raw, base)
+                text = result.text or ""
+            except Exception as _pdf_exc:
+                logger.warning("ZIP entry %s: PDF extraction failed (%s) — empty text", base, _pdf_exc)
+            shipments.append({"text": text, "name": base})
+
+        else:
+            continue
+
+    if not shipments:
+        raise HTTPException(
+            status_code=400,
+            detail="ZIP contained no readable .txt, .csv, or .pdf files.",
+        )
+    return shipments
+
+
+def parse_manual_batch(manual_texts: str) -> list:
+    """Parse free-form manual_texts form field into shipment dicts.
+
+    Tries JSON first (list of strings or existing manual-batch format), then
+    falls back to splitting on blank lines so a user can paste multiple
+    documents separated by empty lines.
+    """
+    if not manual_texts or not manual_texts.strip():
+        return []
+
+    # Attempt JSON parse
+    stripped = manual_texts.strip()
+    if stripped.startswith(("[", "{")):
+        try:
+            data = json.loads(stripped)
+            if isinstance(data, list):
+                result = []
+                for i, item in enumerate(data):
+                    if isinstance(item, str) and item.strip():
+                        result.append({"text": item.strip(), "name": f"Item {i + 1}"})
+                    elif isinstance(item, dict):
+                        text = (item.get("text") or item.get("raw_text") or "").strip()
+                        name = item.get("name") or item.get("ref") or f"Item {i + 1}"
+                        if text:
+                            result.append({"text": text, "name": name})
+                return result
+            if isinstance(data, dict) and "shipments" in data:
+                result = []
+                for i, s in enumerate(data.get("shipments", [])):
+                    docs = s.get("documents", [])
+                    text = "\n\n".join(
+                        d.get("raw_text", "") for d in docs if d.get("raw_text")
+                    ).strip()
+                    if text:
+                        result.append({"text": text, "name": s.get("ref", f"Shipment {i + 1}")})
+                return result
+        except (json.JSONDecodeError, ValueError):
+            pass
+
+    # Fallback: split by one or more blank lines
+    blocks = [b.strip() for b in re.split(r"\n\s*\n", stripped) if b.strip()]
+    return [
+        {"text": block, "name": f"Text {i + 1}"}
+        for i, block in enumerate(blocks)
+        if len(block) >= 10
+    ]
+
+
+@app.post("/api/bulk/upload", status_code=200)
+async def bulk_upload(
+    file: Optional[UploadFile] = File(None),
+    manual_texts: Optional[str] = Form(None),
+    current_user: dict = Depends(get_current_user),
+    db: Any = Depends(get_db),
+):
+    """Screen a bulk batch of shipments via a single file or free-form text.
+
+    Accepts one file upload (ZIP, CSV, TXT, or PDF) or a ``manual_texts`` form
+    field.  File type is detected by filename extension only — never by the
+    Content-Type header, which avoids multipart boundary parsing failures.
+
+    Uses ``bulk_classify()`` as the only document gate — permissive for short
+    shipping metadata that the strict hardened classifier rejects.  Every
+    shipment that passes the gate runs through the full 6-stage pipeline
+    (rule engine → pattern engine → certification screener → sustainability
+    rater) concurrently, bounded by ``asyncio.Semaphore(5)``.
+
+    Returns
+    -------
+    JSON with ``total``, ``summary``, and ``results`` list.  Each result has
+    ``name``, ``status``, ``decision``, ``risk_score``, ``flags``,
+    ``sustainability_rating``.  Error and rejected rows include the reason.
+
+    Raises
+    ------
+    400  No file or text provided / unsupported extension / empty batch
+    """
+    from portguard.bulk_processor import process_bulk_shipments as _process_bulk
+
+    org_id: str = current_user.get("organization_id", current_user.get("email", ""))
+    org_email: str = current_user.get("email", org_id)
+
+    # Load enabled modules once for the whole batch
+    enabled_modules: list = []
+    if _module_config_db is not None:
+        try:
+            enabled_modules = _module_config_db.get_enabled_modules(org_id)
+        except Exception as _me:
+            logger.warning("bulk_upload: could not load modules (non-fatal): %s", _me)
+
+    module_config: dict = {"enabled_modules": enabled_modules, "org_id": org_id}
+
+    # --- Parse input ---
+    if file is not None:
+        content = await file.read()
+        filename = (file.filename or "").lower()
+
+        if filename.endswith(".zip"):
+            shipments = extract_shipments_from_zip(content)
+
+        elif filename.endswith(".csv"):
+            shipments = extract_shipments_from_csv(content)
+
+        elif filename.endswith(".txt"):
+            text = content.decode("utf-8", errors="ignore")
+            if not text.strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail="TXT file is empty.",
+                )
+            shipments = [{"text": text, "name": file.filename or "document.txt"}]
+
+        elif filename.endswith(".pdf"):
+            text = ""
+            try:
+                extraction = extract_text(content, file.filename or "document.pdf")
+                text = extraction.text or ""
+            except Exception as _pdf_exc:
+                logger.warning("bulk_upload PDF extraction failed: %s", _pdf_exc)
+            if not text.strip():
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        "PDF had no extractable text. "
+                        "The file may be scanned or image-only."
+                    ),
+                )
+            shipments = [{"text": text, "name": file.filename or "document.pdf"}]
+
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Unsupported file type. "
+                    "Upload a ZIP, CSV, TXT, or PDF."
+                ),
+            )
+
+    elif manual_texts:
+        shipments = parse_manual_batch(manual_texts)
+        if not shipments:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "No readable text found in manual_texts. "
+                    "Separate multiple documents with blank lines, "
+                    "or provide valid JSON."
+                ),
+            )
+
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail="No file or text provided.",
+        )
+
+    return await _process_bulk(
+        shipments=shipments,
+        org_email=org_email,
+        module_config=module_config,
+        db=db,
+    )

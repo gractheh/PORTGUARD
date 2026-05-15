@@ -41,6 +41,7 @@ import asyncio
 import functools
 import json
 import logging
+import re
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -902,3 +903,197 @@ class BulkProcessor:
             "Bulk shipment %s: batch=%s ref=%s error=%s",
             decision, batch_id, ref, msg,
         )
+
+
+# ---------------------------------------------------------------------------
+# Module-level pipeline reference — set by api/app.py to avoid circular imports
+# ---------------------------------------------------------------------------
+
+_module_pipeline_fn: Optional[Callable] = None
+
+
+def register_pipeline(fn: Callable) -> None:
+    """Register the synchronous analysis callable used by process_bulk_shipments.
+
+    Called once at app startup by api/app.py after defining _run_bulk_single_analysis.
+    This pattern avoids the circular-import problem of bulk_processor importing app.py.
+    """
+    global _module_pipeline_fn
+    _module_pipeline_fn = fn
+    logger.info(
+        "BulkProcessor: pipeline function registered (%s)",
+        getattr(fn, "__name__", repr(fn)),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Permissive bulk document classifier
+# ---------------------------------------------------------------------------
+
+
+def bulk_classify(text: str) -> bool:
+    """Return True if text could be a shipping document, False if clearly not.
+
+    Permissive by design — only hard-rejects text that unmistakably matches a
+    non-shipping pattern (resume, recipe, medical record, grocery list, etc.).
+    Short but legitimate shipping metadata (shipper name, HTS code, origin) passes.
+    Empty or near-empty text (under 20 chars) always fails.
+    """
+    if not text or len(text.strip()) < 20:
+        return False
+    text_lower = text.lower()
+    hard_reject_patterns = [
+        (r'\bresume\b|\bcurriculum vitae\b', 4),
+        (r'\bwork experience\b', 3),
+        (r'\bshopping list\b|\bgrocery list\b', 4),
+        (r'\bpreheat (the )?oven\b', 4),
+        (r'\bpatient (id|name|dob)\b', 3),
+        (r'\bdiagnosis\b.*\b(patient|physician)\b', 3),
+        (r'\bgpa\b.*\b(university|college|school)\b', 3),
+        (r'\bbachelor.*degree\b|\bmaster.*degree\b', 2),
+    ]
+    score = 0
+    for pattern, weight in hard_reject_patterns:
+        if re.search(pattern, text_lower):
+            score += weight
+    return score < 4
+
+
+# ---------------------------------------------------------------------------
+# Async pipeline wrapper for process_bulk_shipments
+# ---------------------------------------------------------------------------
+
+
+async def run_full_pipeline(
+    text: str,
+    org_email: str,
+    module_config: dict,
+    db: Any,
+) -> dict:
+    """Async wrapper around the registered synchronous analysis pipeline.
+
+    Runs in the module-level thread pool so the event loop is not blocked.
+    Applies the same SHIPMENT_TIMEOUT_SECONDS limit used by process_batch.
+
+    Parameters
+    ----------
+    text:
+        Document text for a single shipment.  bulk_classify() must have
+        returned True before this is called.
+    org_email:
+        Organisation email — used for pattern learning lookups.
+    module_config:
+        Dict with ``enabled_modules`` (list) and optionally ``org_id`` (str).
+    db:
+        Passed through from the request; may be None for this deployment
+        which uses module-level DB singletons rather than a session pattern.
+    """
+    if _module_pipeline_fn is None:
+        raise RuntimeError(
+            "run_full_pipeline: no pipeline registered. "
+            "Ensure api/app.py calls register_pipeline() at startup."
+        )
+    enabled_modules: list = (
+        module_config.get("enabled_modules", [])
+        if isinstance(module_config, dict) else []
+    )
+    org_id: str = (
+        module_config.get("org_id", org_email)
+        if isinstance(module_config, dict) else org_email
+    )
+    documents_data = [{"raw_text": text, "filename": "document.txt"}]
+    loop = asyncio.get_running_loop()
+    bound_fn = functools.partial(
+        _module_pipeline_fn,
+        documents_data,
+        org_id,
+        enabled_modules,
+        org_email,
+    )
+    return await asyncio.wait_for(
+        loop.run_in_executor(_BULK_EXECUTOR, bound_fn),
+        timeout=SHIPMENT_TIMEOUT_SECONDS,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Standalone bulk screening function (used by /api/bulk/upload endpoint)
+# ---------------------------------------------------------------------------
+
+
+async def process_bulk_shipments(
+    shipments: list,
+    org_email: str,
+    module_config: dict,
+    db: Any,
+) -> dict:
+    """Screen a list of shipments concurrently and return all results.
+
+    Every shipment that passes bulk_classify() runs through the full analysis
+    pipeline (rule engine → pattern engine → certification screener →
+    sustainability rater).  Results are returned in original submission order.
+
+    Parameters
+    ----------
+    shipments:
+        List of ``{"text": str, "name": str}`` dicts produced by
+        extract_shipments_from_csv / extract_shipments_from_zip / parse_manual_batch.
+    org_email:
+        Authenticated organisation email.
+    module_config:
+        ``{"enabled_modules": [...], "org_id": "..."}`` built by the endpoint.
+    db:
+        Request-scoped DB object (may be None — module-level singletons used).
+    """
+    semaphore = asyncio.Semaphore(_SEMAPHORE_SIZE)
+
+    async def process_one(shipment: dict, index: int) -> dict:
+        async with semaphore:
+            try:
+                if not bulk_classify(shipment["text"]):
+                    return {
+                        "name": shipment.get("name", f"Shipment {index + 1}"),
+                        "index": index,
+                        "status": "rejected",
+                        "decision": "REJECTED",
+                        "rejection_reason": "Does not appear to be a shipping document.",
+                        "risk_score": 0,
+                        "flags": [],
+                        "sustainability_rating": "N/A",
+                    }
+                result = await run_full_pipeline(
+                    text=shipment["text"],
+                    org_email=org_email,
+                    module_config=module_config,
+                    db=db,
+                )
+                result["name"] = shipment.get("name", f"Shipment {index + 1}")
+                result["index"] = index
+                result["status"] = "complete"
+                return result
+            except Exception as e:
+                return {
+                    "name": shipment.get("name", f"Shipment {index + 1}"),
+                    "index": index,
+                    "status": "error",
+                    "error": str(e),
+                    "decision": "ERROR",
+                    "risk_score": 0,
+                    "flags": [],
+                    "sustainability_rating": "N/A",
+                }
+
+    tasks = [process_one(s, i) for i, s in enumerate(shipments)]
+    results = await asyncio.gather(*tasks)
+    sorted_results = sorted(results, key=lambda r: r["index"])
+    return {
+        "total": len(sorted_results),
+        "results": sorted_results,
+        "summary": {
+            "approved": sum(1 for r in sorted_results if r.get("decision") == "APPROVE"),
+            "flagged": sum(1 for r in sorted_results if r.get("decision") == "FLAG_FOR_INSPECTION"),
+            "more_info": sum(1 for r in sorted_results if r.get("decision") == "REQUEST_MORE_INFO"),
+            "rejected": sum(1 for r in sorted_results if r.get("status") == "rejected"),
+            "errors": sum(1 for r in sorted_results if r.get("status") == "error"),
+        },
+    }
