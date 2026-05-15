@@ -1743,6 +1743,9 @@
     }
     .dash-toast.enable  { border-left-color: var(--teal-400); }
     .dash-toast.disable { border-left-color: #e05050; }
+    .dash-toast.error   { border-left-color: var(--red); }
+    .dash-toast.success { border-left-color: var(--green); }
+    .dash-toast.info    { border-left-color: var(--teal-400); }
     .dash-toast-icon { font-size: .9rem; flex-shrink: 0; }
     .dash-toast-msg  { flex: 1; }
     .dash-toast-close {
@@ -9556,6 +9559,31 @@ function _updateSustainabilityKpiCard(sustainDist) {
 }
 
 // ---------------------------------------------------------------------------
+// Toast notifications — shared across all panels
+// ---------------------------------------------------------------------------
+
+function showToast(message, type) {
+  // type: 'error' | 'success' | 'info'
+  const container = document.getElementById('dash-toast-container');
+  if (!container) return;
+  const icon = type === 'success' ? '&#10003;' : type === 'error' ? '&#9888;' : '&#8505;';
+  const toast = document.createElement('div');
+  toast.className = `dash-toast ${type || 'info'}`;
+  toast.innerHTML =
+    `<span class="dash-toast-icon">${icon}</span>` +
+    `<span class="dash-toast-msg">${escHtml(message)}</span>` +
+    `<button class="dash-toast-close" aria-label="Dismiss">&#215;</button>`;
+  container.appendChild(toast);
+  function dismiss() {
+    clearTimeout(timer);
+    toast.style.animation = 'toast-out .25s var(--ease-out) forwards';
+    setTimeout(() => { if (toast.parentNode) toast.remove(); }, 280);
+  }
+  const timer = setTimeout(dismiss, 5000);
+  toast.querySelector('.dash-toast-close').addEventListener('click', dismiss);
+}
+
+// ---------------------------------------------------------------------------
 // Dashboard — toast notification for module toggle events
 // ---------------------------------------------------------------------------
 
@@ -10961,7 +10989,7 @@ async function _bulkSubmit() {
       document.getElementById('bulk-processing-overlay').style.display = 'none';
       if (_bulkTimedOut) {
         document.getElementById('bulk-upload-section').style.display = '';
-        alert('Bulk screening timed out after 3 minutes. Try a smaller batch or check your connection.');
+        showToast('Bulk screening timed out after 3 minutes. Try a smaller batch or check your connection.', 'error');
       }
       return;
     }
@@ -10975,7 +11003,7 @@ async function _bulkSubmit() {
 function _bulkShowOverlayError(msg) {
   document.getElementById('bulk-processing-overlay').style.display = 'none';
   document.getElementById('bulk-upload-section').style.display = '';
-  alert('Bulk upload error: ' + msg);
+  showToast(msg, 'error');
 }
 
 // ---------------------------------------------------------------------------
