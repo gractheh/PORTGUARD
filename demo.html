@@ -687,21 +687,24 @@
 
     /* Activity feed download button — named variant used by JS */
     .activity-download-btn {
-      background: rgba(27,154,170,0.12);
-      border: 1px solid rgba(27,154,170,0.3);
+      background: rgba(27,154,170,0.1);
+      border: 1px solid rgba(27,154,170,0.28);
       color: #4DCFDF;
       font-family: 'Inter', sans-serif;
-      font-size: 0.75rem;
+      font-size: 0.74rem;
       font-weight: 600;
-      padding: 0.3rem 0.7rem;
+      padding: 0.28rem 0.65rem;
       border-radius: 6px;
       cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.3rem;
       transition: background 0.2s, transform 0.1s;
       white-space: nowrap;
       flex-shrink: 0;
     }
-    .activity-download-btn:hover { background: rgba(27,154,170,0.22); transform: translateY(-1px); }
-    .activity-download-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; pointer-events: none; }
+    .activity-download-btn:hover:not(:disabled) { background: rgba(27,154,170,0.2); transform: translateY(-1px); }
+    .activity-download-btn:disabled { cursor: not-allowed; transform: none; }
 
     /* Decision banner */
     .decision-banner {
@@ -8140,68 +8143,69 @@ function singleShareResult() {
   }).catch(() => { prompt('Copy this link:', url); });
 }
 
-/**
- * Download a PDF compliance report for a past screening by its analysis_id.
- *
- * Can be called two ways:
- *   downloadActivityReport(this, analysisId)  — from onclick="downloadActivityReport(this, '...')"
- *   downloadActivityReport(analysisId)         — backwards-compat (no button ref)
- */
-async function downloadActivityReport(btnOrId, analysisId) {
-  // Support both calling conventions
-  let btn = null;
-  let id;
-  if (typeof btnOrId === 'string') {
-    id = btnOrId;
-  } else {
-    btn = (btnOrId instanceof Element) ? btnOrId : null;
-    id = analysisId;
-  }
-
-  if (!id) {
-    _showModuleToast('No report ID available for this screening', 'disable');
-    return;
-  }
-  if (!_authToken) { showAuthOverlay(); return; }
-
-  const originalHTML = btn ? btn.innerHTML : null;
-  try {
-    if (btn) {
-      btn.disabled = true;
-      btn.innerHTML = '<span style="opacity:0.6;font-size:0.7rem;letter-spacing:.02em">…</span>';
+async function downloadActivityReport(resultId) {
+    if (!resultId || resultId === 'undefined' || resultId === 'null' || resultId === '') {
+        if (typeof showToast === 'function') showToast('No report available for this item', 'error');
+        return;
     }
 
-    const res = await fetch(apiUrl() + '/api/v1/report/generate', authedJson('POST', { shipment_id: id }));
-    if (res.status === 401) { handle401(); return; }
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      const msg = (err.detail && (typeof err.detail === 'object' ? err.detail.message : err.detail)) || `Server error ${res.status}`;
-      throw new Error(msg);
+    var btn = (typeof event !== 'undefined' && event && event.currentTarget) ? event.currentTarget : null;
+    var originalHTML = btn ? btn.innerHTML : null;
+
+    try {
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = '<span style="opacity:0.6;font-size:0.74rem;">Generating...</span>';
+        }
+
+        var response = await fetch('/api/results/' + resultId + '/report', {
+            method: 'GET',
+            headers: { 'Authorization': 'Bearer ' + _authToken }
+        });
+
+        if (response.status === 404) {
+            throw new Error('Report not found. This screening may predate report storage.');
+        }
+        if (response.status === 401) {
+            throw new Error('Session expired. Please log in again.');
+        }
+        if (!response.ok) {
+            var errData = {};
+            try { errData = await response.json(); } catch(e) {}
+            throw new Error(errData.detail || errData.error || 'Server error ' + response.status);
+        }
+
+        var contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('pdf')) {
+            throw new Error('Server did not return a PDF.');
+        }
+
+        var blob = await response.blob();
+        if (!blob || blob.size < 50) {
+            throw new Error('Received empty or corrupt PDF.');
+        }
+
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'portguard_report_' + resultId.slice(0, 8) + '.pdf';
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+
+        if (typeof showToast === 'function') showToast('Report downloaded', 'success');
+
+    } catch(err) {
+        console.error('Download failed:', err);
+        if (typeof showToast === 'function') showToast('Download failed: ' + err.message, 'error');
+    } finally {
+        if (btn && originalHTML) {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+        }
     }
-
-    const blob = await res.blob();
-    if (blob.size === 0) throw new Error('Received empty PDF');
-
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `PortGuard_Report_${id}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-
-    _showModuleToast('Report downloaded', 'enable');
-
-  } catch (err) {
-    console.error('Report download failed:', err);
-    _showModuleToast('Download failed: ' + err.message, 'disable');
-  } finally {
-    if (btn && originalHTML !== null) {
-      btn.disabled = false;
-      btn.innerHTML = originalHTML;
-    }
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -9973,10 +9977,11 @@ function _renderActivityFeed(data) {
 
     const sigs = r.pattern_cold_start ? 'cold start' : '—';
 
-    const dlIcon = `<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v8M5 7l3 3 3-3"/><rect x="2" y="11" width="12" height="3" rx="1"/></svg>`;
-    const dlCell = r.analysis_id
-      ? `<td style="text-align:center"><button class="act-dl-btn" title="Download report" data-result-id="${escHtml(r.analysis_id)}" onclick="downloadActivityReport(this, ${JSON.stringify(r.analysis_id)})">${dlIcon}</button></td>`
-      : '<td></td>';
+    const dlIcon = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
+    const itemId = r.id || r.analysis_id || null;
+    const dlCell = itemId
+      ? `<td style="text-align:center"><button class="activity-download-btn" onclick="downloadActivityReport('${escHtml(itemId)}')">${dlIcon} Download</button></td>`
+      : `<td style="text-align:center"><button class="activity-download-btn" disabled style="opacity:0.3;cursor:not-allowed;" title="No report available">No Report</button></td>`;
 
     return `<tr>
       <td class="act-time">${ts}</td>
@@ -11256,7 +11261,7 @@ function bulkToggleExpand(btn, expandId) {
 }
 
 async function bulkDownloadRowPdf(analysisId) {
-  await downloadActivityReport(null, analysisId);
+  await downloadActivityReport(analysisId);
 }
 
 // ---------------------------------------------------------------------------
