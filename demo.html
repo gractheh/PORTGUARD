@@ -2628,6 +2628,44 @@
     #bulk-results-screen { display: none; }
     #bulk-results-screen.visible { display: block; }
 
+    /* ---- Processing overlay ---- */
+    #bulk-processing-overlay {
+      position: fixed; inset: 0; background: rgba(10,15,28,.72);
+      z-index: 3000; display: flex; align-items: center; justify-content: center;
+    }
+    .bulk-processing-card {
+      background: var(--surface); border-radius: var(--radius); padding: 2.5rem 3rem;
+      min-width: 340px; text-align: center; box-shadow: 0 12px 48px rgba(0,0,0,.45);
+    }
+    .bulk-processing-title {
+      font-family: 'Space Grotesk','Inter',system-ui,sans-serif;
+      font-size: 1.1rem; font-weight: 700; margin-bottom: 1.5rem;
+    }
+    .bulk-processing-bar-track {
+      height: 5px; background: rgba(255,255,255,.08); border-radius: 9px;
+      overflow: hidden; margin-bottom: 1rem;
+    }
+    .bulk-processing-bar-fill {
+      height: 100%; width: 40%; border-radius: 9px;
+      background: var(--accent);
+      animation: bulkBarSlide 1.4s ease-in-out infinite;
+    }
+    @keyframes bulkBarSlide {
+      0%   { transform: translateX(-100%); }
+      100% { transform: translateX(350%); }
+    }
+    .bulk-processing-sub { font-size: .8rem; color: var(--muted); }
+
+    /* ---- Flag pills (new bulk results) ---- */
+    .bulk-flag-pill {
+      display: inline-block; padding: .15rem .5rem; border-radius: 20px;
+      font-size: .7rem; font-weight: 600; margin: .1rem .15rem;
+      background: rgba(255,200,60,.12); color: var(--warning);
+      border: 1px solid rgba(255,200,60,.25); white-space: nowrap;
+    }
+    .bulk-badge.REJECTED { background: rgba(224,80,80,.15); color: #E05050; }
+    .bulk-badge.UNKNOWN  { background: rgba(74,104,128,.1);  color: var(--faint); }
+
     .bulk-results-header {
       display: flex; align-items: center; justify-content: space-between;
       margin-bottom: 1.25rem; flex-wrap: wrap; gap: .75rem;
@@ -5022,6 +5060,17 @@
 
   </div><!-- /bulk-container -->
 </div><!-- /bulk-panel -->
+
+<!-- ---- PROCESSING OVERLAY ---- -->
+<div id="bulk-processing-overlay" style="display:none;">
+  <div class="bulk-processing-card">
+    <div class="bulk-processing-title">Screening Shipments…</div>
+    <div class="bulk-processing-bar-track">
+      <div class="bulk-processing-bar-fill"></div>
+    </div>
+    <div class="bulk-processing-sub">Please wait — this may take up to 3 minutes</div>
+  </div>
+</div>
 
 <!-- Confirm modal (outside panel so it overlays everything) -->
 <div class="bulk-modal-overlay" id="bulk-confirm-modal">
@@ -10160,9 +10209,11 @@ const _BULK_DEC_LABEL = {
   FLAG_FOR_INSPECTION:      'Flagged',
   REQUEST_MORE_INFORMATION: 'Needs Info',
   REJECT:                   'Rejected',
+  REJECTED:                 'Rejected',
   ERROR:                    'Error',
   TIMEOUT:                  'Timeout',
   PENDING:                  'Pending',
+  UNKNOWN:                  'Unknown',
 };
 function _bulkDecLabel(d) { return _BULK_DEC_LABEL[d] || d || '—'; }
 function _bulkRiskColor(s) {
@@ -10838,52 +10889,39 @@ async function bulkModalConfirm() {
 }
 
 // ---------------------------------------------------------------------------
-// Submit — send to API
+// Submit — send to /api/bulk/upload
 // ---------------------------------------------------------------------------
 async function _bulkSubmit() {
-  // Switch to progress view — results table hidden until all rows complete
-  document.getElementById('bulk-upload-section').style.display  = 'none';
-  document.getElementById('bulk-progress-screen').classList.add('visible');
+  // Show processing overlay — hide all other bulk screens
+  document.getElementById('bulk-upload-section').style.display = 'none';
+  document.getElementById('bulk-progress-screen').classList.remove('visible');
   document.getElementById('bulk-results-screen').classList.remove('visible');
-
-  // Reset progress UI — indeterminate bar while awaiting synchronous response
-  _bulkSeenRefs = new Set();
-  document.getElementById('bulk-live-feed-list').innerHTML = '';
-  document.getElementById('bulk-progress-text').textContent = 'Analyzing shipments… please wait';
-  document.getElementById('bulk-progress-pct').textContent  = '';
-  const fillEl = document.getElementById('bulk-progress-fill');
-  fillEl.style.width = '';
-  fillEl.classList.add('indeterminate');
+  document.getElementById('bulk-processing-overlay').style.display = '';
 
   _bulkAbortController = new AbortController();
-  const signal = _bulkAbortController.signal;
+  const controller = _bulkAbortController;
+  const signal = controller.signal;
 
-  // 120-second hard timeout — distinguishes user-cancel from network stall.
+  // 180-second hard timeout
   let _bulkTimedOut = false;
   const _bulkTimeoutHandle = setTimeout(() => {
     _bulkTimedOut = true;
     if (_bulkAbortController) _bulkAbortController.abort();
-  }, 120_000);
+  }, 180_000);
 
   try {
-    let res;
+    const formData = new FormData();
+
     if (_bulkMethod === 'zip' && _bulkZipFile) {
-      const fd = new FormData();
-      fd.append('zip_file', _bulkZipFile);
-      fd.append('input_method', 'ZIP');
-      res = await fetch(apiUrl() + '/api/v1/analyze/bulk', { ...authedForm(fd), signal });
+      formData.append('file', _bulkZipFile, _bulkZipFile.name);
     } else if (_bulkMethod === 'csv' && _bulkCsvFile) {
-      const fd = new FormData();
-      fd.append('csv_file', _bulkCsvFile);
-      fd.append('input_method', 'CSV');
-      res = await fetch(apiUrl() + '/api/v1/analyze/bulk', { ...authedForm(fd), signal });
+      formData.append('file', _bulkCsvFile, _bulkCsvFile.name);
     } else {
-      // Manual — read enabled_modules from current settings drawer state
-      const enabledModules = Object.keys(_moduleToggles).filter(k => _moduleToggles[k]);
+      // Manual — serialize slots as JSON for parse_manual_batch
       const shipments = _bulkSlots
         .filter(s => s.tabs.some(t => (t.pdfExtractedText || t.text || '').trim()))
         .map(s => ({
-          reference_id: s.ref || ('SHP-' + String(s.id).padStart(3,'0')),
+          ref: s.ref || ('SHP-' + String(s.id).padStart(3, '0')),
           documents: s.tabs
             .filter(t => (t.pdfExtractedText || t.text || '').trim())
             .map(t => ({
@@ -10891,45 +10929,53 @@ async function _bulkSubmit() {
               raw_text: (t.pdfExtractedText || t.text || '').trim(),
             })),
         }));
-      const body = { input_method: 'MANUAL', shipments };
-      if (enabledModules.length) body.enabled_modules = enabledModules;
-      res = await fetch(apiUrl() + '/api/v1/analyze/bulk', { ...authedJson('POST', body), signal });
+      formData.append('manual_texts', JSON.stringify({ shipments }));
     }
 
-    if (res.status === 401) { handle401(); return; }
-    if (res.status === 429) {
-      const err = await res.json().catch(() => ({}));
-      _bulkShowProgressError((err.detail && (err.detail.message || err.detail)) || 'Rate limit exceeded — please wait before submitting another batch.');
+    const response = await fetch(apiUrl() + '/api/bulk/upload', {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + _authToken },
+      body: formData,
+      signal: controller.signal,
+    });
+
+    if (response.status === 401) { handle401(); return; }
+    if (response.status === 429) {
+      const err = await response.json().catch(() => ({}));
+      _bulkShowOverlayError((err.detail && (err.detail.message || err.detail)) || 'Rate limit exceeded — please wait before submitting another batch.');
       return;
     }
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({}));
-      const msg = (err.detail && (typeof err.detail === 'object' ? err.detail.message : err.detail)) || `HTTP ${res.status}`;
-      _bulkShowProgressError(msg);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      const msg = (err.detail && (typeof err.detail === 'object' ? err.detail.message : err.detail)) || `HTTP ${response.status}`;
+      _bulkShowOverlayError(msg);
       return;
     }
 
-    const data = await res.json();
-    _bulkBatchId = data.batch_id;
-
-    // Backend returned all results synchronously — render immediately
-    fillEl.classList.remove('indeterminate');
-    _bulkRenderFromResponse(data);
+    const data = await response.json();
+    document.getElementById('bulk-processing-overlay').style.display = 'none';
+    renderBulkResults(data);
 
   } catch (e) {
     if (e.name === 'AbortError') {
+      document.getElementById('bulk-processing-overlay').style.display = 'none';
       if (_bulkTimedOut) {
-        _bulkShowProgressError('Bulk screening timed out after 2 minutes. Try a smaller batch or check your connection.');
+        document.getElementById('bulk-upload-section').style.display = '';
+        alert('Bulk screening timed out after 3 minutes. Try a smaller batch or check your connection.');
       }
-      // else: user clicked Cancel — stay on progress screen, Cancel btn re-enables
       return;
     }
-    _bulkShowProgressError(e.message || 'Network error — is the API server running?');
+    _bulkShowOverlayError(e.message || 'Network error — is the API server running?');
   } finally {
     clearTimeout(_bulkTimeoutHandle);
     _bulkAbortController = null;
-    document.getElementById('bulk-progress-fill').classList.remove('indeterminate');
   }
+}
+
+function _bulkShowOverlayError(msg) {
+  document.getElementById('bulk-processing-overlay').style.display = 'none';
+  document.getElementById('bulk-upload-section').style.display = '';
+  alert('Bulk upload error: ' + msg);
 }
 
 // ---------------------------------------------------------------------------
@@ -10944,7 +10990,7 @@ function _bulkRenderFromResponse(data) {
       ref:          r.reference_id,
       result_id:    r.result_id,
       analysis_id:  r.result_id,   // compat alias — PDF download uses analysis_id
-      decision:     r.decision || (r.status === 'ERROR' ? 'ERROR' : 'PENDING'),
+      decision:     r.decision || (r.status === 'ERROR' ? 'ERROR' : 'UNKNOWN'),
       risk_score:   r.risk_score != null ? +r.risk_score : null,
       n_findings:   (r.flags || []).length,
       top_finding:  (r.flags && r.flags[0]) || r.summary || '',
@@ -10970,6 +11016,51 @@ function _bulkRenderFromResponse(data) {
   _bulkRenderTable();
 
   document.getElementById('bulk-progress-screen').classList.remove('visible');
+  document.getElementById('bulk-results-screen').classList.add('visible');
+}
+
+// ---------------------------------------------------------------------------
+// Render results from /api/bulk/upload (new response shape)
+// ---------------------------------------------------------------------------
+function renderBulkResults(data) {
+  _bulkAllResults = (data.results || []).map(r => {
+    const susRating = r.sustainability_rating;
+    const susGrade = typeof susRating === 'string' ? susRating
+      : (susRating && typeof susRating === 'object' ? (susRating.grade || null) : null);
+    const flags = r.flags || [];
+    return {
+      ref:          r.name || ('Shipment ' + ((r.index || 0) + 1)),
+      result_id:    r.result_id || r.id || null,
+      analysis_id:  r.result_id || r.id || null,
+      decision:     r.decision || (r.status === 'error' ? 'ERROR' : 'UNKNOWN'),
+      risk_score:   r.risk_score != null ? +r.risk_score : null,
+      n_findings:   flags.length,
+      top_finding:  flags[0] || r.rejection_reason || r.error || '',
+      findings:     flags,
+      status:       r.status,
+      error_message: r.rejection_reason || r.error || null,
+      sustainability_grade:   susGrade,
+      sustainability_signals: [],
+      module_findings:        [],
+      active_modules:         [],
+      _score_tenths:          true,
+      _flag_pills:            flags.slice(0, 2),
+    };
+  });
+
+  const summary = data.summary || {};
+  _bulkRenderStats({
+    total:    data.total || _bulkAllResults.length,
+    approved: summary.approved || 0,
+    flagged:  summary.flagged  || 0,
+    rejected: summary.rejected || 0,
+    errors:   summary.errors   || 0,
+  });
+  _bulkUpdateFilterCounts();
+  _bulkSortKey = 'risk_score'; _bulkSortAsc = false; _bulkFilter = 'ALL';
+  _bulkActivateFilter('ALL');
+  _bulkRenderTable();
+
   document.getElementById('bulk-results-screen').classList.add('visible');
 }
 
@@ -11215,15 +11306,21 @@ function _bulkRenderTable() {
     return;
   }
   rows.forEach(r => {
-    const dec   = r.decision || (r.status === 'ERROR' ? 'ERROR' : 'PENDING');
+    const dec   = r.decision || (r.status === 'error' || r.status === 'ERROR' ? 'ERROR' : 'UNKNOWN');
     const score = r.risk_score;
     const scorePct = score != null ? Math.round(score * 100) : null;
     const scoreColor = _bulkRiskColor(score);
+    const scoreDisplay = r._score_tenths
+      ? (score != null ? Math.round(score * 10) + '/10' : '—')
+      : (scorePct != null ? String(scorePct) : '—');
     // Show error message in summary column for error rows
     const displaySummary = (dec === 'ERROR' || dec === 'TIMEOUT') && r.error_message
       ? r.error_message
       : (r.top_finding || '');
     const topFinding = displaySummary ? escHtml(displaySummary.slice(0, 80)) + (displaySummary.length > 80 ? '…' : '') : '—';
+    const flagCellHtml = (r._flag_pills && r._flag_pills.length)
+      ? r._flag_pills.map(f => `<span class="bulk-flag-pill">${escHtml(f.slice(0,40))}${f.length > 40 ? '…' : ''}</span>`).join('')
+      : `<span style="color:var(--muted);font-size:.78rem">${topFinding}</span>`;
     const expandId = 'bulk-expand-' + (r.ref || r.result_id || 'row').replace(/[^a-z0-9]/gi,'_');
 
     // Sustainability badge cell
@@ -11255,12 +11352,12 @@ function _bulkRenderTable() {
       <td>
         <div class="bulk-risk-bar-wrap">
           <div class="bulk-risk-bar"><div class="bulk-risk-bar-fill" style="width:${scorePct != null ? scorePct : 0}%;background:${scoreColor}"></div></div>
-          <span class="bulk-risk-val" style="color:${scoreColor}">${scorePct != null ? scorePct : '—'}</span>
+          <span class="bulk-risk-val" style="color:${scoreColor}">${scoreDisplay}</span>
         </div>
       </td>
       ${sCell}
       <td>${r.n_findings || (dec === 'ERROR' || dec === 'TIMEOUT' ? '—' : '0')}</td>
-      <td style="color:var(--muted);font-size:.78rem;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${topFinding}</td>
+      <td style="max-width:220px;overflow:hidden">${flagCellHtml}</td>
       <td>
         <div class="bulk-row-actions">
           <button class="bulk-action-btn expand-btn" title="Expand analysis" data-expand="${expandId}"
