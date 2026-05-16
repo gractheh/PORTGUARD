@@ -9979,9 +9979,8 @@ function _renderActivityFeed(data) {
     const sigs = r.pattern_cold_start ? 'cold start' : '—';
 
     const dlIcon = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`;
-    const itemId = r.id || r.analysis_id || null;
-    const dlCell = itemId
-      ? `<td style="text-align:center"><button class="activity-download-btn" onclick="downloadActivityReport('${escHtml(itemId)}')">${dlIcon} Download</button></td>`
+    const dlCell = r.id
+      ? `<td style="text-align:center"><button class="activity-download-btn" onclick="downloadActivityReport('${r.id || ''}')">${dlIcon} Download</button></td>`
       : `<td style="text-align:center"><button class="activity-download-btn" disabled style="opacity:0.3;cursor:not-allowed;" title="No report available">No Report</button></td>`;
 
     return `<tr>
