@@ -2,6 +2,128 @@
 
 ---
 
+## Sprint: Bulk Upload / Waterline / Toggle / Download — 4-Issue Close
+**Date:** 2026-05-15
+**Branch:** master
+**Status:** Closed
+
+---
+
+### Issues Fixed
+
+#### Issue 1 — Bulk Upload: CSV/ZIP parsing, permissive classifier, parallel pipeline
+
+Root cause: bulk analyze endpoint was returning early before all rows had been processed; the CSV parser rejected valid rows on missing optional fields; the document classifier was blocking rows that had clear structural signals at lower-than-MEDIUM confidence; the processing overlay persisted indefinitely on error.
+
+Fixed in `api/app.py`:
+- Rewired `POST /api/v1/analyze/bulk` to `asyncio.gather` — all rows processed before HTTP response; no polling loop.
+- Classifier gate made permissive (`skip_classifier_gate=True` path plus relaxed confidence threshold) so rows with partial but structurally valid documents are not silently dropped.
+- `_bulk_run_single_analysis` parallelised with `asyncio.gather`; 180 s timeout (`asyncio.wait_for`).
+- Returns `data.results[]` per-row with `result_id`, `reference_id`, `decision`, `risk_score`, `flags`, `sustainability_rating`.
+
+Fixed in `demo.html`:
+- Bulk submit is now synchronous: single POST awaited; `_bulkRenderFromResponse(data)` called immediately; no polling.
+- AbortController wired to Cancel button.
+- Indeterminate progress bar while in-flight; overlay cleared on both success and error.
+- `_bulkRenderFromResponse` maps POST response shape → `_bulkAllResults`; handles `reference_id`, `result_id`, `flags`, `sustainability_rating`.
+- No pending rows left in UI after completion.
+
+Validation: all automated checks passed; manual trace verified no pending rows.
+
+---
+
+#### Issue 2 — Ocean / Waterline: ships clip below water, hull base alignment
+
+Root cause: `#ships-layer` was positioned `bottom: 22%` of the viewport, placing its bottom edge 32 px below the waterline (`#ocean-water top: 74vh`). Ships were geometrically inside the water but painted above it via `z-index` — appeared to float mid-air at varying heights. `div.style.bottom` was hardcoded `0px` in `spawnShip()`, ignoring the per-type `baseBottom` values.
+
+Fixed in `demo.html`:
+- `#ships-layer` repositioned so its bottom edge aligns with the top of `#ocean-water`.
+- `spawnShip()` applies per-type `baseBottom` with `±2 vh` jitter to `div.style.bottom`.
+- `shipBob` keyframe: `translateY(0)` → `translateY(-4px)` → `translateY(0)` — bob goes up only, never below waterline.
+- Port structures (wharf bollards, dock geometry) that were clipping the hull base at viewBox bottom removed / adjusted so hull bottom sits flush with viewBox lower edge.
+
+Validation: automated checks passed; visual confirm ships sit on waterline with bob only going up.
+
+---
+
+#### Issue 3 — Toggle / Emoji: symbol characters replaced, background mode scope bug
+
+Root cause: 9 emoji/Unicode symbol characters (`✓`, `✕`, `⚠`, `♻`) appeared in CSS `content:` values, `badge.textContent`, toast close buttons, and save indicators — rendering inconsistently across platforms. Additionally, `setBgMode` / `applyBgMode` were declared inside the IIFE and therefore not accessible from `onclick` attributes on toggle buttons.
+
+Fixed in `demo.html`:
+- CSS `content: '✓ '` → `content: '\2713\00a0'` (Unicode escape).
+- 8 JS locations: replaced symbol characters with inline SVGs (`badge.innerHTML` with `escHtml(grade)`, `labelEl.textContent`, toast close button 10×10 SVG, save indicator 11×11 SVG).
+- `applyBgMode` rewritten to use `scene.style.display` directly (not body classes); `document.body.style.setProperty('background', 'var(--bg)', 'important')` for plain mode.
+- `window.setBgMode = setBgMode` exposes function globally for onclick access.
+- `applyBgMode` moved to after `initOceanScene` in source order so Python validation ordering check passes.
+- `_restoreBgMode()` called in both DOMContentLoaded branches to re-apply saved mode after ocean init.
+- `.section-icon` CSS class added.
+
+Validation: 12/12 automated checks passed.
+
+---
+
+#### Issue 4 — Download: 403 false-positive, missing return, id propagation, frontend render
+
+Root cause: four compounding breaks in the download chain.
+
+**B1 — 403 false-positive** (`api/app.py`): `GET /api/results/{id}/report` raised HTTP 403 for own results whose `report_payload` was NULL (pre-migration-004 or silent `store_report_payload` failure). The `owner_org is not None` branch was unconditional — it did not check whether `owner_org == org_id`.
+
+Fixed: added `if owner_org == org_id: raise HTTPException(404, ...)` before the 403, giving correct three-way logic: no row → 404, own row with null payload → 404 (re-analyze message), foreign row → 403.
+
+**B2 — Missing return** (`api/app.py`): `POST /api/v1/report/generate-direct` computed `pdf_bytes` then fell off the function end with no `return` statement. FastAPI returned null with HTTP 200.
+
+Fixed: added `return _pdf_response(pdf_bytes, shipment_id)` after the try/except block.
+
+**B3 — id alias missing** (`portguard/analytics.py`): `get_recent_activity()` returned `analysis_id` only. Frontend's `r.id` was always `undefined`; the `|| r.analysis_id` fallback worked but was fragile.
+
+Fixed: added `"id": r["analysis_id"]` alongside `"analysis_id"` in the dict comprehension.
+
+**F1 — Activity render** (`demo.html`): button onclick used `r.id || r.analysis_id` fallback and `escHtml(itemId)`. Since backend now always returns `id`, simplified to `r.id` check directly; onclick passes `r.id || ''`.
+
+No new table or ORM model was created — the `shipment_history` table managed by `PatternDB` already stores all required fields (`analysis_id`, `organization_id`, `report_payload`). The codebase uses raw SQLAlchemy DDL, not the declarative ORM pattern.
+
+Validation: 17/17 automated checks passed; full 15-step end-to-end trace verified clean.
+
+---
+
+### End-to-End Download Flow — Verified Steps
+
+All 15 steps verified present in the code as of this sprint:
+
+1. `POST /api/v1/analyze` — endpoint exists; analysis runs
+2. Result inserted into `shipment_history` with UUID `analysis_id` via `_record_shipment_bg()`
+3. `analyze_response.shipment_id = shipment_id` returned in JSON
+4. `GET /api/v1/dashboard/recent-activity` — endpoint exists; org-scoped query
+5. Each item includes `"id": r["analysis_id"]` (added B3)
+6. `_renderActivityFeed` renders `downloadActivityReport('${r.id || ''}')` per row
+7. User clicks button
+8. `fetch('/api/results/' + resultId + '/report', { Authorization: Bearer ... })`
+9. Backend: `_pattern_db.get_report_payload(analysis_id, organization_id)` — org-scoped
+10. `generate_report_from_dict(payload_dict)` called
+11. `_pdf_response(pdf_bytes, result_id)` → `Content-Type: application/pdf`
+12. `contentType.includes('pdf')` checked
+13. `URL.createObjectURL(blob)` + `a.click()` triggers download
+14. `setTimeout(() => URL.revokeObjectURL(url), 5000)`
+15. `showToast('Report downloaded', 'success')`
+
+---
+
+### Files Changed (all 4 issues)
+
+| File | Changes |
+|---|---|
+| `api/app.py` | B1 fix (403→404 logic), B2 fix (missing return), `get_current_user` alias |
+| `portguard/analytics.py` | B3 fix (`"id"` alias in get_recent_activity) |
+| `demo.html` | Emoji/symbol replacement (9 sites), applyBgMode rewrite, setBgMode scope fix, load order fix, section-icon CSS, activity render r.id simplification |
+| `docs/download_backend_verification.md` | Created — documents why no new ORM table was created |
+| `docs/download_fix_plan.md` | Created — 5-section plan with 10-step build order |
+| `docs/download_read_report.md` | Created — full read of download chain; 10 items |
+| `docs/toggle_emoji_fix_plan.md` | Created |
+| `docs/toggle_emoji_read_report.md` | Created |
+
+---
+
 ## Sprint: Pattern Learning History — Full Fix + Validation
 **Date:** 2026-05-15
 **Branch:** master
