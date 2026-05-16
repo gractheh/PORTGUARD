@@ -1,0 +1,358 @@
+# Download Chain Read Report
+**Date:** 2026-05-15
+**Scope:** demo.html (all 12 700 lines), api/app.py (all 4 894 lines), portguard/analytics.py, portguard/pattern_db.py, portguard/report_generator.py, portguard/db.py, portguard/models/*, docs/*
+**Purpose:** Map the complete download chain for recent-activity PDF buttons and identify every breakage.
+
+---
+
+## 1. The function in demo.html that handles activity-row download clicks
+
+**Function:** `downloadActivityReport(resultId)` — demo.html lines 8147–8210
+
+```
+async function downloadActivityReport(resultId) {
+```
+
+**What it does, step by step:**
+
+1. Guards: if `resultId` is falsy / `'undefined'` / `'null'` / `''` → shows toast "No report available" and returns early.
+2. Captures button reference: `var btn = (typeof event !== 'undefined' && event && event.currentTarget) ? event.currentTarget : null`
+3. Disables button, replaces inner HTML with `<span>Generating...</span>`.
+4. Calls **`GET /api/results/{resultId}/report`** (hardcoded relative URL, no `apiUrl()` prefix) with `Authorization: Bearer {_authToken}`.
+5. Checks response status:
+   - 404 → throws `'Report not found. This screening may predate report storage.'`
+   - 401 → throws `'Session expired. Please log in again.'`
+   - Any other non-ok → reads JSON body, throws `errData.detail || errData.error || 'Server error ' + response.status`
+6. Checks `response.headers.get('content-type').includes('pdf')` → throws if absent.
+7. Reads blob; if `blob.size < 50` → throws "empty or corrupt PDF".
+8. Creates an `<a>` and programmatically clicks to download as `portguard_report_{resultId.slice(0,8)}.pdf`.
+9. Shows success toast.
+10. `finally` block re-enables button and restores original HTML.
+
+**How the button is rendered** (demo.html line 9982–9984):
+
+```js
+const itemId = r.id || r.analysis_id || null;
+const dlCell = itemId
+  ? `<button … onclick="downloadActivityReport('${escHtml(itemId)}')">`
+  : `<button … disabled …>No Report</button>`;
+```
+
+The API returns `analysis_id` (not `id`), so `r.id` is always `undefined`, and `itemId` falls through to `r.analysis_id`.  For rows that have a non-null `analysis_id`, the Download button is active and calls `downloadActivityReport` with the UUID.
+
+---
+
+## 2. The exact URL of the download endpoint in api/app.py — does it exist?
+
+**YES.** The endpoint exists at app.py line 3251:
+
+```python
+@app.get("/api/results/{result_id}/report")
+def get_result_report(
+    result_id: str,
+    current_org: dict = Depends(get_current_organization),
+):
+```
+
+The URL `/api/results/{result_id}/report` exactly matches what `downloadActivityReport` calls.  There is **no** `/v1/` prefix on this path — unlike most other API routes — and the frontend matches this correctly (it also omits `/v1/`).
+
+Note: the main post-analysis download button (`downloadReport()`, line 8084) calls a **different** endpoint: `POST /api/v1/report/generate` with body `{ shipment_id }`. That path is **not** used for activity-row downloads.
+
+---
+
+## 3. What `GET /api/results/{result_id}/report` does
+
+Full execution path:
+
+1. **Auth guard:** `Depends(get_current_organization)` — requires valid Bearer JWT. Returns 401 if missing/invalid.
+2. **DB availability check:** if `_pattern_db is None` → raises HTTP 503 SERVICE_UNAVAILABLE.
+3. **Payload fetch:** calls `_pattern_db.get_report_payload(analysis_id=result_id, organization_id=org_id)`.
+   - SQL: `SELECT report_payload FROM shipment_history WHERE analysis_id = :id AND organization_id = :org`
+   - Returns `None` if no matching row OR if the row exists but `report_payload IS NULL`.
+4. **If payload is None:**
+   - Calls `_pattern_db.get_result_owner(result_id)` → `SELECT organization_id FROM shipment_history WHERE analysis_id = :id`
+   - If `owner_org is None` → HTTP 404 (`REPORT_NOT_AVAILABLE`) — result does not exist at all.
+   - If `owner_org is not None` → HTTP 403 (`FORBIDDEN`, "This result belongs to a different organization.") — **regardless of whether the requesting org IS the owner**.  This is a bug; see item 10.
+5. **If payload is found:** parses JSON with `json.loads(payload_json)`. If `shipment_id` is missing from the stored payload (it is None when serialised, because it's assigned to the response *after* serialisation), injects `result_id` as `shipment_id`.
+6. **PDF generation:** calls `generate_report_from_dict(payload_dict)` → returns bytes.  On `ValueError` or `ReportGenerationError` → HTTP 500.
+7. **Response:** calls `_pdf_response(pdf_bytes, result_id)` which returns `Content-Type: application/pdf`, `Content-Disposition: attachment; filename="PortGuard_Report_{result_id[:8]}_{YYYYMMDD}.pdf"`.
+
+---
+
+## 4. N/A — endpoint exists (see item 2 and 3)
+
+---
+
+## 5. Database model for stored screening results
+
+**Table:** `shipment_history`  
+**File:** portguard/pattern_db.py lines 331–368 (base DDL) + migrations 001–007
+
+**Primary key column:** `analysis_id TEXT PRIMARY KEY`  
+This is a UUID v4 string generated by `str(uuid.uuid4())` at insert time (pattern_db.py line 902).  
+There is **no** column named `id`.
+
+**All columns (in order):**
+
+| Column | Type | Notes |
+|---|---|---|
+| `analysis_id` | TEXT PK | UUID v4 |
+| `analyzed_at` | TEXT NOT NULL | ISO-8601 UTC timestamp |
+| `organization_id` | TEXT | Added migration 001; default `'__system__'` |
+| `shipper_name` | TEXT | |
+| `shipper_key` | TEXT | normalised entity key |
+| `consignee_name` | TEXT | |
+| `consignee_key` | TEXT | normalised entity key |
+| `origin_iso2` | TEXT | |
+| `destination_iso2` | TEXT | default `'US'` |
+| `port_of_entry` | TEXT | |
+| `route_key` | TEXT | `origin_iso2\|port_of_entry` |
+| `carrier` | TEXT | |
+| `hs_codes` | TEXT | JSON array |
+| `hs_chapter_primary` | TEXT | first 2 chars of first HS code |
+| `declared_value_usd` | REAL | |
+| `quantity` | REAL | |
+| `unit_value_usd` | REAL | computed |
+| `gross_weight_kg` | REAL | |
+| `incoterms` | TEXT | |
+| `rule_risk_score` | REAL NOT NULL | |
+| `rule_decision` | TEXT NOT NULL | |
+| `rule_confidence` | TEXT NOT NULL | |
+| `rules_fired` | TEXT NOT NULL | JSON array |
+| `inconsistency_count` | INTEGER NOT NULL | |
+| `missing_field_count` | INTEGER NOT NULL | |
+| `pattern_score` | REAL | |
+| `pattern_shipper_score` | REAL | |
+| `pattern_consignee_score` | REAL | |
+| `pattern_route_score` | REAL | |
+| `pattern_value_z_score` | REAL | |
+| `pattern_flag_frequency` | REAL | |
+| `pattern_history_depth` | INTEGER | |
+| `pattern_cold_start` | INTEGER NOT NULL | bool 0/1 |
+| `final_risk_score` | REAL NOT NULL | |
+| `final_decision` | TEXT NOT NULL | |
+| `final_confidence` | TEXT NOT NULL | |
+| `outcome_cleared` | INTEGER NOT NULL | |
+| `report_payload` | TEXT | **Added migration 004** — nullable; stores full AnalyzeResponse JSON |
+| `sustainability_grade` | TEXT | Added migration 005 |
+| `sustainability_signals` | TEXT | Added migration 005 |
+| `active_modules_snapshot` | TEXT | Added migration 005 |
+| `module_findings` | TEXT | Added migration 005 |
+
+---
+
+## 6. Does POST /api/v1/analyze save results to the database?
+
+**Yes.**  After analysis is complete:
+
+```python
+# app.py lines 1857–1874
+try:
+    _report_payload_json: Optional[str] = analyze_response.model_dump_json()
+except Exception:
+    _report_payload_json = None
+
+shipment_id: Optional[str] = _record_shipment_bg(
+    sd=sd,
+    rule_score=rule_score,
+    rule_decision=rule_decision,
+    rule_confidence=rule_confidence,
+    risk_factors=result.get("_risk_factors", []),
+    pattern_result=pattern_result,
+    final_score=final_score,
+    final_decision=final_decision,
+    final_confidence=rule_confidence,
+    organization_id=org_id,
+    report_payload_json=_report_payload_json,
+)
+```
+
+`_record_shipment_bg` (lines 1299–1398) does two writes:
+1. `_pattern_db.record_shipment(fp, ...)` — `INSERT INTO shipment_history` with all scalar columns.  Returns the `analysis_id` UUID.
+2. `_pattern_db.store_report_payload(analysis_id, payload_json, org_id)` — `UPDATE shipment_history SET report_payload = :payload WHERE analysis_id = :id AND organization_id = :org`.
+
+**Columns saved on first INSERT:** all non-migration-004 columns listed in item 5.  
+**Columns saved on UPDATE:** `report_payload` (the full serialised AnalyzeResponse JSON).
+
+**Important timing detail:** The response is serialised (`model_dump_json()`) *before* `shipment_id` is assigned to it (line 1896: `analyze_response.shipment_id = shipment_id`).  Therefore the stored `report_payload` JSON has `shipment_id: null`.  The endpoint injects the `result_id` to fill this in at read time (app.py line 3308–3309).
+
+**Is `shipment_id` returned in the response?** Yes — `AnalyzeResponse.shipment_id` (line 1142) is set at line 1896 and included in the JSON response.  Frontend captures it at demo.html line 7958–7960 and stores it in `dlBtn.dataset.shipmentId`.
+
+---
+
+## 7. Does GET /api/v1/dashboard/recent-activity return an `id` field?
+
+**The endpoint is `GET /api/v1/dashboard/recent-activity`** (app.py line 2764).  There is no `/api/analytics/recent` endpoint — that path does not exist.
+
+**Response shape:** `{ activity: [...], total_shown: N }`
+
+**Each item in `activity` has** (analytics.py lines 876–888):
+```
+analysis_id       ← the UUID
+analyzed_at
+shipper_name
+origin_iso2
+final_decision
+final_risk_score
+pattern_cold_start
+outcome
+officer_id
+```
+
+**There is NO `id` field.** The identifying field is `analysis_id` only.
+
+**Frontend handling** (demo.html line 9982):
+```js
+const itemId = r.id || r.analysis_id || null;
+```
+`r.id` is `undefined` (falsy), so `itemId` falls through to `r.analysis_id`, which is the correct UUID.  The Download button is rendered when `itemId` is non-null — i.e., whenever `analysis_id` is present — and passes `itemId` to `downloadActivityReport`.
+
+So the `id` vs `analysis_id` field name mismatch is **handled silently** by the `||` fallback.  If the API ever added an `id` field with a different value, the fallback would break.
+
+---
+
+## 8. The report_generator.py generate function
+
+**Module:** `portguard/report_generator.py`  
+**Two public entry points:**
+
+### `generate_report_from_dict(payload, report_id=None, generated_at=None) → bytes`
+Line 1481.  
+- **Parameter:** `payload: dict` — a parsed `AnalyzeResponse.model_dump()` result.
+- **Optional:** `report_id` (UUID string override; auto-generated if None), `generated_at` (ISO-8601 timestamp override; current UTC if None).
+- **Returns:** `bytes` — raw PDF binary content.
+- **Raises:** `ReportGenerationError` on failure.
+- **Implementation:** constructs `ReportGenerator(payload, ...)` and calls `.build()` which assembles the PDF via fpdf2 and calls `output()` (which returns bytes in fpdf2).
+
+### `generate_report_from_payload(payload_json, report_id=None, generated_at=None) → bytes`
+Line 1511.  
+- **Parameter:** `payload_json: str` — JSON string as stored in `shipment_history.report_payload`.
+- **Returns:** `bytes` — same as above.
+- **Raises:** `ReportGenerationError` (wraps JSON parse errors too).
+- **Implementation:** parses JSON with `json.loads()`, delegates to `generate_report_from_dict`.
+
+The `GET /api/results/{id}/report` endpoint calls `generate_report_from_dict` (line 3312).  
+The `POST /api/v1/report/generate` endpoint also calls `generate_report_from_dict` (line 3101).
+
+Neither calls `generate_report_from_payload` directly — they both parse the stored JSON themselves and pass a dict.
+
+---
+
+## 9. The exact failure point when the user clicks Download
+
+**For a new result (analyzed after migration 004 was applied, and `store_report_payload` succeeded):**  
+The chain works end-to-end: the payload is stored, `GET /api/results/{id}/report` fetches it, generates PDF, returns `application/pdf`.
+
+**Failure point A — `get_result_report` returns 403 for own results with null payload:**
+
+The most likely failure for a production user is a result whose `report_payload` IS NULL (pre-migration 004, or `store_report_payload` silently failed).
+
+- `get_report_payload` returns `None` (because `row["report_payload"]` is SQL NULL).
+- Code falls through to `get_result_owner(result_id)` — which DOES find the row.
+- `owner_org is not None` → raises HTTP 403 `"This result belongs to a different organization."` — even though the requesting org IS the owner.
+- Frontend receives 403, tries to extract the error message: `errData.detail` is the dict `{"code": "FORBIDDEN", "message": "..."}` — an object, not a string.
+- Frontend: `throw new Error(errData.detail || ...)` — `errData.detail` is truthy (it is a non-null object), so the error thrown is `new Error({"code": ...})`, which `.toString()` gives `"[object Object]"`.
+- **User sees toast: "Download failed: [object Object]"**
+
+**Failure point B — error detail rendered as `[object Object]`:**
+
+The FastAPI backend always returns structured error details: `{"detail": {"code": "...", "message": "..."}}`.  
+`downloadActivityReport`'s error handling at line 8175–8176:
+
+```js
+throw new Error(errData.detail || errData.error || 'Server error ' + response.status);
+```
+
+`errData.detail` is a dict object — always truthy — so the string passed to the Error constructor is always `[object Object]` for any 4xx/5xx response.
+
+By contrast, `downloadReport()` (line 8101) correctly handles this:
+```js
+throw new Error((err.detail && (err.detail.message || err.detail)) || `HTTP ${res.status}`);
+```
+
+**Failure point C — `report_generate_direct` missing return statement:**
+
+`POST /api/v1/report/generate-direct` (app.py line 3118) generates `pdf_bytes` but the function body ends at line 3186 with **no return statement**:
+
+```python
+try:
+    pdf_bytes = generate_report_from_dict(payload)
+except ReportGenerationError as exc:
+    ...
+    raise HTTPException(status_code=500, ...)
+
+# <-- function ends here; no `return _pdf_response(...)` call
+```
+
+FastAPI returns `null` as JSON with HTTP 200 and Content-Type `application/json`.  
+This endpoint is **not called by either download button** in the current frontend — it is currently dead code with a silent bug.
+
+---
+
+## 10. Every single thing broken in the download chain
+
+### CRITICAL — Backend
+
+**B1. `GET /api/results/{result_id}/report` raises 403 for own results with null `report_payload` (app.py lines 3288–3303)**
+
+The `get_result_owner` disambiguation is wrong: when `payload_json is None` because the row exists but `report_payload IS NULL`, and the requesting org IS the owner, `get_result_owner` returns a non-None value — and the code unconditionally raises 403 "This result belongs to a different organization."
+
+The correct logic should be:
+- `owner_org is None` → 404 (no such result)
+- `owner_org == org_id` → 404 (result exists but no report stored; re-analyze to generate)
+- `owner_org != org_id` → 403 (foreign org)
+
+Affected cases: any analysis run before migration 004 was applied, or any analysis where `store_report_payload` silently failed.
+
+**B2. `POST /api/v1/report/generate-direct` has no return statement (app.py line 3186)**
+
+PDF bytes are computed but never returned.  FastAPI returns `null` with HTTP 200.  Not called by the current frontend, so not user-visible yet, but the endpoint is broken if called.
+
+**B3. `store_report_payload` failure is swallowed silently (app.py lines 1391–1394)**
+
+If `_pattern_db.store_report_payload()` raises `PatternDBError`, the exception is caught and logged at WARNING level.  The analysis response still returns `shipment_id`, giving the user a working Download button — but the button will fail (returning the wrong-403 from B1) because `report_payload` was never written.  No retry, no flag, no user indication.
+
+### CRITICAL — Frontend
+
+**F1. Error detail object rendered as `[object Object]` (demo.html line 8175–8176)**
+
+```js
+throw new Error(errData.detail || errData.error || 'Server error ' + response.status);
+```
+
+FastAPI returns `{"detail": {"code": "...", "message": "..."}}`.  `errData.detail` is a JavaScript object (truthy), so `new Error(errData.detail)` produces `"[object Object]"`.  Every 4xx and 5xx from this endpoint shows the user a useless toast.  The correct pattern (already used by `downloadReport`) is:
+
+```js
+(err.detail && (err.detail.message || err.detail)) || `HTTP ${res.status}`
+```
+
+### MINOR — Frontend
+
+**F2. Button element captured via `event.currentTarget` (demo.html line 8153)**
+
+```js
+var btn = (typeof event !== 'undefined' && event && event.currentTarget) ? event.currentTarget : null;
+```
+
+When called from an `onclick` attribute, `event` is the global event object and `event.currentTarget` is (usually) the button.  However, this is non-standard pattern: in strict contexts or some browser/engine combinations `currentTarget` may be null because the event has already dispatched.  The recommended pattern is to pass `this` from the inline handler: `onclick="downloadActivityReport('{id}', this)"`.
+
+**F3. No `apiUrl()` prefix (demo.html line 8162)**
+
+```js
+fetch('/api/results/' + resultId + '/report', ...)
+```
+
+`downloadReport()` uses `apiUrl() + '...'` where `apiUrl()` returns `''`.  Both produce the same URL, but the inconsistency means if `apiUrl()` ever returns a non-empty prefix (e.g., staging redirects), the activity download would break while the main download would not.
+
+---
+
+## Summary — Broken items list
+
+| # | Severity | Location | Description |
+|---|---|---|---|
+| B1 | CRITICAL | app.py:3288–3303 | `GET /api/results/{id}/report` returns HTTP 403 for own results with `report_payload IS NULL` instead of a correct 404 |
+| B2 | CRITICAL | app.py:3186 | `POST /api/v1/report/generate-direct` generates PDF bytes but has no return statement — always returns null |
+| B3 | HIGH | app.py:1391–1394 | `store_report_payload` failure silently swallowed; analysis succeeds but report is never stored, download silently fails later |
+| F1 | CRITICAL | demo.html:8175–8176 | Error detail `{"code":…,"message":…}` rendered as `[object Object]` in toast — user can never see the real error reason |
+| F2 | MINOR | demo.html:8153 | Button reference via `event.currentTarget` is fragile; should receive `this` as explicit parameter |
+| F3 | MINOR | demo.html:8162 | Missing `apiUrl()` prefix — inconsistent with all other fetch calls; will break if `apiUrl()` returns a non-empty base |
