@@ -1347,6 +1347,7 @@
     .section-nav-btn.active { color: var(--teal-400); border-bottom-color: var(--teal-500); }
     .section-nav-btn svg { opacity: .7; }
     .section-nav-btn.active svg { opacity: 1; }
+    .section-icon { display: inline-flex; align-items: center; margin-right: .35em; vertical-align: -1px; }
 
     /* ======================================================
        DASHBOARD PANEL
@@ -12516,46 +12517,6 @@ function escH(str) {
     _rippleObserver.observe(document.body, { childList: true, subtree: true });
   }
 
-  // ── 14a-pre. setBgMode / applyBgMode ─────────────────────────────────────
-  function applyBgMode(mode) {
-    const scene    = document.getElementById('ocean-scene');
-    const oceanSvg = document.getElementById('ocean-water-svg');
-    if (window._shipSpawnTimeouts) {
-      window._shipSpawnTimeouts.forEach(t => clearTimeout(t));
-      window._shipSpawnTimeouts = [];
-    }
-    if (mode === 'minimal') {
-      if (scene) scene.style.display = '';
-      document.body.style.removeProperty('background');
-      if (oceanSvg && oceanSvg.pauseAnimations) oceanSvg.pauseAnimations();
-      if (window._shipSpawnerInterval) {
-        clearInterval(window._shipSpawnerInterval);
-        window._shipSpawnerInterval = null;
-      }
-    } else if (mode === 'plain') {
-      if (scene) scene.style.display = 'none';
-      document.body.style.setProperty('background', 'var(--bg)', 'important');
-      if (oceanSvg && oceanSvg.pauseAnimations) oceanSvg.pauseAnimations();
-      if (window._shipSpawnerInterval) {
-        clearInterval(window._shipSpawnerInterval);
-        window._shipSpawnerInterval = null;
-      }
-    } else {
-      if (scene) scene.style.display = '';
-      document.body.style.removeProperty('background');
-      if (oceanSvg && oceanSvg.unpauseAnimations) oceanSvg.unpauseAnimations();
-      if (!window._shipSpawnerInterval) startShipSpawner();
-    }
-    document.querySelectorAll('.bg-mode-btn').forEach(b => {
-      b.classList.toggle('active', b.getAttribute('data-mode') === mode);
-    });
-  }
-
-  function setBgMode(mode) {
-    applyBgMode(mode);
-    try { localStorage.setItem('portguard_bg_mode', mode); } catch (_) {}
-  }
-
   // ── 14a. injectAnalyzeBtnSvg() ───────────────────────────────────────────
   function injectAnalyzeBtnEmoji() {
     const btn = document.getElementById('analyze-btn');
@@ -12670,6 +12631,46 @@ function escH(str) {
         s.style.animationPlayState = state;
       });
     });
+  }
+
+  // ── 14a-pre. setBgMode / applyBgMode ─────────────────────────────────────
+  function applyBgMode(mode) {
+    const scene    = document.getElementById('ocean-scene');
+    const oceanSvg = document.getElementById('ocean-water-svg');
+    if (window._shipSpawnTimeouts) {
+      window._shipSpawnTimeouts.forEach(t => clearTimeout(t));
+      window._shipSpawnTimeouts = [];
+    }
+    if (mode === 'minimal') {
+      if (scene) scene.style.display = '';
+      document.body.style.removeProperty('background');
+      if (oceanSvg && oceanSvg.pauseAnimations) oceanSvg.pauseAnimations();
+      if (window._shipSpawnerInterval) {
+        clearInterval(window._shipSpawnerInterval);
+        window._shipSpawnerInterval = null;
+      }
+    } else if (mode === 'plain') {
+      if (scene) scene.style.display = 'none';
+      document.body.style.setProperty('background', 'var(--bg)', 'important');
+      if (oceanSvg && oceanSvg.pauseAnimations) oceanSvg.pauseAnimations();
+      if (window._shipSpawnerInterval) {
+        clearInterval(window._shipSpawnerInterval);
+        window._shipSpawnerInterval = null;
+      }
+    } else {
+      if (scene) scene.style.display = '';
+      document.body.style.removeProperty('background');
+      if (oceanSvg && oceanSvg.unpauseAnimations) oceanSvg.unpauseAnimations();
+      if (!window._shipSpawnerInterval) startShipSpawner();
+    }
+    document.querySelectorAll('.bg-mode-btn').forEach(b => {
+      b.classList.toggle('active', b.getAttribute('data-mode') === mode);
+    });
+  }
+
+  function setBgMode(mode) {
+    applyBgMode(mode);
+    try { localStorage.setItem('portguard_bg_mode', mode); } catch (_) {}
   }
 
   // ── 15. DOMContentLoaded guard ────────────────────────────────────────────
