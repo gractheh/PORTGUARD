@@ -875,6 +875,7 @@ class DashboardAnalytics:
 
             activity = [
                 {
+                    "id":                r["analysis_id"],
                     "analysis_id":       r["analysis_id"],
                     "analyzed_at":       r["analyzed_at"],
                     "shipper_name":      r["shipper_name"],

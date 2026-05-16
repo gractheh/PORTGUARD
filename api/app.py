@@ -3184,6 +3184,7 @@ def report_generate_direct(
             },
         )
 
+    return _pdf_response(pdf_bytes, shipment_id)
 
 
 # ---------------------------------------------------------------------------
@@ -3296,6 +3297,14 @@ def get_result_report(
                         f"No report found for result '{result_id}'. "
                         "The result may not exist or predate report storage."
                     ),
+                },
+            )
+        if owner_org == org_id:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "code": "REPORT_NOT_AVAILABLE",
+                    "message": "No report payload is stored for this result. Re-analyze the shipment to generate a downloadable report.",
                 },
             )
         raise HTTPException(
