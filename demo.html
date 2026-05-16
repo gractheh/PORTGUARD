@@ -3390,17 +3390,61 @@
     }
 
     /* ── Background mode toggle ── */
-    .bg-mode-toggle { margin-bottom: 1.25rem; padding-bottom: 1.25rem; border-bottom: 1px solid rgba(255,255,255,.06); }
-    .bg-mode-label { font-size: .7rem; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: rgba(255,255,255,.45); margin-bottom: .5rem; }
-    .bg-mode-options { display: flex; gap: .4rem; }
-    .bg-mode-btn {
-      flex: 1; padding: .35rem .4rem; border-radius: 6px; font-size: .78rem; font-weight: 600;
-      border: 1px solid rgba(255,255,255,.12); background: rgba(255,255,255,.05);
-      color: rgba(255,255,255,.55); cursor: pointer; transition: background .18s, border-color .18s, color .18s;
-      text-align: center; line-height: 1.2;
+    .bg-mode-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.85rem 1rem;
+      background: rgba(255,255,255,0.03);
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.07);
+      margin-bottom: 1rem;
     }
-    .bg-mode-btn:hover { background: rgba(27,154,170,.12); border-color: rgba(27,154,170,.3); color: rgba(255,255,255,.8); }
-    .bg-mode-btn.active { background: rgba(27,154,170,.18); border-color: rgba(77,207,223,.5); color: var(--teal-300); }
+    .bg-mode-label {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: rgba(255,255,255,0.55);
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+    .bg-mode-options {
+      display: flex;
+      gap: 0.4rem;
+      flex-wrap: nowrap;
+    }
+    .bg-mode-btn {
+      font-family: 'Inter', sans-serif;
+      font-size: 0.73rem;
+      font-weight: 500;
+      padding: 0.32rem 0.75rem;
+      border-radius: 7px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04);
+      color: rgba(255,255,255,0.45);
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      transition: all 0.18s ease;
+      white-space: nowrap;
+      line-height: 1;
+    }
+    .bg-mode-btn:hover:not(.active) {
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.75);
+      border-color: rgba(255,255,255,0.18);
+      transform: translateY(-1px);
+    }
+    .bg-mode-btn.active {
+      background: rgba(27,154,170,0.18);
+      border-color: rgba(27,154,170,0.45);
+      color: #4DCFDF;
+      box-shadow: 0 0 10px rgba(27,154,170,0.12);
+    }
+    .bg-mode-btn:active {
+      transform: translateY(0px) scale(0.97);
+    }
 
     /* body.bg-minimal: keep sky/water, stop ships */
     body.bg-minimal #ships-layer { display: none; }
@@ -12592,7 +12636,7 @@ function escH(str) {
     } catch (_) {}
 
     // Start ambient ship traffic (only if bg mode allows it)
-    if (!document.body.classList.contains('bg-minimal') && !document.body.classList.contains('bg-plain')) {
+    if (window._bgMode !== 'minimal' && window._bgMode !== 'plain') {
       startShipSpawner();
     }
 
@@ -12634,33 +12678,38 @@ function escH(str) {
 
   // ── 14a-pre. setBgMode / applyBgMode ─────────────────────────────────────
   function applyBgMode(mode) {
-    const scene    = document.getElementById('ocean-scene');
-    const oceanSvg = document.getElementById('ocean-water-svg');
-    if (window._shipSpawnTimeouts) {
-      window._shipSpawnTimeouts.forEach(t => clearTimeout(t));
-      window._shipSpawnTimeouts = [];
-    }
-    if (mode === 'minimal') {
-      if (scene) scene.style.display = '';
-      document.body.style.removeProperty('background');
-      if (oceanSvg && oceanSvg.pauseAnimations) oceanSvg.pauseAnimations();
-      if (window._shipSpawnerInterval) {
-        clearInterval(window._shipSpawnerInterval);
-        window._shipSpawnerInterval = null;
-      }
-    } else if (mode === 'plain') {
+    const scene       = document.getElementById('ocean-scene');
+    const shipsLayer  = document.getElementById('ships-layer');
+    const cloudLayer  = document.getElementById('cloud-layer');
+    const starsCanvas = document.getElementById('stars-canvas');
+    window._bgMode    = mode;
+
+    if (mode === 'plain') {
       if (scene) scene.style.display = 'none';
-      document.body.style.setProperty('background', 'var(--bg)', 'important');
-      if (oceanSvg && oceanSvg.pauseAnimations) oceanSvg.pauseAnimations();
-      if (window._shipSpawnerInterval) {
-        clearInterval(window._shipSpawnerInterval);
-        window._shipSpawnerInterval = null;
-      }
+      document.body.style.setProperty('background', '#0A1628', 'important');
+      document.documentElement.style.setProperty('background', '#0A1628', 'important');
+      if (window._shipSpawnerInterval) { clearInterval(window._shipSpawnerInterval); window._shipSpawnerInterval = null; }
+      if (window._shipSpawnTimeouts) { window._shipSpawnTimeouts.forEach(function(t){clearTimeout(t);}); window._shipSpawnTimeouts = []; }
+      if (shipsLayer) { shipsLayer.innerHTML = ''; shipsLayer.style.display = 'none'; }
+    } else if (mode === 'minimal') {
+      if (scene) scene.style.display = 'block';
+      document.body.style.background = '';
+      document.documentElement.style.background = '';
+      if (window._shipSpawnerInterval) { clearInterval(window._shipSpawnerInterval); window._shipSpawnerInterval = null; }
+      if (window._shipSpawnTimeouts) { window._shipSpawnTimeouts.forEach(function(t){clearTimeout(t);}); window._shipSpawnTimeouts = []; }
+      if (shipsLayer) { shipsLayer.innerHTML = ''; shipsLayer.style.display = 'none'; }
+      if (cloudLayer) cloudLayer.style.display = 'none';
+      if (starsCanvas) starsCanvas.style.display = 'none';
     } else {
-      if (scene) scene.style.display = '';
-      document.body.style.removeProperty('background');
-      if (oceanSvg && oceanSvg.unpauseAnimations) oceanSvg.unpauseAnimations();
-      if (!window._shipSpawnerInterval) startShipSpawner();
+      if (scene) scene.style.display = 'block';
+      document.body.style.background = '';
+      document.documentElement.style.background = '';
+      if (shipsLayer) shipsLayer.style.display = 'block';
+      if (cloudLayer) cloudLayer.style.display = 'block';
+      if (starsCanvas) starsCanvas.style.display = 'block';
+      if (!window._shipSpawnerInterval && typeof window._startShipSpawner === 'function') {
+        window._startShipSpawner();
+      }
     }
     document.querySelectorAll('.bg-mode-btn').forEach(b => {
       b.classList.toggle('active', b.getAttribute('data-mode') === mode);
