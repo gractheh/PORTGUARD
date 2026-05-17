@@ -4896,9 +4896,9 @@
 
       <!-- Export bar -->
       <div class="bulk-export-bar">
-        <button class="bulk-export-btn" id="bulk-export-csv-btn" onclick="bulkExportCsv()">
+        <button class="bulk-export-btn" id="bulk-export-csv-btn" onclick="exportBulkCSV()">
           <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Export CSV Summary
+          Export Detailed CSV
         </button>
         <button class="bulk-export-btn" id="bulk-export-zip-btn" onclick="bulkExportZip()">
           <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h1l1-2h6l1 2h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
@@ -10863,6 +10863,9 @@ function _bulkShowOverlayError(msg) {
 // ---------------------------------------------------------------------------
 
 function _bulkRenderFromResponse(data) {
+  // Store raw backend results so exportBulkCSV() always has the full enriched data.
+  window._lastBulkResults = data.results || [];
+
   // Map POST /api/v1/analyze/bulk response (data.results[]) to _bulkAllResults
   _bulkAllResults = (data.results || []).map(r => {
     const sus = r.sustainability_rating || {};
@@ -10903,6 +10906,9 @@ function _bulkRenderFromResponse(data) {
 // Render results from /api/bulk/upload (new response shape)
 // ---------------------------------------------------------------------------
 function renderBulkResults(data) {
+  // Store raw backend results so exportBulkCSV() always has the full enriched data.
+  window._lastBulkResults = data.results || [];
+
   _bulkAllResults = (data.results || []).map(r => {
     const susRating = r.sustainability_rating;
     const susGrade = typeof susRating === 'string' ? susRating
@@ -11076,6 +11082,9 @@ async function _bulkLoadResults() {
     );
     if (!res.ok) return;
     const data = await res.json();
+
+    // Store raw backend results so exportBulkCSV() always has the full enriched data.
+    window._lastBulkResults = data.shipments || [];
 
     _bulkAllResults = (data.shipments || []).map(s => ({
       ref:         s.ref,
@@ -11311,52 +11320,129 @@ async function bulkDownloadRowPdf(analysisId) {
 // ---------------------------------------------------------------------------
 // Export
 // ---------------------------------------------------------------------------
-function bulkExportCsv() {
-  if (!_bulkAllResults.length) return;
-  const btn = document.getElementById('bulk-export-csv-btn');
-  btn.disabled = true;
-  try {
-    const csvEsc = v => {
-      if (v == null) return '';
-      const s = String(v);
-      return s.includes(',') || s.includes('"') || s.includes('\n')
-        ? '"' + s.replace(/"/g, '""') + '"'
-        : s;
-    };
-    const headers = [
-      'reference_id','decision','risk_score','risk_level',
-      'n_findings','top_finding',
-      'sustainability_grade','sustainability_signals',
-      'active_modules','status','error_message',
+function exportBulkCSV() {
+    if (!window._lastBulkResults || window._lastBulkResults.length === 0) {
+        if (typeof showToast === 'function') showToast('No results to export', 'error');
+        return;
+    }
+
+    function safe(val) {
+        if (val === null || val === undefined) return '';
+        var s = String(val);
+        if (s.includes(',') || s.includes('"') || s.includes('\n')) {
+            return '"' + s.replace(/"/g, '""') + '"';
+        }
+        return s;
+    }
+
+    function riskLevel(score) {
+        var n = parseFloat(score) || 0;
+        if (n <= 2) return 'LOW';
+        if (n <= 4) return 'MEDIUM';
+        if (n <= 7) return 'HIGH';
+        return 'CRITICAL';
+    }
+
+    function hitFlag(flags, keywords) {
+        if (!flags || !Array.isArray(flags)) return 'N/A';
+        var joined = flags.join(' ').toLowerCase();
+        for (var i = 0; i < keywords.length; i++) {
+            if (joined.indexOf(keywords[i].toLowerCase()) !== -1) return 'YES';
+        }
+        return 'NO';
+    }
+
+    var headers = [
+        'reference_id',
+        'timestamp',
+        'decision',
+        'risk_score',
+        'risk_level',
+        'sustainability_rating',
+        'document_type',
+        'shipper',
+        'origin_country',
+        'destination_country',
+        'declared_value',
+        'hts_code',
+        'flags_count',
+        'flags_detail',
+        'ofac_hit',
+        'section301_hit',
+        'adcvd_hit',
+        'uflpa_hit',
+        'isf_complete',
+        'pattern_warnings',
+        'pattern_hard_flag',
+        'sustainability_certs_detected',
+        'sustainability_certs_missing',
+        'status',
+        'error_detail'
     ];
-    const rows = [headers.join(',')];
-    _bulkAllResults.forEach(r => {
-      rows.push([
-        csvEsc(r.ref),
-        csvEsc(r.decision),
-        csvEsc(r.risk_score != null ? r.risk_score.toFixed(4) : ''),
-        csvEsc(r.risk_level || ''),
-        csvEsc(r.n_findings),
-        csvEsc(r.top_finding),
-        csvEsc(r.sustainability_grade),
-        csvEsc((r.sustainability_signals || []).join(' | ')),
-        csvEsc((r.active_modules || []).join(' | ')),
-        csvEsc(r.status),
-        csvEsc(r.error_message),
-      ].join(','));
+
+    var rows = [headers.join(',')];
+
+    window._lastBulkResults.forEach(function(r) {
+        var flags = r.flags || [];
+        var patternWarnings = r.pattern_warnings || [];
+        var certsDetected = r.sustainability_certs_detected || [];
+        var certsMissing = r.sustainability_certs_missing || [];
+
+        var isfVal = r.isf_complete === true ? 'YES' : r.isf_complete === false ? 'NO' : 'N/A';
+        var patternHardFlag = r.pattern_hard_flag ? 'YES' : 'NO';
+
+        // Use pre-scaled 0-10 value when available (set by backend sprint).
+        // Fall back to multiplying the 0-1 score by 10 for older / polling-path data.
+        var scoreFor10 = r.risk_score_scaled !== undefined
+            ? r.risk_score_scaled
+            : (r.risk_score !== undefined && r.risk_score !== null ? +(r.risk_score * 10).toFixed(1) : null);
+
+        var row = [
+            safe(r.name || r.reference_id || ''),
+            safe(r.timestamp || ''),
+            safe(r.decision || ''),
+            safe(scoreFor10 !== null ? scoreFor10 : ''),
+            safe(riskLevel(scoreFor10 !== null ? scoreFor10 : 0)),
+            safe(r.sustainability_grade || (r.sustainability_rating && r.sustainability_rating.grade) || 'N/A'),
+            safe(r.document_type || ''),
+            safe(r.shipper || ''),
+            safe(r.origin_country || ''),
+            safe(r.destination_country || ''),
+            safe(r.declared_value || ''),
+            safe(r.hts_code || ''),
+            safe(flags.length),
+            safe(flags.join(' | ')),
+            hitFlag(flags, ['ofac', 'sanction']),
+            hitFlag(flags, ['301', 'section 301']),
+            hitFlag(flags, ['ad/cvd', 'antidumping', 'countervailing']),
+            hitFlag(flags, ['uflpa', 'forced labor', 'xinjiang']),
+            isfVal,
+            safe(patternWarnings.join(' | ')),
+            patternHardFlag,
+            safe(certsDetected.join(' | ')),
+            safe(certsMissing.join(' | ')),
+            safe(r.status || 'complete'),
+            safe(r.error_detail || r.error || '')
+        ];
+
+        rows.push(row.join(','));
     });
-    const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
+
+    var csvContent = rows.join('\n');
+    var blob = new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
     a.href = url;
-    a.download = 'portguard_batch_' + (_bulkBatchId || 'export').slice(0,8) + '.csv';
-    document.body.appendChild(a); a.click();
-    document.body.removeChild(a); URL.revokeObjectURL(url);
-  } catch (e) {
-    console.error('CSV export failed:', e.message);
-  } finally {
-    btn.disabled = false;
-  }
+
+    var timestamp = new Date().toISOString().slice(0,10);
+    a.download = 'portguard_bulk_results_' + timestamp + '.csv';
+    a.style.display = 'none';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(url); }, 5000);
+
+    if (typeof showToast === 'function') showToast('CSV exported — ' + window._lastBulkResults.length + ' shipments', 'success');
 }
 
 async function bulkExportZip() {
