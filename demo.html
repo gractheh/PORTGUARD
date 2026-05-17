@@ -3817,6 +3817,40 @@
       box-shadow: var(--glow-teal-sm);
     }
 
+    /* Shared result — error card (404 / network failure) */
+    .shared-error-card {
+      text-align: center;
+      padding: 3rem 2rem;
+      background: rgba(15,25,50,0.6);
+      border: 1px solid rgba(239,68,68,0.2);
+      border-radius: var(--radius-lg);
+      max-width: 480px;
+      margin: 2rem auto;
+    }
+    .shared-error-icon { margin-bottom: 1rem; }
+    .shared-error-title {
+      font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--red);
+      margin-bottom: 0.5rem;
+    }
+    .shared-error-message {
+      font-size: 0.85rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+    /* Utility alias — same visual as .shared-result-cta; used in error card */
+    .shared-cta-btn {
+      font-size: .78rem; font-weight: 600; padding: .38rem .85rem;
+      border-radius: var(--radius); border: 1px solid rgba(27,154,170,.4);
+      color: var(--teal-300); background: rgba(27,154,170,.1);
+      cursor: pointer; text-decoration: none; white-space: nowrap;
+      transition: background .15s, border-color .15s;
+    }
+    .shared-cta-btn:hover { background: rgba(27,154,170,.2); border-color: var(--teal-400); }
+
   </style>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
@@ -8176,7 +8210,7 @@ function singleShareResult() {
   const labelEl = document.getElementById('single-share-label');
   const shipmentId = btn.dataset.shipmentId;
   if (!shipmentId) return;
-  const url = window.location.origin + window.location.pathname + '#result/' + shipmentId;
+  const url = window.location.origin + window.location.pathname + '?result=' + shipmentId;
   navigator.clipboard.writeText(url).then(() => {
     btn.classList.add('copied');
     labelEl.textContent = 'Copied!';
@@ -10079,6 +10113,7 @@ let _bulkSortAsc         = false;
 let _bulkFilter          = 'ALL';
 let _deepLinkBatchId      = null; // set from ?batch= URL param on page load
 let _deepLinkResultId     = null; // set from #result/ URL hash on page load
+let _pendingSharedResultId = null; // set from ?result= URL param — public shared result, no login required
 
 // ---------------------------------------------------------------------------
 // Decision helpers
@@ -11219,7 +11254,7 @@ function _bulkRenderTable() {
       ? `<td><span class="sustain-badge sustain-badge-${sGradeKey}">${escHtml(sGrade)}</span></td>`
       : `<td style="color:var(--faint);font-size:.8rem;text-align:center">—</td>`;
 
-    // Share button (chain-link icon) — uses result_id for the /#result/ hash link
+    // Share button (chain-link icon) — uses result_id for the ?result= public share link
     const shareRowId = JSON.stringify(r.result_id || r.analysis_id || '');
     const shareBtn = (r.result_id || r.analysis_id) ? `
           <button class="bulk-share-row-btn" id="bsr-${r.result_id || r.analysis_id}"
@@ -11487,7 +11522,7 @@ function bulkShareLink() {
 
 function bulkShareRowLink(resultId, btnEl) {
   if (!resultId) return;
-  const url = window.location.origin + window.location.pathname + '#result/' + resultId;
+  const url = window.location.origin + window.location.pathname + '?result=' + resultId;
   const copyFn = () => {
     navigator.clipboard.writeText(url).then(() => {
       const orig = btnEl.innerHTML;
@@ -11631,7 +11666,7 @@ function _enterSharedResultView(data) {
   banner.innerHTML =
     '<span class="shared-result-banner-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 2H7a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2h-2"/><line x1="9" y1="10" x2="15" y2="10"/><line x1="9" y1="14" x2="13" y2="14"/></svg></span>' +
     '<div class="shared-result-banner-content">' +
-    '<div class="shared-result-banner-title">Shared Result — Viewing a shared compliance report</div>' +
+    '<div class="shared-result-banner-title">Shared Compliance Screening Result — Read Only</div>' +
     '<div class="shared-result-banner-sub">' + escHtml(subText) + '</div>' +
     '</div>' +
     '<button class="shared-result-cta" onclick="_exitSharedResultView()">Run Your Own Analysis →</button>';
@@ -11652,13 +11687,88 @@ function _exitSharedResultView() {
 }
 
 // ---------------------------------------------------------------------------
+// Public shared result — no auth required
+// ---------------------------------------------------------------------------
+
+async function loadSharedResult(resultId) {
+  if (!resultId) return;
+
+  // Suppress auth overlay — public shared results load without login
+  var overlay = document.getElementById('auth-overlay');
+  if (overlay) overlay.classList.add('hidden');
+
+  try {
+    showSection('analyze');
+
+    var response = await fetch('/api/results/' + resultId);
+
+    if (response.status === 404) {
+      showSharedResultError('This shared result could not be found. The link may have expired.');
+      return;
+    }
+    if (!response.ok) {
+      showSharedResultError('Could not load shared result. Please try again.');
+      return;
+    }
+
+    var data = await response.json();
+    renderSharedResult(data);
+
+    // Remove ?result= from URL after load so refresh shows the overlay, not a re-fetch
+    history.replaceState(null, '', window.location.pathname);
+
+  } catch (err) {
+    console.error('Failed to load shared result:', err);
+    showSharedResultError('Could not load shared result: ' + err.message);
+  }
+}
+
+function renderSharedResult(data) {
+  // Full results render — reuses the existing 22-step renderer unchanged
+  renderResults(data);
+  // Overlay the shared-result banner and add shared-result-view CSS class
+  _enterSharedResultView(data);
+  // Hide feedback section — shared view is read-only; unauthenticated users
+  // cannot submit officer feedback
+  var feedbackSection = document.getElementById('feedback-section');
+  if (feedbackSection) feedbackSection.style.display = 'none';
+}
+
+function showSharedResultError(message) {
+  // Suppress auth overlay so the error is visible without login
+  var overlay = document.getElementById('auth-overlay');
+  if (overlay) overlay.classList.add('hidden');
+
+  showSection('analyze');
+
+  var results = document.getElementById('results');
+  if (!results) return;
+  results.innerHTML =
+    '<div class="shared-error-card">' +
+      '<div class="shared-error-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>' +
+      '<div class="shared-error-title">Result Not Found</div>' +
+      '<div class="shared-error-message">' + escHtml(message) + '</div>' +
+      '<button class="shared-result-cta" onclick="scrollToUpload()" style="margin-top:1.5rem;">Screen Your Own Shipment</button>' +
+    '</div>';
+  results.style.display = 'block';
+}
+
+function scrollToUpload() {
+  _pendingSharedResultId = null;
+  _exitSharedResultView();
+  // Show the auth overlay so the user can log in to use PortGuard
+  showAuthOverlay();
+}
+
+// ---------------------------------------------------------------------------
 // Init
 // ---------------------------------------------------------------------------
 renderTabs();
 
 // Read deep-link parameters before showing auth overlay.
 // ?batch=<id>    → share link for a batch (WI2)
-// #result/<id>   → share link for a single result (WI2)
+// #result/<id>   → share link for a single result (WI2, legacy hash format)
+// ?result=<id>   → public shared result (Sprint 13, no login required)
 (function _readDeepLink() {
   const batchParam = new URLSearchParams(window.location.search).get('batch');
   if (batchParam) { _deepLinkBatchId = batchParam; }
@@ -11667,8 +11777,22 @@ renderTabs();
   if (resultMatch) { _deepLinkResultId = resultMatch[1]; }
 })();
 
+(function _readSharedParam() {
+  var params = new URLSearchParams(window.location.search);
+  var resultParam = params.get('result');
+  if (resultParam && resultParam.length > 8) {
+    _pendingSharedResultId = resultParam;
+  }
+})();
+
 // Show auth overlay immediately on page load — app requires authentication.
+// Exception: if a public shared result is pending, suppress the overlay and
+// load the result directly (no login required for the public endpoint).
 showAuthOverlay();
+
+if (_pendingSharedResultId) {
+  loadSharedResult(_pendingSharedResultId);
+}
 
 // ===========================================================================
 // SETTINGS DRAWER — Screening Modules
