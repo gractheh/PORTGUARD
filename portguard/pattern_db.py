@@ -1478,6 +1478,29 @@ class PatternDB:
             logger.warning("get_report_payload(%s) failed: %s", analysis_id, exc)
             return None
 
+    def get_report_payload_public(self, analysis_id: str) -> Optional[str]:
+        """Retrieve stored AnalyzeResponse JSON without org filter.
+
+        Used by the public ``GET /api/results/{result_id}`` endpoint so that
+        share links work without authentication.  Returns None when the row
+        does not exist or ``report_payload`` is NULL.
+        """
+        try:
+            with self._engine.connect() as conn:
+                row = conn.execute(
+                    text(
+                        "SELECT report_payload FROM shipment_history"
+                        " WHERE analysis_id = :id"
+                    ),
+                    {"id": analysis_id},
+                ).mappings().fetchone()
+            if row is None:
+                return None
+            return row["report_payload"]
+        except _SQLAlchemyError as exc:
+            logger.warning("get_report_payload_public(%s) failed: %s", analysis_id, exc)
+            return None
+
     def get_result_owner(self, analysis_id: str) -> Optional[str]:
         """Return the organization_id that owns an analysis, or None if not found.
 

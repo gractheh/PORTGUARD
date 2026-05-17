@@ -895,6 +895,28 @@ class BulkProcessor:
                 {"id": batch_id},
             )
 
+        # Mirror result_json to shipment_history.report_payload so that public
+        # share links (GET /api/results/{id}) work for bulk per-row results.
+        # The shipment_history row was already inserted by _record_shipment_bg()
+        # before _store_shipment_result() is called.  We UPDATE without an org
+        # filter because we own this analysis_id — it was just created above.
+        if analysis_id and result_json:
+            try:
+                with self._engine.begin() as conn:
+                    conn.execute(
+                        text(
+                            "UPDATE shipment_history"
+                            " SET report_payload = :payload"
+                            " WHERE analysis_id = :analysis_id"
+                        ),
+                        {"payload": result_json, "analysis_id": analysis_id},
+                    )
+            except Exception as _mirror_exc:
+                logger.warning(
+                    "bulk: report_payload mirror failed (non-fatal): batch=%s ref=%s err=%s",
+                    batch_id, ref, _mirror_exc,
+                )
+
         logger.debug(
             "Bulk shipment COMPLETE: batch=%s ref=%s decision=%s score=%.3f",
             batch_id, ref, decision, risk_score or 0.0,

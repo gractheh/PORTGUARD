@@ -1248,6 +1248,14 @@ class AnalyzeResponse(BaseModel):
                     "False = ISF gap flagged, None = not applicable (non-sea shipment).",
     )
 
+    # Share link — populated by the analyze endpoints after the DB write assigns
+    # shipment_id.  Convenience field so the frontend can use it directly.
+    share_url: Optional[str] = Field(
+        None,
+        description="Public share URL for this result: '/?result=<shipment_id>'. "
+                    "None when the result was not persisted (no PatternDB).",
+    )
+
 
 class FeedbackRequest(BaseModel):
     """Body for POST /api/v1/feedback."""
@@ -1918,6 +1926,8 @@ def analyze(
     if shipment_id is not None and pattern_history_depth_val is not None:
         analyze_response.pattern_history_depth = pattern_history_depth_val + 1
     analyze_response.shipment_id = shipment_id
+    if shipment_id:
+        analyze_response.share_url = f'/?result={shipment_id}'
     _write_sustainability_fields(shipment_id, org_id, analyze_response)
     return analyze_response
 
@@ -2258,6 +2268,8 @@ async def analyze_files(
     if shipment_id is not None and pattern_history_depth_val is not None:
         analyze_response_files.pattern_history_depth = pattern_history_depth_val + 1
     analyze_response_files.shipment_id = shipment_id
+    if shipment_id:
+        analyze_response_files.share_url = f'/?result={shipment_id}'
     _write_sustainability_fields(shipment_id, org_id, analyze_response_files)
     return analyze_response_files
 
@@ -3273,6 +3285,68 @@ def get_result(
     )
 
 
+@app.get("/api/results/{result_id}")
+def get_shared_result(result_id: str):
+    """Return a stored screening result without authentication.
+
+    This is the public endpoint that powers shared result links
+    (``/?result=<id>``).  Anyone who holds the result ID can view the full
+    AnalyzeResponse payload — no Bearer token required.
+
+    Returns 404 when the result does not exist or has no stored payload.
+    Returns 503 when the PatternDB is not initialised.
+    """
+    if _pattern_db is None:
+        raise HTTPException(
+            status_code=503,
+            detail={"code": "SERVICE_UNAVAILABLE", "message": "Database not initialised."},
+        )
+
+    payload_json = _pattern_db.get_report_payload_public(result_id)
+    if payload_json is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "NOT_FOUND",
+                "message": (
+                    "Result not found. This link may have expired "
+                    "or the result does not exist."
+                ),
+            },
+        )
+
+    try:
+        payload = json.loads(payload_json)
+    except Exception:
+        raise HTTPException(
+            status_code=500,
+            detail={"code": "RESULT_CORRUPT", "message": "Stored result could not be deserialised."},
+        )
+
+    if not payload.get("shipment_id"):
+        payload["shipment_id"] = result_id
+
+    if not payload.get("analyzed_at"):
+        try:
+            from sqlalchemy import text as _text
+            with _pattern_db._engine.connect() as _conn:
+                _row = _conn.execute(
+                    _text(
+                        "SELECT analyzed_at FROM shipment_history"
+                        " WHERE analysis_id = :id"
+                    ),
+                    {"id": result_id},
+                ).mappings().fetchone()
+            if _row:
+                payload["analyzed_at"] = _row["analyzed_at"]
+        except Exception:
+            pass
+
+    payload["shared"] = True
+    payload["organization_email"] = None
+    return payload
+
+
 @app.get("/api/results/{result_id}/report")
 def get_result_report(
     result_id: str,
@@ -3655,6 +3729,8 @@ def _run_bulk_single_analysis(
     if shipment_id is not None and pattern_history_depth_val is not None:
         analyze_response.pattern_history_depth = pattern_history_depth_val + 1
     analyze_response.shipment_id = shipment_id
+    if shipment_id:
+        analyze_response.share_url = f'/?result={shipment_id}'
 
     return analyze_response.model_dump()
 
