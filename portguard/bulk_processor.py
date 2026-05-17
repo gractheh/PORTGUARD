@@ -91,6 +91,29 @@ _ALL_DECISIONS: tuple[str, ...] = (
     "REJECT",
 )
 
+
+def compute_risk_level(score: float) -> str:
+    """Map a 0–10 risk score to a human-readable risk level.
+
+    Parameters
+    ----------
+    score:
+        Risk score on a **0–10** scale (i.e. the internal 0–1 score × 10).
+
+    Returns
+    -------
+    str
+        One of ``LOW``, ``MEDIUM``, ``HIGH``, ``CRITICAL``.
+    """
+    if score <= 2.0:
+        return "LOW"
+    if score <= 4.0:
+        return "MEDIUM"
+    if score <= 7.0:
+        return "HIGH"
+    return "CRITICAL"
+
+
 # ---------------------------------------------------------------------------
 # Return-value dataclasses
 # ---------------------------------------------------------------------------
@@ -795,6 +818,12 @@ class BulkProcessor:
         active_modules_snapshot: Optional[str] = (
             "|".join(str(m) for m in _active_mods) if _active_mods else None
         )
+
+        # Augment result dict with identity fields needed for detailed CSV export.
+        # Both fields are injected here because _run_bulk_single_analysis has no
+        # access to the shipment ref, and `now` is already computed above.
+        result["name"] = ref
+        result["timestamp"] = now
 
         try:
             result_json: Optional[str] = json.dumps(result)

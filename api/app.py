@@ -1224,6 +1224,30 @@ class AnalyzeResponse(BaseModel):
                     "pattern_warnings, pattern_boosts, shipper_history summary.",
     )
 
+    # Compliance hit booleans — populated by both the bulk and single-shipment
+    # pipelines so result_json always carries these for CSV export and auditing.
+    ofac_hit: Optional[bool] = Field(
+        None,
+        description="True if an OFAC sanctions flag was raised during analysis.",
+    )
+    section301_hit: Optional[bool] = Field(
+        None,
+        description="True if a Section 301 tariff-exposure flag was raised.",
+    )
+    adcvd_hit: Optional[bool] = Field(
+        None,
+        description="True if an antidumping / countervailing duty flag was raised.",
+    )
+    uflpa_hit: Optional[bool] = Field(
+        None,
+        description="True if a UFLPA forced-labour flag was raised.",
+    )
+    isf_complete: Optional[bool] = Field(
+        None,
+        description="ISF completeness: True = all required elements present, "
+                    "False = ISF gap flagged, None = not applicable (non-sea shipment).",
+    )
+
 
 class FeedbackRequest(BaseModel):
     """Body for POST /api/v1/feedback."""
@@ -3529,6 +3553,34 @@ def _run_bulk_single_analysis(
     except Exception as _sus_exc_bulk:
         logger.warning("SustainabilityRater failed in bulk (non-fatal): %s", _sus_exc_bulk)
 
+    # Compliance hit detection from the explanations list.  String scanning is
+    # used because the typed _risk_factors dict is not included in AnalyzeResponse
+    # and would be lost before result_json is written.
+    _bulk_expl: list[str] = result.get("explanations", [])
+    _bulk_expl_lower: str = " ".join(_bulk_expl).lower()
+    _bulk_ofac_hit: bool = "ofac" in _bulk_expl_lower or "sanction" in _bulk_expl_lower
+    _bulk_301_hit: bool = "section 301" in _bulk_expl_lower or " 301 " in _bulk_expl_lower
+    _bulk_adcvd_hit: bool = (
+        "ad/cvd" in _bulk_expl_lower
+        or "antidumping" in _bulk_expl_lower
+        or "countervailing" in _bulk_expl_lower
+    )
+    _bulk_uflpa_hit: bool = (
+        "uflpa" in _bulk_expl_lower
+        or "forced labor" in _bulk_expl_lower
+        or "xinjiang" in _bulk_expl_lower
+    )
+    # ISF: None for non-sea shipments (no vessel / port indicators), else
+    # True = no ISF gap flagged, False = ISF incomplete flag present.
+    _bulk_is_sea: bool = bool(
+        sd.get("vessel_or_flight")
+        or sd.get("port_of_loading")
+        or sd.get("port_of_discharge")
+        or sd.get("port_of_entry")
+    )
+    _bulk_isf_flagged: bool = any("isf incomplete" in f.lower() for f in _bulk_expl)
+    _bulk_isf_complete: Optional[bool] = (not _bulk_isf_flagged) if _bulk_is_sea else None
+
     analyze_response = AnalyzeResponse(
         status="completed",
         shipment_data=ShipmentData(**sd),
@@ -3557,6 +3609,11 @@ def _run_bulk_single_analysis(
         classification_confidence=_bulk_clf_primary.get("confidence_label"),
         classification_warning=_bulk_clf_primary.get("warning"),
         pattern_intelligence=_patt_intel_b,
+        ofac_hit=_bulk_ofac_hit,
+        section301_hit=_bulk_301_hit,
+        adcvd_hit=_bulk_adcvd_hit,
+        uflpa_hit=_bulk_uflpa_hit,
+        isf_complete=_bulk_isf_complete,
     )
 
     # Record to PatternDB and store report payload
@@ -3806,20 +3863,91 @@ def _build_bulk_response(batch_id: str, results_data: dict) -> dict:
         if not flags and s.get("error_message"):
             flags = [s["error_message"]]
 
+        # --- Shipment identity fields from result_json.shipment_data ---
+        _sd = full.get("shipment_data") or {}
+        _declared_val = _sd.get("declared_value") or ""
+        _declared_cur = _sd.get("declared_currency") or ""
+        _declared_str = (
+            f"{_declared_val} {_declared_cur}".strip() if _declared_val else ""
+        )
+        _hts_raw = _sd.get("hts_codes_declared") or []
+        if isinstance(_hts_raw, str):
+            _hts_raw = [_hts_raw] if _hts_raw else []
+        _hts_str = " | ".join(str(h) for h in _hts_raw)
+
+        # --- Pattern intelligence fields from result_json ---
+        _patt = full.get("pattern_intelligence") or {}
+        _pattern_warnings: list = full.get("pattern_signals") or []
+        _pattern_hard_flag: bool = bool(_patt.get("hard_flag", False))
+
+        # --- Sustainability cert fields from result_json.sustainability_rating ---
+        _sus_full = full.get("sustainability_rating") or {}
+        _sus_certs_detected: list = (
+            _sus_full.get("certifications_detected") or []
+            if isinstance(_sus_full, dict) else []
+        )
+        _sus_certs_missing: list = (
+            _sus_full.get("certifications_missing") or []
+            if isinstance(_sus_full, dict) else []
+        )
+
+        # --- Compliance hit booleans stored in result_json by the pipeline ---
+        _ofac_hit = full.get("ofac_hit")
+        _sec301_hit = full.get("section301_hit")
+        _adcvd_hit = full.get("adcvd_hit")
+        _uflpa_hit = full.get("uflpa_hit")
+        _isf_complete = full.get("isf_complete")
+
+        # --- Scaled risk score (0–10) for CSV export (internal score stays at 0–1) ---
+        _raw_score = s.get("risk_score")
+        _scaled_score = round(_raw_score * 10, 1) if _raw_score is not None else None
+
         results.append({
-            "reference_id": s.get("ref"),
-            "result_id": s.get("analysis_id"),
-            "decision": decision,
-            "risk_score": s.get("risk_score"),
-            "risk_level": s.get("risk_level"),
-            "flags": flags,
-            "summary": s.get("top_finding"),
+            # Core identity
+            "name":             full.get("name") or s.get("ref"),
+            "reference_id":     s.get("ref"),
+            "result_id":        s.get("analysis_id"),
+            "timestamp":        full.get("timestamp") or s.get("processed_at"),
+            # Compliance decision
+            "decision":         decision,
+            "risk_score":       s.get("risk_score"),       # 0–1 scale (for display)
+            "risk_score_scaled": _scaled_score,            # 0–10 scale (for CSV export)
+            "risk_level":       s.get("risk_level"),
+            # Shipment identity
+            "document_type":    full.get("document_type") or "",
+            "shipper":          _sd.get("exporter") or "",
+            "origin_country":   _sd.get("origin_country") or "",
+            "destination_country": _sd.get("destination_country") or "",
+            "declared_value":   _declared_str,
+            "hts_codes":        _hts_raw,
+            "hts_code":         _hts_str,
+            # Flags
+            "flags":            flags,
+            "flags_count":      len(flags),
+            "flags_detail":     " | ".join(flags),
+            # Compliance hit booleans
+            "ofac_hit":         _ofac_hit,
+            "section301_hit":   _sec301_hit,
+            "adcvd_hit":        _adcvd_hit,
+            "uflpa_hit":        _uflpa_hit,
+            "isf_complete":     _isf_complete,
+            # Pattern intelligence
+            "pattern_warnings": _pattern_warnings,
+            "pattern_hard_flag": _pattern_hard_flag,
+            # Sustainability
+            "summary":          s.get("top_finding"),
             "sustainability_rating": sus,
             "sustainability_signals": sus_signals,
+            "sustainability_grade": sus_grade,
+            "sustainability_certs_detected": _sus_certs_detected,
+            "sustainability_certs_missing":  _sus_certs_missing,
+            # Modules
             "active_modules_snapshot": active_mods,
-            "status": s.get("status"),
-            "error_message": s.get("error_message"),
-            "processed_at": s.get("processed_at"),
+            # Status
+            "status":           s.get("status"),
+            "error_message":    s.get("error_message"),
+            "error_detail":     s.get("error_message") or "",
+            "processed_at":     s.get("processed_at"),
         })
 
     return {
