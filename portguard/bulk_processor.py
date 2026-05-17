@@ -819,11 +819,22 @@ class BulkProcessor:
             "|".join(str(m) for m in _active_mods) if _active_mods else None
         )
 
-        # Augment result dict with identity fields needed for detailed CSV export.
-        # Both fields are injected here because _run_bulk_single_analysis has no
-        # access to the shipment ref, and `now` is already computed above.
+        # Augment result dict with identity and summary fields needed for the
+        # detailed CSV export.  `name` and `timestamp` are injected here because
+        # _run_bulk_single_analysis has no access to the shipment ref, and `now`
+        # is already computed above.  The compliance-hit booleans (ofac_hit,
+        # section301_hit, adcvd_hit, uflpa_hit, isf_complete) and flags_count are
+        # set by the analysis pipeline and are already in the result dict via
+        # AnalyzeResponse; setdefault is a safety-net for callers that do not go
+        # through _run_bulk_single_analysis.
         result["name"] = ref
         result["timestamp"] = now
+        result.setdefault("flags_count", len(result.get("explanations", [])))
+        result.setdefault("ofac_hit", None)
+        result.setdefault("section301_hit", None)
+        result.setdefault("adcvd_hit", None)
+        result.setdefault("uflpa_hit", None)
+        result.setdefault("isf_complete", None)
 
         try:
             result_json: Optional[str] = json.dumps(result)
