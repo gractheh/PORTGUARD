@@ -115,6 +115,88 @@ Manual checks all green:
 
 ---
 
+## Sprint 13: Shared Result Links — Public Endpoint + Full Frontend View
+**Date:** 2026-05-17
+**Branch:** master
+**Status:** Closed
+
+---
+
+### What was built
+
+End-to-end shareable result links: any PortGuard analysis result can now be shared as a `/?result=<uuid>` URL that renders the full results screen (decision banner, risk score, flags, sustainability, PDF download) without requiring login. Unauthenticated viewers see a "Shared Compliance Screening Result — Read Only" banner and a "Run Your Own Analysis" CTA that leads them to the login overlay.
+
+---
+
+### Backend changes (`api/app.py`, `portguard/pattern_db.py`, `portguard/bulk_processor.py`)
+
+**`portguard/pattern_db.py`:**
+- Added `get_report_payload_public(analysis_id)` after `get_report_payload()`. Queries `SELECT report_payload FROM shipment_history WHERE analysis_id = :id` with no `organization_id` filter. Returns raw JSON string or `None`. Errors are caught and logged; never raises.
+
+**`api/app.py`:**
+- Added `share_url: Optional[str] = Field(None, description="Public share URL '/?result=<shipment_id>'.")` to `AnalyzeResponse` after `isf_complete`.
+- Set `analyze_response.share_url = f'/?result={shipment_id}'` in all three analyze paths: `POST /api/v1/analyze`, `POST /api/v1/analyze-files`, `_run_bulk_single_analysis()`.
+- Added `GET /api/results/{result_id}` (no auth — no `Depends(get_current_organization)`). Returns full `AnalyzeResponse`-shaped payload with `shared: True` and `organization_email: null` injected. Returns 404 if payload not found or NULL, 503 if PatternDB not initialised, 500 if JSON parse fails. Route placed before `GET /api/results/{result_id}/report` — no path conflict (FastAPI `{result_id}` doesn't capture slashes).
+
+**`portguard/bulk_processor.py`:**
+- In `_store_shipment_result()`, after the `bulk_shipments` UPDATE, added mirror write: `UPDATE shipment_history SET report_payload = :payload WHERE analysis_id = :analysis_id`. Non-fatal — failure is logged and does not affect bulk result storage. Makes every bulk per-row share link resolvable via the public endpoint.
+
+---
+
+### Frontend changes (`demo.html`)
+
+- **`let _pendingSharedResultId = null`** — module-level variable for the shared UUID from `?result=`.
+- **`_readSharedParam()` IIFE** — runs before `showAuthOverlay()`; reads `new URLSearchParams(window.location.search).get('result')`; sets `_pendingSharedResultId` if length > 8 (guards against spurious one-char params).
+- **`loadSharedResult(resultId)`** — async; synchronously suppresses auth overlay (adds `hidden` class) before `await fetch('/api/results/' + resultId)`. Handles 404 → `showSharedResultError()`, non-OK → `showSharedResultError()`, success → `renderSharedResult(data)`. Cleans URL with `history.replaceState(null, '', pathname)` on success.
+- **`renderSharedResult(data)`** — calls `renderResults(data)` then `_enterSharedResultView(data)`. Overrides banner CTA `onclick` from `_exitSharedResultView()` to `scrollToUpload()` (public flow needs auth prompt, not just exit). Hides `#feedback-section`.
+- **`showSharedResultError(message)`** — hides overlay, calls `showSection('analyze')`, sets `#results.innerHTML` to a centered error card with icon, title, message, and "Screen Your Own Shipment" CTA (`onclick="scrollToUpload()"`). Uses `escHtml(message)` for XSS safety.
+- **`scrollToUpload()`** — clears `_pendingSharedResultId`, calls `_exitSharedResultView()`, then branches: authenticated → `showSection('analyze')` + smooth scroll to `.analyze-wrap`; unauthenticated → `showAuthOverlay()`.
+- **Share URL format fixed** — `singleShareResult()` and `bulkShareRowLink()` changed from `/#result/<id>` to `/?result=<id>` (query param survives refresh; hash was destroyed on page load).
+- **Banner title updated** — from "Shared Screening Result" to "Shared Compliance Screening Result — Read Only".
+- **CSS added** — `.shared-error-card`, `.shared-error-icon`, `.shared-error-title`, `.shared-error-message`, `.shared-cta-btn`, `.shared-banner-inner`, `.shared-banner-left`.
+
+**Key implementation notes:**
+- `loadPatternStats()` has `if (!_authToken) return` guard — no 401 errors in unauthenticated shared view.
+- `renderResults()` step 1 calls `_exitSharedResultView()` (no-op if not in shared view) — backward-compat preserved.
+- Old `#result/<id>` hash format still works for authenticated users via `_readDeepLink()` IIFE.
+- `?result=` length guard (> 8) prevents other single-char query params from triggering the shared flow. Real UUIDs are 36 chars.
+
+---
+
+### Validation
+
+20/20 automated checks green (first run, no fixes needed):
+- `_pendingSharedResultId` declared, `URLSearchParams` used, `result` param parsed
+- `loadSharedResult`, `renderSharedResult`, `showSharedResultError`, `scrollToUpload` present
+- `shared-result-banner`, `.shared-banner-inner`, `.shared-cta-btn`, `.shared-error-card` CSS present
+- Feedback buttons hidden in shared view
+- 404 handled in `loadSharedResult`
+- PDF download in shared view
+- "Run Your Own Analysis" CTA wired
+- `GET /api/results/{id}` endpoint present, no auth required, `shared` field in response, `share_url` in analyze response, 404 HTTPException in shared endpoint
+
+Manual flow traces:
+1. `/?result=<uuid>` → overlay suppressed, public endpoint fetched, full results screen with shared banner ✓
+2. `/?result=doesnotexist` → 404 → clean centered error card ✓
+3. "Run Your Own Analysis" click → `scrollToUpload()` → auth overlay shown (unauthenticated) ✓
+
+---
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `portguard/pattern_db.py` | Added `get_report_payload_public()` |
+| `api/app.py` | `share_url` field in `AnalyzeResponse`; set in 3 endpoints; `GET /api/results/{id}` public endpoint |
+| `portguard/bulk_processor.py` | `report_payload` mirror write in `_store_shipment_result()` |
+| `demo.html` | `_pendingSharedResultId`; `_readSharedParam()` IIFE; `loadSharedResult()`; `renderSharedResult()`; `showSharedResultError()`; `scrollToUpload()`; share URL format fix; banner title; CSS |
+| `docs/share_results_fix_plan.md` | Created — 5-section plan, 13 build steps |
+| `docs/share_results_read_report.md` | Created — 10-item audit, 12 bugs documented |
+| `docs/share_backend_verification.md` | Created — backend verification notes |
+| `docs/share_frontend_verification.md` | Created — 20-check validation + 3-flow manual trace |
+
+---
+
 ## Sprint: Bulk Upload / Waterline / Toggle / Download — 4-Issue Close
 **Date:** 2026-05-15
 **Branch:** master
