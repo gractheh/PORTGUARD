@@ -2,6 +2,119 @@
 
 ---
 
+## Sprint 12: Detailed CSV Export — 25 Columns, Compliance Hits, Pattern Intel, Sustainability Certs
+**Date:** 2026-05-17
+**Branch:** master
+**Status:** Closed
+
+---
+
+### What was built
+
+End-to-end detailed CSV export for bulk screening results, replacing the 11-column placeholder with a full 25-column export that covers every significant field from the analysis pipeline.
+
+---
+
+### Backend changes (`portguard/bulk_processor.py`, `api/app.py`)
+
+**`portguard/bulk_processor.py`:**
+- Added `compute_risk_level(score: float) -> str` module-level helper (0–10 scale → LOW / MEDIUM / HIGH / CRITICAL; thresholds: ≤2.0, ≤4.0, ≤7.0, >7.0).
+- In `_store_shipment_result()`, before `json.dumps(result)`: injected `result["name"] = ref` (shipment reference string — unavailable in `_run_bulk_single_analysis()` which only receives `documents_data` and `org_id`) and `result["timestamp"] = now` (UTC ISO). Added `setdefault` guards for `flags_count`, `ofac_hit`, `section301_hit`, `adcvd_hit`, `uflpa_hit`, `isf_complete` so `result_json` always carries those keys even if the pipeline path doesn't set them.
+
+**`api/app.py`:**
+- Added 5 optional bool fields to `AnalyzeResponse`: `ofac_hit`, `section301_hit`, `adcvd_hit`, `uflpa_hit`, `isf_complete` — all `Optional[bool] = None`.
+- In `_run_bulk_single_analysis()`, after `_analyze_documents()` returns, computed all 5 booleans via keyword scanning of `result["explanations"]` (case-insensitive). ISF logic: `None` for non-sea shipments (no vessel/port indicators), `True`/`False` for sea shipments based on "isf incomplete" in flags.
+- Expanded `_build_bulk_response()` from 13 to 35+ keys per result: added `name`, `timestamp`, `document_type`, `shipper`, `origin_country`, `destination_country`, `declared_value` (value + currency), `hts_codes` (list), `hts_code` (pipe-joined), `flags_count`, `flags_detail`, `ofac_hit`, `section301_hit`, `adcvd_hit`, `uflpa_hit`, `isf_complete`, `pattern_warnings`, `pattern_hard_flag`, `sustainability_certs_detected`, `sustainability_certs_missing`, `sustainability_grade`, `risk_score_scaled` (0–10), `error_detail`.
+
+Error-case coverage: `name` falls back to `s.get("ref")`, `timestamp` to `s.get("processed_at")`, compliance hits to `None` (unknown), `error_detail` to `s.get("error_message") or ""`.
+
+---
+
+### Frontend changes (`demo.html`)
+
+- Deleted old `bulkExportCsv()` (11-column placeholder). Replaced with `exportBulkCSV()` — reads from `window._lastBulkResults` (raw backend response, not the mapped `_bulkAllResults`).
+- `window._lastBulkResults` assigned in all three render paths: `_bulkRenderFromResponse()` (`data.results || []`), `renderBulkResults()` (`data.results || []`), `_bulkLoadResults()` (`data.shipments || []`).
+- Export button onclick changed to `exportBulkCSV()`; label changed to "Export Detailed CSV".
+- `exportBulkCSV()` internals:
+  - `safe(val)` — null/undefined → `''`; values containing `,`, `"`, or `\n` wrapped in double-quoted RFC 4180 cell.
+  - `riskLevel(score)` — 0–10 scale; thresholds ≤2/≤4/≤7/>7.
+  - `hitFlag(flags, keywords)` — `N/A` if not an array; `YES` on first keyword match; `NO` if no match (empty array is truthy in JS → returns `'NO'`, not `'N/A'`).
+  - `scoreFor10` — uses `r.risk_score_scaled` (backend-provided 0–10) with fallback `r.risk_score * 10` for older polling-path data.
+  - `sustainability_rating` — extracts `.grade` string, not the raw dict (avoids `[object Object]` in CSV).
+  - BOM: `new Blob(['﻿' + csvContent], { type: 'text/csv;charset=utf-8;' })`.
+  - Filename: `portguard_bulk_results_YYYY-MM-DD.csv` via `new Date().toISOString().slice(0,10)`.
+  - `URL.revokeObjectURL` called after 5 s to release the object URL.
+  - Toast: `'CSV exported — N shipments'` on success.
+
+---
+
+### The 25 CSV columns (in order)
+
+| # | Column | Source |
+|---|---|---|
+| 1 | reference_id | `r.name \|\| r.reference_id` |
+| 2 | timestamp | `r.timestamp` |
+| 3 | decision | `r.decision` |
+| 4 | risk_score | `r.risk_score_scaled` (0–10) |
+| 5 | risk_level | `riskLevel(scoreFor10)` |
+| 6 | sustainability_rating | `r.sustainability_grade \|\| r.sustainability_rating.grade` |
+| 7 | document_type | `r.document_type` |
+| 8 | shipper | `r.shipper` |
+| 9 | origin_country | `r.origin_country` |
+| 10 | destination_country | `r.destination_country` |
+| 11 | declared_value | `r.declared_value` (value + currency) |
+| 12 | hts_code | `r.hts_code` (pipe-joined) |
+| 13 | flags_count | `flags.length` |
+| 14 | flags_detail | `flags.join(' \| ')` |
+| 15 | ofac_hit | `hitFlag(flags, ['ofac', 'sanction'])` |
+| 16 | section301_hit | `hitFlag(flags, ['301', 'section 301'])` |
+| 17 | adcvd_hit | `hitFlag(flags, ['ad/cvd', 'antidumping', 'countervailing'])` |
+| 18 | uflpa_hit | `hitFlag(flags, ['uflpa', 'forced labor', 'xinjiang'])` |
+| 19 | isf_complete | `YES / NO / N/A` |
+| 20 | pattern_warnings | `r.pattern_warnings.join(' \| ')` |
+| 21 | pattern_hard_flag | `YES / NO` |
+| 22 | sustainability_certs_detected | `r.sustainability_certs_detected.join(' \| ')` |
+| 23 | sustainability_certs_missing | `r.sustainability_certs_missing.join(' \| ')` |
+| 24 | status | `r.status` |
+| 25 | error_detail | `r.error_detail \|\| r.error` |
+
+---
+
+### Validation
+
+20/20 automated checks green (run twice across two sessions):
+- `exportBulkCSV` function present
+- Exactly 25 header columns
+- `flags_detail`, `ofac_hit`, `section301_hit`, `adcvd_hit`, `uflpa_hit`, `pattern_warnings`, `pattern_hard_flag`, `sustainability_certs_detected`, `sustainability_certs_missing` in headers
+- `riskLevel` thresholds ≤2/≤4/≤7/>7
+- BOM `﻿` present in source
+- `window._lastBulkResults` stored
+- `revokeObjectURL` called
+- `timestamp`, `risk_level`, `flags_count`, `ofac_hit`, `status` in backend result
+
+Manual checks all green:
+- `hitFlag(['OFAC match: Iran'], ['ofac', 'sanction'])` → YES
+- `hitFlag(['Section 301 tariff applies'], ['301', 'section 301'])` → YES
+- `hitFlag([], [...])` → NO (empty array truthy in JS)
+- `error_detail` populated for ERROR status
+- `isf_complete` True/False/None → YES/NO/N/A
+- `riskLevel(7.5)` → CRITICAL (>7.0 threshold)
+
+---
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `portguard/bulk_processor.py` | `compute_risk_level()`; `_store_shipment_result()` injects name, timestamp, setdefault guards |
+| `api/app.py` | 5 new `AnalyzeResponse` fields; compliance hit computation in `_run_bulk_single_analysis()`; `_build_bulk_response()` expanded to 35+ keys |
+| `demo.html` | `exportBulkCSV()` (25-col); button label; `window._lastBulkResults` in all 3 render paths |
+| `docs/csv_summary_read_report.md` | Created — full audit of prior CSV chain (8 items) |
+| `docs/csv_summary_fix_plan.md` | Created — 6-section plan, 25-col spec, 9-step build order |
+| `docs/csv_backend_verification.md` | Created — documents all 5 backend changes, success/error/no-data coverage |
+
+---
+
 ## Sprint: Bulk Upload / Waterline / Toggle / Download — 4-Issue Close
 **Date:** 2026-05-15
 **Branch:** master
