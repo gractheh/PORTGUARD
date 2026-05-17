@@ -197,6 +197,22 @@ Manual flow traces:
 
 ---
 
+### Final verification — 7 checks (2026-05-17)
+
+Code-level read of `demo.html` and `api/app.py` against 7 acceptance criteria. All pass, no fixes required.
+
+| # | Check | Result |
+|---|---|---|
+| 1 | `?result=ID` renders full results screen, not pattern learning widget | ✓ `loadSharedResult` → `showSection('analyze')` → `renderSharedResult` → `renderResults`; `loadPatternStats()` has `if (!_authToken) return` guard — pattern stats skipped for unauthenticated viewers |
+| 2 | Banner says "Shared Compliance Screening Result — Read Only" with CTA | ✓ Line 11691 of `demo.html`; CTA overridden from `_exitSharedResultView()` to `scrollToUpload()` by `renderSharedResult` |
+| 3 | CONFIRMED_FRAUD / CLEARED feedback buttons hidden in shared mode | ✓ `renderSharedResult` sets `#feedback-section` `display: none` after `renderResults` runs |
+| 4 | PDF download button appears, uses result ID | ✓ Public endpoint always injects `shipment_id = result_id`; `renderResults` shows `#download-report-btn` when `data.shipment_id` is set and stores ID in `dataset.shipmentId` |
+| 5 | 404 shows clean error card, not JS error or blank screen | ✓ `loadSharedResult` catches `response.status === 404` → `showSharedResultError()` → renders centered card with icon, title, `escHtml(message)`, CTA |
+| 6 | `GET /api/results/{id}` has no auth requirement | ✓ `def get_shared_result(result_id: str):` — no `Depends(get_current_organization)` |
+| 7 | Analyze endpoint returns `share_url` | ✓ `AnalyzeResponse.share_url` field; set to `f'/?result={shipment_id}'` in all 3 analyze paths |
+
+---
+
 ## Sprint: Bulk Upload / Waterline / Toggle / Download — 4-Issue Close
 **Date:** 2026-05-15
 **Branch:** master
