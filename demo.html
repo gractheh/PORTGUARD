@@ -3841,6 +3841,28 @@
       line-height: 1.5;
     }
 
+    /* Shared result banner inner layout (Task 6 — used by renderSharedResult) */
+    .shared-banner-inner {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(27,154,170,0.1);
+      border: 1px solid rgba(27,154,170,0.3);
+      border-radius: 10px;
+      padding: 0.75rem 1.1rem;
+      margin-bottom: 1.25rem;
+      gap: 1rem;
+    }
+    .shared-banner-left {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--teal-300);
+      font-family: 'Inter', sans-serif;
+      font-size: 0.82rem;
+      font-weight: 600;
+    }
+
     /* Utility alias — same visual as .shared-result-cta; used in error card */
     .shared-cta-btn {
       font-size: .78rem; font-weight: 600; padding: .38rem .85rem;
@@ -11728,6 +11750,12 @@ function renderSharedResult(data) {
   renderResults(data);
   // Overlay the shared-result banner and add shared-result-view CSS class
   _enterSharedResultView(data);
+  // The banner CTA in _enterSharedResultView calls _exitSharedResultView() which
+  // is correct for the authenticated deep-link flow but wrong for the public
+  // shared-result flow: an unauthenticated viewer who clicks it ends up with a
+  // blank panel and no auth prompt.  Override it to call scrollToUpload() instead.
+  var ctaBtn = document.querySelector('#shared-result-banner .shared-result-cta');
+  if (ctaBtn) ctaBtn.setAttribute('onclick', 'scrollToUpload()');
   // Hide feedback section — shared view is read-only; unauthenticated users
   // cannot submit officer feedback
   var feedbackSection = document.getElementById('feedback-section');
@@ -11756,8 +11784,15 @@ function showSharedResultError(message) {
 function scrollToUpload() {
   _pendingSharedResultId = null;
   _exitSharedResultView();
-  // Show the auth overlay so the user can log in to use PortGuard
-  showAuthOverlay();
+  if (_authToken) {
+    // Already authenticated — show the analyze form directly
+    showSection('analyze');
+    var uploadArea = document.querySelector('.analyze-wrap');
+    if (uploadArea) uploadArea.scrollIntoView({ behavior: 'smooth' });
+  } else {
+    // Not logged in — prompt the user to authenticate before using PortGuard
+    showAuthOverlay();
+  }
 }
 
 // ---------------------------------------------------------------------------
